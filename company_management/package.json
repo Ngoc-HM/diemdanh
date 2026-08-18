@@ -1,0 +1,42 @@
+{
+  "name": "company_management",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint",
+    "seed": "tsx scripts/seed.ts",
+    "typecheck": "tsc --noEmit",
+    "migrate": "tsx scripts/migrate.ts",
+    "db": "npm run migrate && npm run seed",
+    "predev": "npm run db",
+    "test:logic": "tsx tests/logic.mjs",
+    "test:api": "tsx tests/api.mjs",
+    "test:routes": "tsx tests/routes.mjs"
+  },
+  "dependencies": {
+    "@tailwindcss/forms": "^0.5.11",
+    "bcryptjs": "^3.0.3",
+    "jose": "^6.2.5",
+    "lucide-react": "^1.28.0",
+    "next": "^15.0.0",
+    "pg": "^8.22.0",
+    "react": "19.2.4",
+    "react-dom": "19.2.4"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4",
+    "@types/node": "^20",
+    "@types/pg": "^8.21.0",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "dotenv": "^17.4.2",
+    "eslint": "^9.39.5",
+    "eslint-config-next": "^15.5.22",
+    "tailwindcss": "^4",
+    "tsx": "^4.23.12",
+    "typescript": "^5"
+  }
+}

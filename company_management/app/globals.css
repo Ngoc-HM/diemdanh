@@ -1,0 +1,59 @@
+@import "tailwindcss";
+
+/* Thang bo góc theo DESIGN (6/10/12/16/20px). Tailwind v4 mặc định là
+   4/6/8/12/16 nên phải khai báo lại, nếu không `rounded-lg` sẽ ra 8px
+   thay vì 12px như spec yêu cầu. */
+@theme {
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+  --radius-2xl: 20px;
+
+  --font-sans: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI",
+    sans-serif;
+
+  /* Alias ngữ nghĩa, ánh xạ đúng bảng token trong DESIGN_IMPLEMENTATION_GUIDE */
+  --color-canvas: var(--color-slate-50);
+  --color-surface: #ffffff;
+  --color-brand: var(--color-sky-600);
+  --color-brand-strong: var(--color-sky-700);
+  --color-brand-soft: var(--color-sky-50);
+}
+
+html {
+  color-scheme: light;
+}
+
+html,
+body {
+  background-color: var(--color-slate-50);
+  color: var(--color-slate-900);
+  font-family: var(--font-sans);
+  font-size: 16px;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Focus nhìn thấy được ở mọi control, dùng ring màu brand thay vì bỏ outline. */
+:focus-visible {
+  outline: 2px solid var(--color-sky-600);
+  outline-offset: 2px;
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--color-slate-100);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--color-slate-300);
+  border-radius: 999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-slate-400);
+}

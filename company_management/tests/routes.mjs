@@ -1,0 +1,127 @@
+import "dotenv/config";
+
+/// Quét mọi đường dẫn của giao diện: đăng nhập thật rồi tải từng trang,
+/// kiểm tra không có 404 / 500 / lỗi render, và bám đúng redirect.
+/// Đây là loại lỗi mà test API không bắt được.
+
+const BASE = process.env.BASE_URL || "http://localhost:3000";
+let pass = 0, fail = 0;
+const bad = [];
+
+function check(name, ok, detail = "") {
+  if (ok) { pass++; console.log(`  ok   ${name}`); }
+  else { fail++; bad.push(`${name} ${detail}`); console.log(`  FAIL ${name} ${detail}`); }
+}
+
+function makeJar() {
+  const jar = new Map();
+  return {
+    header: () => [...jar].map(([k, v]) => `${k}=${v}`).join("; "),
+    absorb: (res) => {
+      for (const raw of res.headers.getSetCookie?.() ?? []) {
+        const [pair] = raw.split(";");
+        const i = pair.indexOf("=");
+        jar.set(pair.slice(0, i), pair.slice(i + 1));
+      }
+    },
+  };
+}
+
+async function visit(jar, path) {
+  const res = await fetch(BASE + path, {
+    headers: jar.header() ? { Cookie: jar.header() } : {},
+    redirect: "follow",
+  });
+  const html = await res.text();
+  // Next ở chế độ dev nhúng payload của trang 404 vào flight data của MỌI
+  // trang, nên không thể dò 404 bằng cách tìm chuỗi trong toàn bộ HTML.
+  // Thẻ <title> mới là thứ phản ánh trang thực sự được render.
+  const title = html.match(/<title[^>]*>([^<]*)<\/title>/)?.[1] ?? "";
+  return { status: res.status, url: new URL(res.url).pathname, html, title };
+}
+
+const ADMIN_PAGES = [
+  ["/admin/attendance/monthly", "Bảng chấm công"],
+  ["/admin/schedules", "Lịch làm việc"],
+  ["/admin/users", "Nhân viên"],
+  ["/admin/sessions", "Ca làm việc"],
+  ["/admin/locations", "Vị trí làm việc"],
+  ["/admin/holidays", "Ngày lễ"],
+  ["/admin/company", "Thiết lập công ty"],
+  ["/admin/change-password", "Đổi mật khẩu"],
+];
+
+async function main() {
+  const anon = makeJar();
+  const admin = makeJar();
+
+  console.log("\n== trang công khai ==");
+  for (const [path, marker] of [
+    ["/login", "Hệ thống chấm công nội bộ"],
+    ["/admin-login-app", "Quản trị viên"],
+  ]) {
+    const r = await visit(anon, path);
+    check(`${path} tải được`, r.status === 200, `(${r.status})`);
+    check(`${path} render đúng trang`, r.html.includes(marker) && !r.title.startsWith("404"), `(title="${r.title}")`);
+  }
+  let r = await visit(anon, "/");
+  check("/ chuyển về /login", r.url === "/login", `(-> ${r.url})`);
+
+  console.log("\n== chặn khi chưa đăng nhập ==");
+  r = await visit(anon, "/admin/attendance/monthly");
+  check("/admin/* đá về trang đăng nhập admin", r.url === "/admin-login-app", `(-> ${r.url})`);
+  r = await visit(anon, "/dashboard");
+  check("/dashboard đá về /login", r.url === "/login", `(-> ${r.url})`);
+
+  console.log("\n== đăng nhập admin ==");
+  const login = await fetch(BASE + "/api/auth/admin-login", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      username: process.env.AUTH_ADMIN_USERNAME || "admin",
+      password: process.env.AUTH_ADMIN_PASSWORD || "admin123",
+    }),
+  });
+  admin.absorb(login);
+  check("đăng nhập bằng tài khoản trong .env", login.status === 200, `(${login.status})`);
+
+  console.log("\n== các trang quản trị ==");
+  for (const [path, marker] of ADMIN_PAGES) {
+    const page = await visit(admin, path);
+    check(`${path}`, page.status === 200 && page.url === path, `(${page.status} -> ${page.url})`);
+    check(
+      `  └ hiện đúng nội dung "${marker}"`,
+      page.html.includes(marker) && !page.title.startsWith("404"),
+      `(title="${page.title}")`
+    );
+  }
+
+  console.log("\n== đường dẫn rút gọn & link cũ ==");
+  const shortcuts = [
+    ["/admin", "/admin/attendance/monthly"],
+    ["/admin/attendance", "/admin/attendance/monthly"],
+    ["/admin-dashboard", "/admin/attendance/monthly"],
+    ["/admin-dashboard/attendance", "/admin/attendance/monthly"],
+    ["/admin-dashboard/attendance/monthly", "/admin/attendance/monthly"],
+    ["/admin-dashboard/company", "/admin/attendance/monthly"],
+  ];
+  for (const [from, to] of shortcuts) {
+    const page = await visit(admin, from);
+    check(`${from} -> ${to}`, page.url === to && page.status === 200, `(${page.status} -> ${page.url})`);
+  }
+
+  console.log("\n== trang không tồn tại ==");
+  const missing = await fetch(BASE + "/admin/khong-co-trang-nay", {
+    headers: { Cookie: admin.header() },
+  });
+  check("đường dẫn lạ trả 404 đúng cách", missing.status === 404, `(${missing.status})`);
+
+  console.log(`\n===== ${pass} đạt / ${fail} hỏng =====`);
+  if (bad.length) bad.forEach((f) => console.log(" -", f));
+  process.exit(fail === 0 ? 0 : 1);
+}
+
+main().catch((e) => {
+  console.error("LỖI:", e);
+  process.exit(1);
+});
