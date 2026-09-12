@@ -57,8 +57,16 @@ export default function SettingsPage() {
       });
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error || "Không lưu được");
+      // Email là tên đăng nhập: đổi xong mà không nói rõ thì lần sau nhân viên
+      // vẫn gõ email cũ và không vào được.
+      const emailChanged = payload.profile.email !== profile?.email;
       applyProfile(payload.profile);
-      setFeedback({ type: "success", text: "Đã lưu hồ sơ" });
+      setFeedback({
+        type: "success",
+        text: emailChanged
+          ? `Đã lưu. Lần sau đăng nhập bằng ${payload.profile.email}`
+          : "Đã lưu hồ sơ",
+      });
       // Tải lại để tên mới hiện ở sidebar và header.
       setTimeout(() => window.location.reload(), 600);
     } catch (error) {
@@ -224,7 +232,7 @@ export default function SettingsPage() {
                 required
               />
             </Field>
-            <Field label="Email đăng nhập" required>
+            <Field label="Email đăng nhập" required hint="Đổi email là đổi tên đăng nhập">
               <Input
                 type="email"
                 value={email}

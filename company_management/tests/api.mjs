@@ -1,6 +1,7 @@
 import "dotenv/config";
 import pg from "pg";
 import bcrypt from "bcryptjs";
+import { createHash } from "node:crypto";
 
 const BASE = process.env.BASE_URL || "http://localhost:3000";
 const ADMIN_USER = "__smoketest_admin";
@@ -115,8 +116,10 @@ async function main() {
     check("chặn cổng sai", r.status === 400, `(${r.status})`);
     r = await call(emp, "POST", "/api/auth/forgot-password", { email: "khong-phai-email" });
     check("quên mật khẩu: chặn email sai định dạng", r.status === 400, `(${r.status})`);
-    r = await call(emp, "POST", "/api/auth/reset-password", { token: "token-bay", password: "MatKhau123" });
-    check("đặt lại mật khẩu: chặn token lạ", r.status === 400, `(${r.status})`);
+    r = await call(emp, "POST", "/api/auth/reset-password", { email: "khong-co@example.test", code: "12345678", password: "MatKhau123" });
+    check("đặt lại mật khẩu: chặn mã của email lạ", r.status === 400, `(${r.status})`);
+    r = await call(emp, "POST", "/api/auth/reset-password", { email: "a@b.c", code: "123", password: "MatKhau123" });
+    check("đặt lại mật khẩu: chặn mã không đủ 8 số", r.status === 400, `(${r.status})`);
 
     console.log("\n== ca làm việc ==");
     r = await call(admin, "GET", "/api/admin/work-sessions");
@@ -434,6 +437,55 @@ async function main() {
     // Trả lại email cũ để các bước sau vẫn đăng nhập được như cũ.
     r = await call(emp, "PUT", "/api/auth/profile", { name: "__smoketest Nhân viên", email: EMP_EMAIL });
     check("trả lại email cũ", r.status === 200, `(${r.status})`);
+
+    console.log("\n== quên mật khẩu bằng mã 8 số ==");
+    // Không gửi mail thật: lấy thẳng mã từ database rồi kiểm luồng đổi mật khẩu.
+    const RESET_PASS = "MatKhauQuen123";
+    const otp = String(Math.floor(Math.random() * 1e8)).padStart(8, "0");
+    const otpHash = createHash("sha256").update(otp).digest("hex");
+    await client.query(`DELETE FROM "PasswordReset" WHERE "userId" = $1`, [employeeId]);
+    await client.query(
+      `INSERT INTO "PasswordReset" ("userId", "tokenHash", "expiresAt")
+       VALUES ($1, $2, now() + interval '15 minutes')`,
+      [employeeId, otpHash]
+    );
+
+    const wrong = otp === "00000000" ? "11111111" : "00000000";
+    r = await call(makeJar(), "POST", "/api/auth/reset-password", { email: EMP_EMAIL, code: wrong, password: RESET_PASS });
+    check("mã sai bị từ chối", r.status === 400, `(${r.status})`);
+    check("báo còn bao nhiêu lần thử", /còn \d+ lần thử/.test(r.json.error ?? ""), `("${r.json.error}")`);
+
+    r = await call(makeJar(), "POST", "/api/auth/reset-password", { email: EMP_EMAIL, code: otp, password: "123" });
+    check("chặn mật khẩu mới quá ngắn", r.status === 400, `(${r.status})`);
+
+    r = await call(makeJar(), "POST", "/api/auth/reset-password", { email: EMP_EMAIL, code: otp, password: RESET_PASS });
+    check("đúng mã thì đổi được mật khẩu", r.status === 200, `(${r.status})`);
+
+    const reset = makeJar();
+    r = await call(reset, "POST", "/api/auth/login", { email: EMP_EMAIL, password: RESET_PASS });
+    check("đăng nhập bằng mật khẩu mới", r.status === 200, `(${r.status})`);
+
+    r = await call(makeJar(), "POST", "/api/auth/reset-password", { email: EMP_EMAIL, code: otp, password: RESET_PASS });
+    check("mã đã dùng không dùng lại được", r.status === 400, `(${r.status})`);
+
+    // Sai 5 lần thì mã bị huỷ, không để ai dò hết 8 chữ số.
+    await client.query(`DELETE FROM "PasswordReset" WHERE "userId" = $1`, [employeeId]);
+    await client.query(
+      `INSERT INTO "PasswordReset" ("userId", "tokenHash", "expiresAt")
+       VALUES ($1, $2, now() + interval '15 minutes')`,
+      [employeeId, otpHash]
+    );
+    for (let attempt = 0; attempt < 5; attempt++) {
+      r = await call(makeJar(), "POST", "/api/auth/reset-password", { email: EMP_EMAIL, code: wrong, password: RESET_PASS });
+    }
+    check("sai 5 lần thì huỷ mã", (r.json.error ?? "").includes("huỷ"), `("${r.json.error}")`);
+    r = await call(makeJar(), "POST", "/api/auth/reset-password", { email: EMP_EMAIL, code: otp, password: RESET_PASS });
+    check("mã đã huỷ thì không dùng được nữa", r.status === 400, `(${r.status})`);
+
+    // Trả mật khẩu về như cũ cho các bước sau.
+    await client.query(`DELETE FROM "PasswordReset" WHERE "userId" = $1`, [employeeId]);
+    r = await call(admin, "POST", `/api/users/${employeeId}/reset-password`, { password: EMP_PASS });
+    check("admin đặt lại mật khẩu cũ", r.status === 200, `(${r.status})`);
 
     console.log("\n== phân quyền ==");
     r = await call(emp, "GET", "/api/users");

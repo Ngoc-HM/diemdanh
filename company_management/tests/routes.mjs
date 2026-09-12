@@ -72,7 +72,6 @@ async function main() {
     ["/login", "Chấm công nội bộ"],
     ["/admin-login-app", "Quản trị viên"],
     ["/forgot-password", "Quên mật khẩu"],
-    ["/reset-password", "Đặt lại mật khẩu"],
     ["/desktop-only", "Chỉ hỗ trợ máy tính"],
   ]) {
     const r = await visit(anon, path);
@@ -81,6 +80,8 @@ async function main() {
   }
   let r = await visit(anon, "/");
   check("/ chuyển về /login", r.url === "/login", `(-> ${r.url})`);
+  r = await visit(anon, "/reset-password");
+  check("/reset-password (link cũ) về /forgot-password", r.url === "/forgot-password", `(-> ${r.url})`);
 
   console.log("\n== chặn điện thoại ==");
   const mobile = await fetch(BASE + "/login", {

@@ -139,8 +139,12 @@ Admin cấu hình SMTP ở `/admin/email`. Cấu hình lưu trong bảng `Settin
 khẩu SMTP mã hoá bằng khoá dẫn xuất từ `AUTH_SECRET` (đổi `AUTH_SECRET` thì
 phải nhập lại mật khẩu SMTP). Email dùng cho hai việc:
 
-- **Quên mật khẩu**: nhân viên nhập email ở `/forgot-password`, nhận link đặt
-  lại có hiệu lực 60 phút (bảng `PasswordReset`, chỉ lưu băm của token).
+- **Quên mật khẩu**: nhân viên nhập email ở `/forgot-password`, nhận **mã 8 số**
+  qua email rồi nhập thẳng mã đó kèm mật khẩu mới ngay trên trang. Mã sống 15
+  phút, dùng một lần, sai 5 lần thì bị huỷ (mã chỉ có 8 chữ số nên phải chặn dò);
+  bấm gửi lại trong vòng 60 giây thì dùng lại mã cũ, không gửi thêm thư. Bảng
+  `PasswordReset` chỉ lưu băm của mã. Đường dẫn cũ `/reset-password` (thời còn
+  gửi link) chuyển hướng về `/forgot-password`.
 - **Nhắc đăng ký lịch**: từ ngày 20 hằng tháng, server tự gửi email cho nhân viên
   bán thời gian và thực tập, mỗi tháng một lần. Bộ đếm chạy trong tiến trình
   server (`instrumentation.ts` → `lib/reminder.ts`), kiểm tra mỗi giờ. Admin
@@ -197,7 +201,7 @@ Chỉ vậy thôi. `npm run dev` tự chạy `npm run db` trước, việc này 
 Cái gì đã có thì bỏ qua, nên chạy lại bao nhiêu lần cũng không đổi gì. Trên
 server thì gọi `npm run db` trước khi `npm start`.
 
-Thêm thay đổi schema: tạo file mới `db/migrations/013_<mô_tả>.sql`, không sửa
+Thêm thay đổi schema: tạo file mới `db/migrations/014_<mô_tả>.sql`, không sửa
 file cũ đã chạy.
 
 ### 3. Thiết lập lần đầu trong giao diện admin
@@ -217,7 +221,7 @@ file cũ đã chạy.
 
 | Route | Ai dùng |
 |---|---|
-| `/login`, `/admin-login-app`, `/forgot-password`, `/reset-password`, `/desktop-only` | Công khai |
+| `/login`, `/admin-login-app`, `/forgot-password`, `/desktop-only` | Công khai |
 | `/dashboard` | Nhân viên — check in / check out |
 | `/dashboard/schedule` | Nhân viên — đăng ký lịch tháng |
 | `/dashboard/history` | Nhân viên — lịch sử chấm công |

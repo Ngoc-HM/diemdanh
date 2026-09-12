@@ -139,7 +139,12 @@ export function resolveAppUrl(
   return "";
 }
 
-/// Băm token đặt lại mật khẩu trước khi lưu/tra cứu.
+/// Mã đặt lại mật khẩu: 8 chữ số, sống 15 phút, sai quá 5 lần thì huỷ.
+export const RESET_CODE_LENGTH = 8;
+export const RESET_CODE_TTL_MINUTES = 15;
+export const RESET_CODE_MAX_ATTEMPTS = 5;
+
+/// Băm mã đặt lại mật khẩu trước khi lưu/tra cứu.
 export function hashToken(token: string): string {
   return createHash("sha256").update(token).digest("hex");
 }

@@ -1,4 +1,4 @@
-import { randomBytes } from "node:crypto";
+import { randomInt } from "node:crypto";
 import { execute, queryOne } from "@/lib/db";
 import { badRequest, handle, HttpError } from "@/lib/auth-guard";
 import { isValidEmail } from "@/lib/utils";
@@ -6,13 +6,16 @@ import {
   getEmailConfig,
   hashToken,
   isEmailReady,
-  resolveAppUrl,
+  RESET_CODE_LENGTH,
+  RESET_CODE_TTL_MINUTES,
   sendMail,
 } from "@/lib/mailer";
 
-const TOKEN_TTL_MINUTES = 60;
+/// Bấm gửi lại liên tục thì trong khoảng này vẫn dùng mã cũ, không gửi thêm
+/// thư — vừa đỡ spam hộp thư vừa đỡ bị lợi dụng để dội mail người khác.
+const RESEND_COOLDOWN_SECONDS = 60;
 
-/// Nhân viên quên mật khẩu: gửi email chứa link đặt lại, hiệu lực 60 phút.
+/// Nhân viên quên mật khẩu: gửi mã 8 số qua email, nhập ở bước sau để đặt lại.
 /// Luôn trả về thành công dù email không có trong hệ thống, để không lộ danh
 /// sách tài khoản.
 export async function POST(req: Request) {
@@ -35,27 +38,39 @@ export async function POST(req: Request) {
     );
 
     if (user) {
-      const token = randomBytes(32).toString("hex");
-      // Mỗi tài khoản chỉ giữ một link còn hiệu lực.
+      const recent = await queryOne<{ id: string }>(
+        `SELECT "id" FROM "PasswordReset"
+          WHERE "userId" = $1 AND "usedAt" IS NULL AND "expiresAt" > now()
+            AND "createdAt" > now() - ($2 || ' seconds')::interval`,
+        [user.id, String(RESEND_COOLDOWN_SECONDS)]
+      );
+      // Vừa gửi xong thì thôi, mã cũ vẫn còn hiệu lực.
+      if (recent) return { success: true };
+
+      const code = String(randomInt(0, 10 ** RESET_CODE_LENGTH)).padStart(
+        RESET_CODE_LENGTH,
+        "0"
+      );
+
+      // Mỗi tài khoản chỉ giữ một mã còn hiệu lực.
       await execute(`DELETE FROM "PasswordReset" WHERE "userId" = $1`, [user.id]);
       await execute(
         `INSERT INTO "PasswordReset" ("userId", "tokenHash", "expiresAt")
          VALUES ($1, $2, now() + ($3 || ' minutes')::interval)`,
-        [user.id, hashToken(token), String(TOKEN_TTL_MINUTES)]
+        [user.id, hashToken(code), String(RESET_CODE_TTL_MINUTES)]
       );
 
-      const link = `${resolveAppUrl(config, req.url)}/reset-password?token=${token}`;
       try {
-        await sendMail(config, {
+        await sendMail(config!, {
           to: user.email,
-          subject: "Đặt lại mật khẩu chấm công",
+          subject: `Mã đặt lại mật khẩu: ${code}`,
           text: [
             `Chào ${user.name},`,
             "",
-            "Bạn (hoặc ai đó) vừa yêu cầu đặt lại mật khẩu. Mở đường link sau để đặt mật khẩu mới:",
-            link,
+            "Mã đặt lại mật khẩu của bạn là:",
+            code,
             "",
-            `Link có hiệu lực ${TOKEN_TTL_MINUTES} phút. Nếu không phải bạn yêu cầu thì bỏ qua email này.`,
+            `Mã có hiệu lực ${RESET_CODE_TTL_MINUTES} phút. Nếu không phải bạn yêu cầu thì bỏ qua email này.`,
           ].join("\n"),
         });
       } catch (error) {
