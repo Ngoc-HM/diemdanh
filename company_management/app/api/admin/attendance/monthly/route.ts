@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { query } from "@/lib/db";
+import { query, queryOne } from "@/lib/db";
 import { badRequest, handle, requireAdmin } from "@/lib/auth-guard";
 import {
   dateKeyVN,
@@ -22,6 +22,7 @@ import {
   getHolidayMap,
   getLunchBreak,
   getPendingShiftRequestDates,
+  getWeeklyOffDays,
   resolveMonthSchedules,
   type ScheduleMap,
 } from "@/lib/attendance-service";
@@ -206,11 +207,24 @@ export async function GET(req: Request) {
     });
 
     if (wantsExcel) {
+      // Tên công ty và ngày nghỉ hằng tuần chỉ cần khi xuất file, nên tra ở đây
+      // thay vì bắt mọi lần mở trang phải chịu thêm hai câu truy vấn.
+      const [companyName, weeklyOffDays] = await Promise.all([
+        queryOne<{ value: string }>(
+          `SELECT "value" FROM "Settings" WHERE "key" = 'company_name'`
+        ),
+        getWeeklyOffDays(),
+      ]);
+
       const file = await buildAttendanceWorkbook({
         month,
         dates,
         sessionCodes: rules.map((rule) => rule.code),
         rows: summary,
+        companyName: companyName?.value ?? "",
+        holidays: Object.fromEntries(holidays),
+        weeklyOffDays,
+        exportedOn: today,
       });
 
       return new NextResponse(new Uint8Array(file), {
