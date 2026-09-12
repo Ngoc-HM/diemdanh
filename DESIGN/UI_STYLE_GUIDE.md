@@ -262,6 +262,24 @@ Sub-nav phải:
 
 ## Quy chuẩn component
 
+### Dùng lại bộ component chung
+
+Hệ thống chấm công (`company_management/`) có sẵn bộ component dùng chung ở
+`app/_components/ui.tsx`: `Button`, `Input`, `Select`, `Textarea`, `Field`,
+`Card`, `Modal`, `Message`, `Badge`, `EmptyState`, `TableSkeleton`.
+
+Màn mới **phải dùng lại bộ này**. Tự viết một khối `div` có viền và bóng riêng
+là cách nhanh nhất để lệch khỏi chuẩn — chiều cao control, bo góc, màu viền sẽ
+trôi mỗi trang một kiểu. Thiếu component thì **bổ sung vào `ui.tsx`** rồi dùng,
+không vẽ riêng trong trang.
+
+### Ảnh đại diện
+
+- ảnh tròn, viền mảnh
+- chưa có ảnh thì hiện chữ cái đầu của tên trên nền màu thương hiệu, không dùng
+  ảnh mặc định kiểu avatar xám hay illustration
+- hiện ở khối người dùng trên sidebar và ở danh sách nhân viên của quản trị
+
 ### Card
 
 Card phải:
@@ -402,6 +420,143 @@ Tab `Yêu cầu bổ sung`:
 
 ---
 
+## Trang lỗi, 404 và trang cảnh báo
+
+Trang lỗi cũng là màn hình của hệ thống, **không phải chỗ để đổi phong cách**.
+Không được nhân dịp này làm màn tối, banner đen, hay hiệu ứng doạ nạt.
+
+Bắt buộc:
+
+- nền sáng như mọi trang khác, card trắng viền mảnh
+- dùng lại `Card` / `Button` chung, không tự vẽ khối riêng
+- icon cảnh báo tô màu nhạt (đỏ nhạt cho lỗi quyền), không icon to giữa màn
+- nội dung: **tiêu đề + đúng một câu + dữ kiện + một nút**
+
+Cấu trúc nội dung chuẩn:
+
+- tiêu đề nói thẳng chuyện gì: `Không có trang này`
+- một câu hệ quả hoặc cảnh báo
+- dữ kiện liên quan nếu có (đường dẫn vừa mở), dạng chip nền xám nhạt
+- một nút đưa người dùng về chỗ làm việc được
+
+Không được:
+
+- nền tối toàn màn (`bg-slate-900`, `bg-black`)
+- card tối, nút trắng lớn trên nền tối
+- ba đoạn giải thích cơ chế phía sau
+
+Nếu trang cảnh báo nói "việc này đã được ghi lại", thì **phải ghi thật** vào
+database và có chỗ cho quản trị viên xem. Doạ suông sẽ lộ ngay lần đầu có người
+hỏi lại quản trị viên.
+
+---
+
+## Chú thích, nhãn phụ và helper text
+
+Người dùng nội bộ **không đọc chú thích**. Mỗi dòng chú thích phải tự kiếm được
+chỗ đứng, nếu không thì bỏ.
+
+### Chú thích dưới lưới (legend)
+
+- đúng **một dòng**, dạng `MÃ Tên · MÃ Tên · ...`
+- chỉ ghi mã và tên gọi, **không lặp lại dữ liệu đã hiện trong lưới** (giờ giấc,
+  số giờ, điều kiện)
+- không giải thích màu bằng đoạn văn — màu phải tự nói được nghĩa qua ngữ cảnh
+- không thêm câu dẫn sang trang khác ở cuối khối chú thích
+
+ĐÚNG:
+
+```
+S Ca sáng · C Ca chiều · CN Cả ngày · T Tăng ca · N Nghỉ · O Ốm
+```
+
+SAI: danh sách dọc 8 dòng, mỗi ca một dòng kèm khung giờ và số giờ tối thiểu —
+những thứ đã nằm sẵn ở cột đầu của lưới.
+
+### Helper text dưới field
+
+- chỉ dùng khi **định dạng** thực sự khó đoán (`DD/MM/YYYY`, `Ít nhất 6 ký tự`)
+- **không** dùng để mô tả trạng thái đã nhìn thấy được. Field khoá, đã có sẵn
+  giá trị, nền xám → người dùng đã hiểu, không cần chú thích `Nối tiếp khoảng
+  trước`
+- không dùng để dạy nghiệp vụ; nghiệp vụ thuộc về tài liệu, không thuộc về form
+
+---
+
+## Giọng văn và từ ngữ
+
+Text trong UI phải là **tiếng Việt đời thường của người đi làm**, không phải văn
+hành chính, cũng không phải văn nói đùa.
+
+| Không dùng | Dùng |
+|---|---|
+| khai báo, kê khai, đã khai | ghi, tổng |
+| tiến hành, thực hiện việc | (bỏ hẳn, dùng động từ chính) |
+| Chưa có ai mò lung tung | Chưa có truy cập lạ |
+| Quý nhân viên vui lòng... | (bỏ) |
+
+Ba luật:
+
+1. **Không từ hành chính.** Nếu một từ chỉ xuất hiện trong công văn, đừng đưa vào
+   giao diện dùng hằng ngày.
+2. **Không đùa, không lóng, không mỉa.** Phần mềm quản trị đọc bởi cả ban giám
+   đốc; câu đùa hôm nay là câu khó xử khi in ra họp.
+3. **Không doạ người dùng bằng chữ** ở màn nghiệp vụ bình thường. Cảnh báo chỉ
+   xuất hiện ở đúng nơi có chuyện (trang lỗi quyền, xác nhận xoá).
+
+---
+
+## Màn nhân viên khác màn quản trị
+
+Hai khu vực phục vụ hai nhu cầu khác nhau, không được bê nguyên bố cục của bên
+này sang bên kia.
+
+**Màn nhân viên** — chỉ phục vụ thao tác **của hôm nay**:
+
+- hiện đúng việc họ phải làm bây giờ
+- không thêm bảng lịch sử theo tháng, không thêm điều hướng tháng, nếu nghiệp vụ
+  không cho họ sửa quá khứ
+- một trang một việc; dồn thêm chức năng "cho tiện" là làm chậm người dùng
+
+**Màn quản trị** — nơi chứa lịch sử, tổng hợp, xuất báo cáo:
+
+- bảng là chính, lọc theo tháng/người/ngày
+- chi tiết mở bằng modal, không nhồi vào trang
+
+Trước khi thêm một khối vào màn nhân viên, hỏi: *nhân viên có sửa được nó không?*
+Nếu chỉ để xem cho biết thì phần lớn là thừa.
+
+---
+
+## File xuất ra cho người khác (Excel / CSV)
+
+File xuất ra được gửi cho kế toán, lãnh đạo, đối tác — nó là bộ mặt của hệ thống
+y như màn hình, và phải trình bày theo **mẫu biểu**, không phải đổ dữ liệu thô.
+
+Bắt buộc:
+
+- khối tiêu đề: tên công ty, tên báo cáo, kỳ báo cáo, ngày xuất
+- tiêu đề **chỉ gộp ô qua khối bên trái** (cỡ 10–15 cột đầu). Gộp hết chiều
+  ngang bảng rộng thì tiêu đề rơi vào giữa lưới, mở file lên không nhìn thấy
+- hai dòng tiêu đề bảng khi cột là ngày: số ngày ở trên, thứ trong tuần ở dưới;
+  các cột hồ sơ gộp dọc hai dòng
+- khoá khung (freeze panes) ở tiêu đề và các cột định danh
+- kẻ viền toàn bảng, dòng lẻ tô nhạt
+- các khối cột khác nhóm thì khác màu nền tiêu đề (hồ sơ / dữ liệu ngày / cột tổng)
+- ô dữ liệu **kế thừa đúng bảng màu trạng thái của lưới trên web**, để người xem
+  web và người xem file hiểu cùng một thứ
+- cột số phải là **kiểu số**, có định dạng thập phân rõ, để người nhận cộng được
+  ngay; kèm dòng tổng cộng khi bảng có nhiều dòng
+- hướng giấy ngang cho bảng nhiều cột
+
+Không được:
+
+- xuất file chỉ có header + dữ liệu, không tiêu đề, không định dạng
+- viết ký hiệu lạ mà không ai giải nghĩa được (nếu người nhận ngoài hệ thống,
+  thống nhất trước với họ về bộ ký hiệu)
+
+---
+
 ## Những thứ phải tránh tuyệt đối
 
 - black hero banner
@@ -515,7 +670,7 @@ The final result must match the style rules in UI_STYLE_GUIDE.md.
 Khi bắt đầu phiên mới với AI, dùng câu này:
 
 ```text
-Trước khi làm UI, hãy đọc file /Users/hmngoc/project/companys/DESIGN/UI_STYLE_GUIDE.md và bám đúng phong cách trong đó. Không được làm lệch sang kiểu AI, startup, landing page, hay giao diện màu mè. Tối giản text tối đa — mỗi từ phải có giá trị nghiệp vụ, không dùng placeholder hay mô tả trang trí.
+Trước khi làm UI, hãy đọc file DESIGN/UI_STYLE_GUIDE.md và bám đúng phong cách trong đó. Không được làm lệch sang kiểu AI, startup, landing page, hay giao diện màu mè. Tối giản text tối đa — mỗi từ phải có giá trị nghiệp vụ, không dùng placeholder hay mô tả trang trí.
 ```
 
 ---
@@ -536,6 +691,10 @@ Trước khi coi một UI là đạt, phải tự hỏi:
 - người quản lý dùng hàng ngày có thấy tin cậy không?
 - có thể bỏ 30% text mà nghiệp vụ vẫn rõ không?
 - có chỗ nào dùng placeholder / decorative copy vô nghĩa không?
+- trang lỗi / cảnh báo có đang lệch sang nền tối không?
+- chú thích dưới lưới có lặp lại thứ đã hiện trong lưới không?
+- có từ hành chính ("khai báo", "tiến hành") hay câu đùa nào lọt vào không?
+- màn nhân viên có khối nào họ không sửa được mà vẫn bày ra không?
 
 Nếu tôi đưa ra yêu cầu, với bất kì lí do nào như không đủ thông tin, thiếu yêu cầu, nói không hiểu thì PHẢI HỎI LẠI TÔI đến khi sáng tỏ yêu cầu.
 Nếu một trong các câu trên trả lời là “không”, phải chỉnh lại.
@@ -609,7 +768,7 @@ Dùng Tailwind arbitrary value hoặc standard palette classes:
 Khi bắt đầu phiên làm việc mới, dùng câu lệnh sau:
 
 ```text
-Trước khi làm UI, hãy đọc các file trong /Users/hmngoc/project/companys/DESIGN/ theo thứ tự:
+Trước khi làm UI, hãy đọc các file trong DESIGN/ theo thứ tự:
 1. UI_STYLE_GUIDE.md — tinh thần và nguyên tắc thiết kế
 2. DESIGN_GUI.md — hard token definitions
 3. DESIGN_IMPLEMENTATION_GUIDE.md — cách implement tokens vào Tailwind CSS v4
@@ -622,6 +781,11 @@ Tối giản text — xóa bỏ mọi placeholder, decorative copy, và mô tả
 ---
 
 ## Audit — Trạng thái hiện tại của codebase
+
+> **Lưu ý:** phần audit dưới đây thuộc dự án **khác** (`companys/company`), không
+> phải hệ thống chấm công `company_management/`. Các đường dẫn
+> `app/dashboard/user/...` không tồn tại trong repo chấm công — đừng đi tìm.
+> Nguyên tắc thì vẫn áp dụng chung cho cả hai.
 
 Đã audit toàn bộ 20+ user-facing pages trong `app/dashboard/user/`.
 

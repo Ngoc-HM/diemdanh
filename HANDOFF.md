@@ -136,3 +136,10 @@ Còn phải làm bằng tay khi lên production (không làm hộ được):
 cd company_management && npm run dev      # tự migrate + seed
 npm run test:logic && npm run test:api && npm run test:routes
 ```
+
+**Không chạy hai tiến trình Next cùng lúc trên repo này.** `next build` hoặc một
+`next dev` thứ hai (dù ở cổng khác) đều ghi đè thư mục `.next` mà dev server đang
+dùng, làm server đang chạy trả 500 hàng loạt và test hỏng theo. Muốn build hoặc
+soi header thì tắt dev server trước.
+
+Luật UI nằm ở `DESIGN/UI_STYLE_GUIDE.md` — đọc trước khi đụng vào giao diện.

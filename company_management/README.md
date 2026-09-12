@@ -50,6 +50,10 @@ không phải bấm giờ cho bữa trưa: vào 08:30 ra 17:30 được tính 7,
 công khi giờ công đạt tổng `minHours` của các ca đã đăng ký — ngưỡng này vì thế
 phải đặt theo giờ làm thực, ví dụ ca sáng 08:30–12:00 dài 3,5 giờ thì đặt 3 giờ.
 
+**Giờ tan nghỉ trưa phải bằng giờ vào ca chiều.** Lệch nhau thì khoảng chồng lấn
+vừa nằm trong ca vừa bị trừ như giờ nghỉ, và giờ công hụt đúng bằng phần lệch —
+ai làm đủ ca vẫn bị chấm thiếu giờ.
+
 Vị trí bắt buộc nằm trong bán kính của một `WorkLocation` đang bật, nếu không API
 từ chối. Trường hợp sai vị trí hoặc quên bấm giờ thì admin bổ sung tay ở trang chi
 tiết nhân viên (các dòng nhập tay được đánh dấu `isManual`).
