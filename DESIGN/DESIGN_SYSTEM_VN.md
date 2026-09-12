@@ -1,7 +1,8 @@
 # Design System — Hệ thống Thiết kế (VN)
 
 > **Nguồn:** file này được gộp từ 4 file gốc trong `DESIGN/`, giữ nguyên toàn bộ nội dung:
-> `UI_STYLE_GUIDE.md` → Phần I & V · `DESIGN_GUI_VN.md` → Phần II · `DESIGN_IMPLEMENTATION_GUIDE.md` → Phần III · Audit của cả 3 file → Phần IV.
+> Đây là tài liệu thiết kế **duy nhất** bằng tiếng Việt. Bản tiếng Anh: `DESIGN_SYSTEM.md`.
+> Bốn file cũ (`UI_STYLE_GUIDE.md`, `DESIGN_GUI_VN.md`, `DESIGN_GUI.md`, `DESIGN_IMPLEMENTATION_GUIDE.md`) đã gộp hết vào đây và đã xoá.
 > 4 file gốc vẫn được giữ nguyên, không chỉnh sửa.
 >
 > Khi 2 file nguồn nêu giá trị khác nhau cho cùng một thứ, **cả hai giá trị đều được giữ lại** và ghi rõ xuất xứ trong ngoặc — không bên nào bị loại bỏ.
@@ -18,6 +19,11 @@
   - [Layout chuẩn của hệ thống](#layout-chuẩn-của-hệ-thống)
   - [Quy chuẩn component](#quy-chuẩn-component)
   - [Pattern chuẩn cho màn nghiệp vụ](#pattern-chuẩn-cho-màn-nghiệp-vụ)
+  - [Trang lỗi, 404 và trang cảnh báo](#trang-lỗi-404-và-trang-cảnh-báo)
+  - [Chú thích, nhãn phụ và helper text](#chú-thích-nhãn-phụ-và-helper-text)
+  - [Giọng văn và từ ngữ](#giọng-văn-và-từ-ngữ)
+  - [Màn người dùng cuối khác màn quản trị](#màn-người-dùng-cuối-khác-màn-quản-trị)
+  - [File xuất ra cho người khác (Excel / CSV / PDF)](#file-xuất-ra-cho-người-khác-excel--csv--pdf)
   - [Những thứ phải tránh tuyệt đối](#những-thứ-phải-tránh-tuyệt-đối)
   - [Từ khóa thiết kế đúng](#từ-khóa-thiết-kế-đúng)
   - [Tiêu chí tự kiểm trước khi chốt UI](#tiêu-chí-tự-kiểm-trước-khi-chốt-ui)
@@ -332,6 +338,24 @@ Sub-nav phải:
 
 ### Quy chuẩn component
 
+#### Dùng lại bộ component chung
+
+Mỗi dự án phải có **một** bộ component dùng chung (button, input, select,
+textarea, field, card, modal, message, badge, empty state, skeleton) và mọi màn
+đều dùng lại bộ đó.
+
+Tự viết một khối `div` có viền và bóng riêng cho từng trang là cách nhanh nhất
+để lệch chuẩn: chiều cao control, bo góc, màu viền sẽ trôi mỗi trang một kiểu.
+Thiếu component thì **bổ sung vào bộ chung** rồi dùng, không vẽ riêng trong trang.
+
+#### Ảnh đại diện
+
+- ảnh tròn, viền mảnh
+- chưa có ảnh thì hiện chữ cái đầu của tên trên nền màu thương hiệu, không dùng
+  ảnh mặc định kiểu avatar xám hay illustration
+- hiện ở nơi cần nhận diện người: khối người dùng trên sidebar, danh sách người
+  trong khu quản trị
+
 #### Card
 
 Card phải:
@@ -472,6 +496,137 @@ Tab `Yêu cầu bổ sung`:
 
 ---
 
+### Trang lỗi, 404 và trang cảnh báo
+
+Trang lỗi cũng là màn hình của hệ thống, **không phải chỗ để đổi phong cách**.
+Không được nhân dịp này làm màn tối, banner đen, hay hiệu ứng doạ nạt.
+
+Bắt buộc:
+
+- nền sáng như mọi trang khác, card trắng viền mảnh
+- dùng lại component chung của dự án, không tự vẽ khối riêng
+- icon trạng thái tô màu nhạt, không icon lớn giữa màn
+- nội dung: **tiêu đề + đúng một câu + dữ kiện + một hành động**
+
+Cấu trúc nội dung:
+
+- tiêu đề nói thẳng chuyện gì vừa xảy ra
+- một câu hệ quả
+- dữ kiện liên quan nếu có, dạng chip nền xám nhạt
+- một nút đưa người dùng về chỗ làm việc được
+
+Không được:
+
+- nền tối toàn màn
+- card tối, nút trắng lớn trên nền tối
+- nhiều đoạn giải thích cơ chế phía sau
+
+Nếu trang có câu kiểu "hành động này đã được ghi lại", thì hệ thống **phải ghi
+thật** và phải có nơi cho người quản trị xem. Doạ suông sẽ lộ ngay lần đầu có
+người hỏi lại.
+
+---
+
+### Chú thích, nhãn phụ và helper text
+
+Người dùng nội bộ **không đọc chú thích**. Mỗi dòng chú thích phải tự kiếm được
+chỗ đứng, nếu không thì bỏ.
+
+#### Chú thích dưới bảng / lưới (legend)
+
+- đúng **một dòng**, dạng `MÃ Nhãn · MÃ Nhãn · ...`
+- chỉ ghi mã và tên gọi, **không lặp lại thông số đã hiện sẵn trong lưới**
+- không giải thích màu bằng đoạn văn — màu phải tự nói được nghĩa qua ngữ cảnh
+- không thêm câu dẫn sang trang khác ở cuối khối chú thích
+
+SAI: danh sách dọc nhiều dòng, mỗi mã một dòng kèm lại đúng những thông số đã
+nằm ở cột đầu hoặc hàng đầu của lưới.
+
+#### Helper text dưới field
+
+- chỉ dùng khi **định dạng** thực sự khó đoán (`DD/MM/YYYY`, `Ít nhất 6 ký tự`)
+- **không** dùng để mô tả trạng thái đã nhìn thấy được: field khoá, nền xám, giá
+  trị tự điền sẵn thì người dùng đã hiểu, thêm chú thích chỉ là nhiễu
+- không dùng để dạy nghiệp vụ; nghiệp vụ thuộc về tài liệu, không thuộc về form
+
+---
+
+### Giọng văn và từ ngữ
+
+Text trong UI phải là **tiếng Việt đời thường của người đi làm**, không phải văn
+hành chính, cũng không phải văn nói đùa.
+
+| Không dùng | Dùng |
+|---|---|
+| khai báo, kê khai | ghi, nhập |
+| tiến hành, thực hiện việc | (bỏ, dùng thẳng động từ chính) |
+| Quý người dùng vui lòng... | (bỏ) |
+| câu đùa, tiếng lóng ở empty state | tên trạng thái thật |
+
+Ba luật:
+
+1. **Không từ hành chính.** Nếu một từ chỉ xuất hiện trong công văn, đừng đưa vào
+   giao diện dùng hằng ngày.
+2. **Không đùa, không lóng, không mỉa.** Phần mềm quản trị được đọc bởi cả ban
+   giám đốc; câu đùa hôm nay là câu khó xử khi in ra họp.
+3. **Không doạ người dùng bằng chữ** ở màn nghiệp vụ bình thường. Cảnh báo chỉ
+   xuất hiện ở đúng nơi có chuyện.
+
+---
+
+### Màn người dùng cuối khác màn quản trị
+
+Hai khu vực phục vụ hai nhu cầu khác nhau, không bê nguyên bố cục bên này sang
+bên kia.
+
+**Màn người dùng nghiệp vụ** — chỉ phục vụ việc họ đang phải làm:
+
+- hiện đúng phần họ thao tác được ngay lúc này
+- không thêm bảng lịch sử, điều hướng theo kỳ, hay số liệu tổng hợp nếu họ không
+  có quyền sửa phần đó
+- một trang một việc; dồn thêm chức năng "cho tiện" là làm chậm người dùng
+
+**Màn quản trị** — nơi chứa lịch sử, tổng hợp, xuất báo cáo:
+
+- bảng là chính, có bộ lọc
+- chi tiết mở bằng modal, không nhồi vào trang
+
+Trước khi thêm một khối vào màn người dùng cuối, hỏi: *họ có thao tác được với
+nó không?* Nếu chỉ để xem cho biết thì phần lớn là thừa.
+
+---
+
+### File xuất ra cho người khác (Excel / CSV / PDF)
+
+File xuất ra được gửi cho bộ phận khác, cho lãnh đạo, cho đối tác — nó là bộ mặt
+của hệ thống y như màn hình, và phải trình bày theo **mẫu biểu**, không phải đổ
+dữ liệu thô.
+
+Bắt buộc:
+
+- khối tiêu đề: tên tổ chức, tên báo cáo, kỳ báo cáo, ngày xuất
+- tiêu đề **chỉ gộp ô qua khối bên trái**. Bảng rộng mà gộp hết chiều ngang thì
+  tiêu đề rơi vào giữa vùng dữ liệu, mở file lên không nhìn thấy
+- cột là chuỗi thời gian thì dùng hai dòng tiêu đề (mốc ở trên, nhãn phụ ở dưới);
+  các cột định danh gộp dọc hai dòng
+- khoá khung (freeze panes) ở dòng tiêu đề và các cột định danh
+- kẻ viền toàn bảng, dòng lẻ tô nhạt
+- các nhóm cột khác nhau thì khác màu nền tiêu đề
+- ô dữ liệu **kế thừa đúng bảng màu trạng thái đang dùng trên web**, để người xem
+  file và người xem màn hình hiểu cùng một thứ
+- cột số phải là **kiểu số** có định dạng rõ để người nhận cộng được ngay; bảng
+  nhiều dòng thì có dòng tổng cộng
+- hướng giấy ngang cho bảng nhiều cột
+
+Không được:
+
+- xuất file chỉ có header và dữ liệu, không tiêu đề, không định dạng
+- dùng ký hiệu mà người nhận ngoài hệ thống không có cách nào hiểu
+
+---
+
+---
+
 ### Những thứ phải tránh tuyệt đối
 
 - black hero banner
@@ -528,6 +683,10 @@ Trước khi coi một UI là đạt, phải tự hỏi:
 - người quản lý dùng hàng ngày có thấy tin cậy không?
 - có thể bỏ 30% text mà nghiệp vụ vẫn rõ không?
 - có chỗ nào dùng placeholder / decorative copy vô nghĩa không?
+- trang lỗi / cảnh báo có đang lệch sang nền tối không?
+- chú thích dưới lưới có lặp lại thứ đã hiện trong lưới không?
+- có từ hành chính ("khai báo", "tiến hành") hay câu đùa nào lọt vào không?
+- màn người dùng cuối có khối nào họ không thao tác được mà vẫn bày ra không?
 
 Nếu tôi đưa ra yêu cầu, với bất kì lí do nào như không đủ thông tin, thiếu yêu cầu, nói không hiểu thì PHẢI HỎI LẠI TÔI đến khi sáng tỏ yêu cầu.
 Nếu một trong các câu trên trả lời là “không”, phải chỉnh lại.
@@ -541,7 +700,7 @@ Nếu một trong các câu trên trả lời là “không”, phải chỉnh l
 
 ### 1. Purpose
 
-`DESIGN_GUI_VN.md` (→ **Phần II** của tài liệu này) định nghĩa toàn bộ rule GUI dùng chung cho các sản phẩm web và mobile trên nhiều project khác nhau.
+**Phần II** định nghĩa toàn bộ rule GUI dùng chung cho các sản phẩm web và mobile trên nhiều project khác nhau.
 
 File này tồn tại để:
 
@@ -2418,7 +2577,7 @@ User enterprise không cần guided tour. Chỉ cung cấp trợ giúp theo ng�
 
 ### Mục đích
 
-File này là **hướng dẫn triển khai** cho design spec `DESIGN_GUI.md` (→ **Phần II** của tài liệu này).  
+Phần này là **hướng dẫn triển khai** cho spec ở **Phần II**.  
 Nó trả lời câu hỏi: **"Làm sao để implement đúng spec vào code?"**
 
 Trước khi chỉnh sửa UI bất kỳ file nào trong `app/dashboard/user/`, đọc file này trước.
@@ -2429,9 +2588,9 @@ Trước khi chỉnh sửa UI bất kỳ file nào trong `app/dashboard/user/`, 
 
 **Priority order:**
 
-1. `DESIGN/UI_STYLE_GUIDE.md` (→ **Phần I** của tài liệu này) — Tinh thần thiết kế, nguyên tắc bắt buộc
-2. `DESIGN/DESIGN_GUI.md` (→ **Phần II** của tài liệu này) — Hard token definitions (colors, spacing, radius, etc.)
-3. `DESIGN/DESIGN_IMPLEMENTATION_GUIDE.md` (file này → **Phần III** của tài liệu này) — Cách implement tokens vào Tailwind CSS v4
+1. **Phần I** — Tinh thần thiết kế, nguyên tắc bắt buộc
+2. **Phần II** — Hard token definitions (colors, spacing, radius, etc.)
+3. **Phần III** — Cách implement tokens vào Tailwind CSS v4
 
 ---
 
@@ -2831,7 +2990,31 @@ Hoặc tách component con ra file riêng nếu file vượt ~400 lines.
 
 ---
 
+---
+
+### Mâu thuẫn đã biết — cần chốt khi áp dụng
+
+Tài liệu này gộp từ nhiều nguồn viết ở các thời điểm khác nhau, còn vài chỗ
+chưa thống nhất. Gặp những chỗ này thì **chốt một lần cho cả dự án** rồi ghi
+quyết định vào đây:
+
+| Chỗ lệch | Hai giá trị đang tồn tại | Gợi ý |
+|---|---|---|
+| Chiều cao control mặc định | 40px (Phần II) và 44px / `h-11` (Phần I & III) | chọn một, dùng cho toàn bộ input và button |
+| `color.success` `#15803D` | là `green-700` — họ màu bị cấm ở chỗ khác; map sang `emerald-600` | dùng `emerald-600` cho nhất quán với ban list |
+| `color.warning` `#B45309` / `color.danger` `#BE123C` | lệch một stop so với `amber-*` / `rose-*` của Tailwind | chốt theo palette Tailwind để không phải khai token riêng |
+| `color.bg` `#F5F7FB` | không khớp stop nào của slate | `slate-50` `#F8FAFC` nếu muốn dùng class sẵn |
+| Thang radius 6/10/12/16/20 | Tailwind v4 mặc định là 4/6/8/12/16 | chỉ đúng khi khai `@theme` override; chưa khai thì dùng thang mặc định |
+
+Ngoài ra: các phần đều nói token khai trong `app/globals.css` bằng `@theme
+inline`. **Kiểm tra file đó có thật không** trước khi tin — nếu chưa khai, mọi
+class token trong tài liệu này sẽ rơi về giá trị mặc định của Tailwind.
+
 ## Phần IV — Audit codebase
+
+> **Lưu ý:** phần này là ảnh chụp của **một dự án cụ thể** tại thời điểm audit.
+> Đường dẫn trong đó chỉ đúng với dự án ấy — dự án khác đừng đi tìm file theo
+> đường dẫn này. Phần nguyên tắc thì áp dụng chung.
 
 ### Audit — Trạng thái hiện tại của codebase / các user pages
 
@@ -2887,7 +3070,7 @@ Mục này ghi lại các phân loại "Clean" của từng nguồn; chi tiết 
 **Thứ tự ưu tiên fix:** Critical → Major → Minor
 (**Priority fix order:** Critical → Major → Minor)
 
-Xem chi tiết đầy đủ và pattern fix trong `DESIGN_IMPLEMENTATION_GUIDE.md` — nay là **Phần III** của tài liệu này.
+Xem chi tiết đầy đủ và pattern fix ở **Phần III**.
 
 
 ---
@@ -2897,7 +3080,7 @@ Xem chi tiết đầy đủ và pattern fix trong `DESIGN_IMPLEMENTATION_GUIDE.m
 ### Prompt chuẩn để giao cho AI khác
 
 ```text
-Read UI_STYLE_GUIDE.md first and follow it strictly.
+Read DESIGN/DESIGN_SYSTEM.md first and follow it strictly.
 
 Design this screen as a serious Vietnamese enterprise internal dashboard. 
 This is business software used by managers, department heads, admins, and directors. 
@@ -2957,7 +3140,7 @@ Do not add decorative copy.
 Do not invent AI-style dark sections.
 Do not use oversized cards or trendy visuals.
 
-The final result must match the style rules in UI_STYLE_GUIDE.md.
+The final result must match the style rules in DESIGN/DESIGN_SYSTEM.md.
 ```
 
 ---
@@ -2967,7 +3150,7 @@ The final result must match the style rules in UI_STYLE_GUIDE.md.
 Khi bắt đầu phiên mới với AI, dùng câu này:
 
 ```text
-Trước khi làm UI, hãy đọc file /Users/hmngoc/project/companys/DESIGN/UI_STYLE_GUIDE.md và bám đúng phong cách trong đó. Không được làm lệch sang kiểu AI, startup, landing page, hay giao diện màu mè. Tối giản text tối đa — mỗi từ phải có giá trị nghiệp vụ, không dùng placeholder hay mô tả trang trí.
+Trước khi làm UI, hãy đọc file DESIGN/DESIGN_SYSTEM_VN.md và bám đúng phong cách trong đó. Không được làm lệch sang kiểu AI, startup, landing page, hay giao diện màu mè. Tối giản text tối đa — mỗi từ phải có giá trị nghiệp vụ, không dùng placeholder hay mô tả trang trí.
 ```
 
 ---
@@ -2978,9 +3161,9 @@ Khi bắt đầu phiên làm việc mới, dùng câu lệnh sau:
 
 ```text
 Trước khi làm UI, hãy đọc các file trong /Users/hmngoc/project/companys/DESIGN/ theo thứ tự:
-1. UI_STYLE_GUIDE.md — tinh thần và nguyên tắc thiết kế
-2. DESIGN_GUI.md — hard token definitions
-3. DESIGN_IMPLEMENTATION_GUIDE.md — cách implement tokens vào Tailwind CSS v4
+1. Phần I — tinh thần và nguyên tắc thiết kế
+2. Phần II — hard token definitions
+3. Phần III — cách implement tokens vào Tailwind CSS v4
 
 Dự án dùng Tailwind CSS v4 (CSS @theme inline, không có tailwind.config.ts).
 Không được dùng gradient, màu AI-style (purple/violet/indigo), arbitrary radius ngoài scale 6/10/12/16/20px.

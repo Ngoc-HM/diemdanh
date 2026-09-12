@@ -142,4 +142,4 @@ npm run test:logic && npm run test:api && npm run test:routes
 dùng, làm server đang chạy trả 500 hàng loạt và test hỏng theo. Muốn build hoặc
 soi header thì tắt dev server trước.
 
-Luật UI nằm ở `DESIGN/UI_STYLE_GUIDE.md` — đọc trước khi đụng vào giao diện.
+Luật UI nằm ở `DESIGN/DESIGN_SYSTEM_VN.md` (bản tiếng Anh: `DESIGN_SYSTEM.md`) — đọc trước khi đụng vào giao diện.

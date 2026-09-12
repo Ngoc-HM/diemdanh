@@ -1,7 +1,8 @@
 # Design System (EN)
 
 > **Sources:** this file merges the 4 original docs in `DESIGN/`, preserving all content:
-> `UI_STYLE_GUIDE.md` → Parts I & V · `DESIGN_GUI.md` → Part II · `DESIGN_IMPLEMENTATION_GUIDE.md` → Part III · the audit from all 3 → Part IV.
+> This is the **single** English design document. Vietnamese version: `DESIGN_SYSTEM_VN.md`.
+> The four former files (`UI_STYLE_GUIDE.md`, `DESIGN_GUI.md`, `DESIGN_GUI_VN.md`, `DESIGN_IMPLEMENTATION_GUIDE.md`) were merged in here and deleted.
 > The 4 original files are left untouched.
 >
 > Where two sources state different values for the same thing, **both values are kept** and labelled with their origin in parentheses — neither side was dropped.
@@ -20,6 +21,11 @@
   - [Standard layout of the system](#standard-layout-of-the-system)
   - [Component standards](#component-standards)
   - [Standard patterns for business screens](#standard-patterns-for-business-screens)
+  - [Error, 404 and warning pages](#error-404-and-warning-pages)
+  - [Legends, secondary labels and helper text](#legends-secondary-labels-and-helper-text)
+  - [Tone and wording](#tone-and-wording)
+  - [End-user screens differ from admin screens](#end-user-screens-differ-from-admin-screens)
+  - [Files exported to other people (Excel / CSV / PDF)](#files-exported-to-other-people-excel--csv--pdf)
   - [Things that MUST be absolutely avoided](#things-that-must-be-absolutely-avoided)
   - [Correct design keywords](#correct-design-keywords)
   - [Self-check criteria before finalizing a UI](#self-check-criteria-before-finalizing-a-ui)
@@ -335,6 +341,25 @@ The sub-nav MUST be:
 
 ### Component standards
 
+#### Reuse the shared component set
+
+Every project must have **one** shared component set (button, input, select,
+textarea, field, card, modal, message, badge, empty state, skeleton) and every
+screen must reuse it.
+
+Hand-rolling a `div` with its own border and shadow on each page is the fastest
+way to drift: control heights, corner radii and border colors end up different on
+every screen. If a component is missing, **add it to the shared set** and then use
+it — do not draw a private one inside a page.
+
+#### Avatars
+
+- round image, thin ring
+- with no image, show the first letter of the name on a brand-colored background;
+  never a gray default avatar or an illustration
+- show it where a person must be identified: the user block in the sidebar, and
+  people lists in the admin area
+
 #### Card
 
 A card MUST have:
@@ -475,6 +500,137 @@ Tab `Yêu cầu bổ sung` (Request additional information):
 
 ---
 
+### Error, 404 and warning pages
+
+An error page is still a screen of the system, **not a chance to switch styles**.
+Do not take the opportunity to build a dark screen, a black banner, or an
+intimidating visual effect.
+
+Required:
+
+- light background like every other screen, white card with a thin border
+- reuse the project's shared components, do not hand-roll a one-off block
+- state icon in a soft tint, no oversized icon in the middle of the screen
+- content: **title + exactly one sentence + the relevant fact + one action**
+
+Content structure:
+
+- a title that states plainly what just happened
+- one sentence of consequence
+- the relevant fact if any, as a chip on a light gray background
+- one button that returns the user somewhere they can work
+
+Not allowed:
+
+- a dark full-screen background
+- dark cards, or a large white button on a dark background
+- several paragraphs explaining the mechanism behind the scenes
+
+If the page says something like "this action has been recorded", the system
+**must actually record it** and there must be a place where an administrator can
+review it. An empty threat is exposed the first time someone asks.
+
+---
+
+### Legends, secondary labels and helper text
+
+Internal users **do not read captions**. Every caption line must earn its place,
+otherwise remove it.
+
+#### Legend under a table or grid
+
+- exactly **one line**, in the form `CODE Label · CODE Label · ...`
+- code and name only, **never repeat values already visible in the grid**
+- do not explain colors in prose — color must carry meaning through context
+- do not append a sentence pointing to another page at the end of the legend
+
+WRONG: a vertical list with one line per code, repeating the very values that
+already sit in the first column or first row of the grid.
+
+#### Helper text under a field
+
+- only when the **format** is genuinely hard to guess (`DD/MM/YYYY`,
+  `At least 6 characters`)
+- **never** to describe a state that is already visible: a locked field on a gray
+  background with a pre-filled value is already understood; a caption is noise
+- never to teach business rules; those belong in documentation, not in a form
+
+---
+
+### Tone and wording
+
+UI text must be **the plain language working people use**, neither bureaucratic
+prose nor jokes.
+
+| Do not use | Use |
+|---|---|
+| declare, file a declaration | record, enter |
+| proceed to, carry out the act of | (drop it, use the main verb) |
+| Dear user, kindly... | (drop it) |
+| jokes or slang in empty states | the real state name |
+
+Three rules:
+
+1. **No bureaucratic vocabulary.** If a word only appears in official letters,
+   keep it out of an interface people use daily.
+2. **No jokes, no slang, no sarcasm.** Admin software is read by directors too;
+   today's joke is tomorrow's awkward printout in a meeting.
+3. **Do not intimidate users with words** on ordinary business screens. Warnings
+   belong only where something actually went wrong.
+
+---
+
+### End-user screens differ from admin screens
+
+The two areas serve different needs; do not copy the layout of one into the other.
+
+**End-user business screens** — serve only the task at hand:
+
+- show exactly the part they can act on right now
+- do not add history tables, period navigation, or aggregate figures if they have
+  no right to change that data
+- one screen, one job; piling on features "for convenience" slows people down
+
+**Admin screens** — where history, aggregation and exports live:
+
+- tables first, with filters
+- details open in a modal, not stuffed into the page
+
+Before adding a block to an end-user screen, ask: *can they act on it?* If it is
+only there to look at, it is usually surplus.
+
+---
+
+### Files exported to other people (Excel / CSV / PDF)
+
+An exported file is sent to another department, to management, to partners — it
+represents the system exactly like a screen does, and must be laid out as a
+**proper form**, not a raw data dump.
+
+Required:
+
+- title block: organization name, report name, period, export date
+- the title **merges across the left-hand block only**. On a wide table, merging
+  across the full width drops the title into the middle of the data, where it is
+  invisible when the file is opened
+- when columns are a time series, use two header rows (the mark on top, its
+  secondary label below); identity columns merge vertically across both
+- freeze panes at the header row and the identity columns
+- borders across the whole table, alternating row shading
+- different column groups get different header fills
+- data cells **inherit the same status color palette used on screen**, so the
+  person reading the file and the person reading the screen see the same thing
+- numeric columns must be **real numbers** with an explicit format so the
+  recipient can sum them immediately; add a totals row on long tables
+- landscape orientation for wide tables
+
+Not allowed:
+
+- exporting a file with only a header row and data, no title, no formatting
+- symbols the recipient outside the system has no way to interpret
+
+---
+
 ### Things that MUST be absolutely avoided
 
 - black hero banner
@@ -544,7 +700,7 @@ If the answer to any of the questions above is “no”, it must be corrected.
 
 ### 1. Purpose
 
-`DESIGN_GUI.md` (→ **Part II** of this document) defines the shared GUI rules for web and mobile products across projects.
+**Part II** defines the shared GUI rules for web and mobile products across projects.
 
 This file exists to:
 
@@ -2405,7 +2561,7 @@ Enterprise users do not need guided tours. Provide contextual help only when nec
 
 ### Purpose
 
-This file is the **implementation guide** for the design spec `DESIGN_GUI.md` (→ **Part II** of this document).  
+This part is the **implementation guide** for the spec in **Part II**.  
 It answers the question: **"How do I implement the spec correctly in code?"**
 
 Before editing the UI of any file in `app/dashboard/user/`, read this file first.
@@ -2416,9 +2572,9 @@ Before editing the UI of any file in `app/dashboard/user/`, read this file first
 
 **Priority order:**
 
-1. `DESIGN/UI_STYLE_GUIDE.md` (→ **Part I** of this document) — Design spirit, mandatory principles
-2. `DESIGN/DESIGN_GUI.md` (→ **Part II** of this document) — Hard token definitions (colors, spacing, radius, etc.)
-3. `DESIGN/DESIGN_IMPLEMENTATION_GUIDE.md` (this file → **Part III** of this document) — How to implement tokens into Tailwind CSS v4
+1. **Part I** — Design spirit, mandatory principles
+2. **Part II** — Hard token definitions (colors, spacing, radius, etc.)
+3. **Part III** — How to implement tokens into Tailwind CSS v4
 
 ---
 
@@ -2818,7 +2974,32 @@ Or extract the child component into a separate file if the file exceeds ~400 lin
 
 ---
 
+---
+
+### Known conflicts — decide once per project
+
+This document was merged from sources written at different times and a few values
+still disagree. When you hit one, **decide once for the whole project** and record
+the decision here:
+
+| Conflict | The two values in play | Suggestion |
+|---|---|---|
+| Default control height | 40px (Part II) vs 44px / `h-11` (Parts I & III) | pick one and use it for every input and button |
+| `color.success` `#15803D` | that is `green-700` — a family banned elsewhere; maps to `emerald-600` | use `emerald-600` to stay consistent with the ban list |
+| `color.warning` `#B45309` / `color.danger` `#BE123C` | one stop off Tailwind's `amber-*` / `rose-*` | settle on the Tailwind palette to avoid custom tokens |
+| `color.bg` `#F5F7FB` | matches no slate stop | `slate-50` `#F8FAFC` if you want stock classes |
+| Radius scale 6/10/12/16/20 | Tailwind v4 ships 4/6/8/12/16 | only correct with a `@theme` override; without it, use the stock scale |
+
+Also: every part claims tokens are declared in `app/globals.css` via `@theme
+inline`. **Verify that file actually exists** before trusting it — if the tokens
+were never declared, every token class in this document silently falls back to
+Tailwind defaults.
+
 ## Part IV — Codebase Audit
+
+> **Note:** this part is a snapshot of **one specific project** at the time of the
+> audit. The paths below are valid only for that project — other projects should
+> not go looking for these files. The principles still apply everywhere.
 
 ### Current Codebase Audit
 
@@ -2864,7 +3045,7 @@ Point-in-time snapshot of a full audit of 20+ user-facing pages in `app/dashboar
 
 **Priority fix order:** Critical → Major → Minor
 
-See `DESIGN_IMPLEMENTATION_GUIDE.md` — now **Part III** of this document — for detailed fix patterns.
+See **Part III** for detailed fix patterns.
 
 
 ---
@@ -2874,7 +3055,7 @@ See `DESIGN_IMPLEMENTATION_GUIDE.md` — now **Part III** of this document — f
 ### Standard prompt to hand to another AI
 
 ```text
-Read UI_STYLE_GUIDE.md first and follow it strictly.
+Read DESIGN/DESIGN_SYSTEM.md first and follow it strictly.
 
 Design this screen as a serious Vietnamese enterprise internal dashboard. 
 This is business software used by managers, department heads, admins, and directors. 
@@ -2934,7 +3115,7 @@ Do not add decorative copy.
 Do not invent AI-style dark sections.
 Do not use oversized cards or trendy visuals.
 
-The final result must match the style rules in UI_STYLE_GUIDE.md.
+The final result must match the style rules in DESIGN/DESIGN_SYSTEM.md.
 ```
 
 ---
@@ -2944,7 +3125,7 @@ The final result must match the style rules in UI_STYLE_GUIDE.md.
 When starting a new session with an AI, use this sentence:
 
 ```text
-Before doing any UI work, read the file /Users/hmngoc/project/companys/DESIGN/UI_STYLE_GUIDE.md and stick strictly to the style in it. Do not drift into an AI, startup, landing page, or gaudy interface style. Minimize text to the maximum — every word must have business value, no placeholders or decorative descriptions.
+Before doing any UI work, read DESIGN/DESIGN_SYSTEM.md and stick strictly to the style in it. Do not drift into an AI, startup, landing page, or gaudy interface style. Minimize text to the maximum — every word must have business value, no placeholders or decorative descriptions.
 ```
 
 ---
@@ -2955,9 +3136,9 @@ When starting a new working session, use the following command:
 
 ```text
 Before doing any UI work, read the files in /Users/hmngoc/project/companys/DESIGN/ in this order:
-1. UI_STYLE_GUIDE.md — design spirit and principles
-2. DESIGN_GUI.md — hard token definitions
-3. DESIGN_IMPLEMENTATION_GUIDE.md — how to implement tokens into Tailwind CSS v4
+1. Part I — design spirit and principles
+2. Part II — hard token definitions
+3. Part III — how to implement tokens into Tailwind CSS v4
 
 The project uses Tailwind CSS v4 (CSS @theme inline, no tailwind.config.ts).
 Do not use gradients, AI-style colors (purple/violet/indigo), or arbitrary radius outside the 6/10/12/16/20px scale.
