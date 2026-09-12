@@ -1,5 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
-import { SESSION_COOKIE, verifySession } from "@/lib/session-token";
+import {
+  SESSION_COOKIE,
+  sessionCookieOptions,
+  SESSION_REFRESH_AFTER_SECONDS,
+  signSession,
+  verifySession,
+  type VerifiedSession,
+} from "@/lib/session-token";
 
 /// Hệ thống chỉ dùng trên máy tính. Điện thoại và máy tính bảng bị đưa sang
 /// trang thông báo. iPad đời mới tự nhận là máy Mac nên không chặn được.
@@ -44,7 +51,27 @@ export async function middleware(req: NextRequest) {
     return redirectTo(req, "/admin/attendance");
   }
 
-  return NextResponse.next();
+  return await withRefreshedSession(session);
+}
+
+/// Gia hạn phiên khi người dùng còn vào web: phiên cấp 7 ngày, nhưng cứ quá
+/// một ngày là ký lại từ đầu, nên dùng đều thì không phải đăng nhập lại. Nghỉ
+/// hẳn 7 ngày mới bị đá ra.
+async function withRefreshedSession(session: VerifiedSession) {
+  const response = NextResponse.next();
+  const ageSeconds = Date.now() / 1000 - (session.iat ?? 0);
+  if (!session.iat || ageSeconds < SESSION_REFRESH_AFTER_SECONDS) {
+    return response;
+  }
+
+  const token = await signSession({
+    userId: session.userId,
+    role: session.role,
+    name: session.name,
+    email: session.email,
+  });
+  response.cookies.set(SESSION_COOKIE, token, sessionCookieOptions());
+  return response;
 }
 
 export const config = {

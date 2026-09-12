@@ -1,7 +1,7 @@
 import { cookies } from "next/headers";
 import {
   SESSION_COOKIE,
-  SESSION_MAX_AGE,
+  sessionCookieOptions,
   SessionPayload,
   verifySession,
 } from "@/lib/session-token";
@@ -18,13 +18,7 @@ export async function getSession(): Promise<SessionPayload | null> {
 
 export async function setSessionCookie(token: string) {
   const cookieStore = await cookies();
-  cookieStore.set(SESSION_COOKIE, token, {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: "lax",
-    path: "/",
-    maxAge: SESSION_MAX_AGE,
-  });
+  cookieStore.set(SESSION_COOKIE, token, sessionCookieOptions());
 }
 
 export async function clearSessionCookie() {

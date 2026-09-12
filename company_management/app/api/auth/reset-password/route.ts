@@ -6,6 +6,7 @@ import {
   RESET_CODE_LENGTH,
   RESET_CODE_MAX_ATTEMPTS,
 } from "@/lib/mailer";
+import { clearLoginFailures, employeeKey } from "@/lib/login-throttle";
 
 /// Đặt mật khẩu mới bằng mã 8 số trong email. Mã dùng một lần.
 export async function POST(req: Request) {
@@ -65,6 +66,10 @@ export async function POST(req: Request) {
         [reset.id]
       );
     });
+
+    // Đổi được mật khẩu thì gỡ luôn khoá đăng nhập: người dùng thật vừa chứng
+    // minh họ đọc được hộp thư của chính mình.
+    await clearLoginFailures(employeeKey(email));
 
     return { success: true };
   }, "Reset password error");

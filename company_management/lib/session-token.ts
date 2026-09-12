@@ -42,6 +42,22 @@ export type SessionPayload = {
 export const SESSION_COOKIE = "session";
 export const SESSION_MAX_AGE = 60 * 60 * 24 * 7;
 
+/// Phiên còn hạn 7 ngày, nhưng mỗi lần nhân viên mở web mà phiên đã quá một
+/// ngày thì ký lại từ đầu — ai còn dùng hằng ngày thì không bao giờ bị đá ra.
+export const SESSION_REFRESH_AFTER_SECONDS = 60 * 60 * 24;
+
+/// Thuộc tính cookie phiên, dùng chung cho route handler (Node) và middleware
+/// (edge) để hai nơi không đặt lệch nhau.
+export function sessionCookieOptions() {
+  return {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "lax" as const,
+    path: "/",
+    maxAge: SESSION_MAX_AGE,
+  };
+}
+
 export async function signSession(payload: SessionPayload) {
   return await new SignJWT({ ...payload })
     .setProtectedHeader({ alg: "HS256" })
@@ -50,16 +66,19 @@ export async function signSession(payload: SessionPayload) {
     .sign(getSecret());
 }
 
+/// Payload đọc từ JWT, kèm mốc phát hành để biết có nên gia hạn hay chưa.
+export type VerifiedSession = SessionPayload & { iat?: number };
+
 /// Không phụ thuộc `next/headers` nên dùng được cả trong middleware (edge runtime).
 export async function verifySession(
   token: string
-): Promise<SessionPayload | null> {
+): Promise<VerifiedSession | null> {
   // Lấy khoá ngoài try: thiếu AUTH_SECRET ở production phải nổ lỗi, không được
   // biến thành "session không hợp lệ" khiến mọi người bị đăng xuất âm thầm.
   const secret = getSecret();
   try {
     const { payload } = await jwtVerify(token, secret);
-    return payload as unknown as SessionPayload;
+    return payload as unknown as VerifiedSession;
   } catch {
     return null;
   }

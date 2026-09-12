@@ -133,6 +133,24 @@ tháng / nhân viên / ngày và xuất CSV; trang chi tiết nhân viên có n�
 dung công việc của từng ngày. Bảng `WorkReportEntry` (migration 010). Phần này
 **không** tham gia vào việc tính giờ công hay xếp loại ngày.
 
+### Phiên đăng nhập và chặn dò mật khẩu
+
+Phiên là JWT ký bằng `AUTH_SECRET`, để trong cookie `httpOnly`, hạn **7 ngày**.
+Mỗi lần mở web mà phiên đã quá một ngày thì `middleware.ts` ký lại từ đầu — ai
+dùng đều đặn thì không bao giờ phải đăng nhập lại; nghỉ hẳn 7 ngày mới bị đá ra.
+
+Đăng nhập sai **5 lần** thì tài khoản bị khoá **15 phút** (bảng `LoginAttempt`,
+`lib/login-throttle.ts`). Vài điểm của cách đếm:
+
+- Đếm theo tài khoản, không theo IP — hệ thống chạy sau reverse proxy nên IP
+  nhìn thấy thường là của proxy.
+- Email không có trong hệ thống cũng bị đếm, để không ai suy ra được email nào
+  có tài khoản qua việc có bị khoá hay không.
+- Sai rải rác quá 15 phút thì bộ đếm về 0; đăng nhập đúng thì xoá sạch.
+- Đang bị khoá mà **đổi mật khẩu bằng mã ở "Quên mật khẩu"** thì khoá được gỡ
+  ngay — người dùng thật vừa chứng minh họ đọc được hộp thư của chính mình.
+- Admin bị khoá thì phải chờ hết 15 phút, vì không có luồng quên mật khẩu.
+
 ### Email
 
 Admin cấu hình SMTP ở `/admin/email`. Cấu hình lưu trong bảng `Settings`, mật
@@ -201,7 +219,7 @@ Chỉ vậy thôi. `npm run dev` tự chạy `npm run db` trước, việc này 
 Cái gì đã có thì bỏ qua, nên chạy lại bao nhiêu lần cũng không đổi gì. Trên
 server thì gọi `npm run db` trước khi `npm start`.
 
-Thêm thay đổi schema: tạo file mới `db/migrations/014_<mô_tả>.sql`, không sửa
+Thêm thay đổi schema: tạo file mới `db/migrations/015_<mô_tả>.sql`, không sửa
 file cũ đã chạy.
 
 ### 3. Thiết lập lần đầu trong giao diện admin
@@ -267,6 +285,7 @@ lib/
 ├── auth-guard.ts       # requireAdmin / requireEmployee / handle
 ├── validation.ts       # Chuẩn hoá + kiểm tra input dùng chung
 ├── session.ts          # JWT session qua cookie
+├── login-throttle.ts   # Đếm đăng nhập sai, khoá tạm tài khoản
 ├── mailer.ts           # Cấu hình SMTP trong Settings + gửi email
 └── reminder.ts         # Email nhắc đăng ký lịch theo ngày mở cửa sổ
 

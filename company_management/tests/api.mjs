@@ -487,6 +487,57 @@ async function main() {
     r = await call(admin, "POST", `/api/users/${employeeId}/reset-password`, { password: EMP_PASS });
     check("admin đặt lại mật khẩu cũ", r.status === 200, `(${r.status})`);
 
+    console.log("\n== chặn dò mật khẩu ==");
+    const LOCK_EMAIL = "__smoketest_khoa@example.test";
+    await client.query(`DELETE FROM "LoginAttempt" WHERE "identifier" LIKE '@_@_smoketest%' ESCAPE '@'`);
+    for (let attempt = 0; attempt < 5; attempt++) {
+      r = await call(makeJar(), "POST", "/api/auth/login", { email: LOCK_EMAIL, password: "sai" });
+    }
+    check("5 lần sai vẫn trả 401 (chưa lộ gì)", r.status === 401, `(${r.status})`);
+    r = await call(makeJar(), "POST", "/api/auth/login", { email: LOCK_EMAIL, password: "sai" });
+    check("lần thứ 6 bị khoá tạm", r.status === 429, `(${r.status})`);
+    check("báo còn bao nhiêu phút", /\d+ phút/.test(r.json.error ?? ""), `("${r.json.error}")`);
+    check("mách cách tự mở khoá", (r.json.error ?? "").includes("Quên mật khẩu"), `("${r.json.error}")`);
+
+    // Email không có tài khoản cũng bị đếm y hệt, để không suy ra được email
+    // nào có thật qua việc có bị khoá hay không.
+    const locked = await client.query(
+      `SELECT "failedCount" FROM "LoginAttempt" WHERE "identifier" = $1`,
+      [LOCK_EMAIL]
+    );
+    check("có ghi nhận dù email không tồn tại", locked.rows[0]?.failedCount >= 5, `(${locked.rows[0]?.failedCount})`);
+
+    // Đăng nhập đúng thì bộ đếm phải sạch, không để dồn sang lần sau.
+    await client.query(`DELETE FROM "LoginAttempt" WHERE "identifier" = $1`, [EMP_EMAIL]);
+    r = await call(makeJar(), "POST", "/api/auth/login", { email: EMP_EMAIL, password: "sai-mat-khau" });
+    check("đăng nhập sai được ghi nhận", r.status === 401, `(${r.status})`);
+    r = await call(makeJar(), "POST", "/api/auth/login", { email: EMP_EMAIL, password: EMP_PASS });
+    check("đăng nhập đúng", r.status === 200, `(${r.status})`);
+    const cleared = await client.query(
+      `SELECT count(*)::int AS n FROM "LoginAttempt" WHERE "identifier" = $1`,
+      [EMP_EMAIL]
+    );
+    check("đăng nhập đúng thì xoá bộ đếm", cleared.rows[0].n === 0, `(${cleared.rows[0].n})`);
+    // Khoá tài khoản thật rồi đổi mật khẩu bằng mã: khoá phải được gỡ.
+    for (let attempt = 0; attempt < 6; attempt++) {
+      r = await call(makeJar(), "POST", "/api/auth/login", { email: EMP_EMAIL, password: "sai" });
+    }
+    check("tài khoản thật bị khoá", r.status === 429, `(${r.status})`);
+
+    const unlockCode = "87654321";
+    await client.query(`DELETE FROM "PasswordReset" WHERE "userId" = $1`, [employeeId]);
+    await client.query(
+      `INSERT INTO "PasswordReset" ("userId", "tokenHash", "expiresAt")
+       VALUES ($1, $2, now() + interval '15 minutes')`,
+      [employeeId, createHash("sha256").update(unlockCode).digest("hex")]
+    );
+    r = await call(makeJar(), "POST", "/api/auth/reset-password", { email: EMP_EMAIL, code: unlockCode, password: EMP_PASS });
+    check("đổi mật khẩu bằng mã khi đang bị khoá", r.status === 200, `(${r.status})`);
+    r = await call(makeJar(), "POST", "/api/auth/login", { email: EMP_EMAIL, password: EMP_PASS });
+    check("đổi mật khẩu xong là đăng nhập được ngay", r.status === 200, `(${r.status})`);
+
+    await client.query(`DELETE FROM "LoginAttempt" WHERE "identifier" LIKE '@_@_smoketest%' ESCAPE '@'`);
+
     console.log("\n== phân quyền ==");
     // Cookie admin còn hạn nhưng tài khoản admin đã bị xoá thì phải chặn.
     const ghost = makeJar();
@@ -950,6 +1001,7 @@ async function main() {
     if (employeeId) {
       // FK cascade cũng xoá theo, nhưng dọn tường minh để không phụ thuộc vào đó.
       await client.query(`DELETE FROM "ShiftChangeRequest" WHERE "userId" = $1`, [employeeId]);
+      await client.query(`DELETE FROM "LoginAttempt" WHERE "identifier" LIKE '@_@_smoketest%' ESCAPE '@'`);
       await client.query(`DELETE FROM "WorkReportEntry" WHERE "userId" = $1`, [employeeId]);
       await client.query(`DELETE FROM "User" WHERE "id" = $1`, [employeeId]);
     }

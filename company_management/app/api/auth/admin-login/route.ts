@@ -3,6 +3,12 @@ import { handle, HttpError } from "@/lib/auth-guard";
 import { hashPassword, verifyPassword } from "@/lib/utils";
 import { setSessionCookie, signSession } from "@/lib/session";
 import { AdminRow } from "@/lib/types";
+import {
+  adminKey,
+  assertLoginAllowed,
+  clearLoginFailures,
+  recordLoginFailure,
+} from "@/lib/login-throttle";
 
 function isBcryptHash(value: string) {
   return value.startsWith("$2a$") || value.startsWith("$2b$") || value.startsWith("$2y$");
@@ -18,6 +24,9 @@ export async function POST(req: Request) {
       throw new HttpError(400, "Vui lòng nhập tài khoản và mật khẩu");
     }
 
+    const throttleKey = adminKey(username);
+    await assertLoginAllowed(throttleKey);
+
     const admin = await queryOne<AdminRow>(
       `SELECT "id", "username", "password" FROM "Admin" WHERE "username" = $1`,
       [username]
@@ -28,7 +37,10 @@ export async function POST(req: Request) {
         ? await verifyPassword(password, admin.password)
         : admin.password === password;
 
-      if (!valid) throw new HttpError(401, "Tài khoản hoặc mật khẩu không đúng");
+      if (!valid) {
+        await recordLoginFailure(throttleKey);
+        throw new HttpError(401, "Tài khoản hoặc mật khẩu không đúng");
+      }
 
       // Nâng cấp bản ghi cũ còn lưu mật khẩu thô sang bcrypt.
       if (!isBcryptHash(admin.password)) {
@@ -38,6 +50,7 @@ export async function POST(req: Request) {
         );
       }
 
+      await clearLoginFailures(throttleKey);
       await setSessionCookie(
         await signSession({
           userId: admin.id,
@@ -56,6 +69,7 @@ export async function POST(req: Request) {
     const envPass = process.env.AUTH_ADMIN_PASSWORD;
 
     if (!envPass || username !== envUser || password !== envPass) {
+      await recordLoginFailure(throttleKey);
       throw new HttpError(401, "Tài khoản hoặc mật khẩu không đúng");
     }
 
@@ -65,6 +79,7 @@ export async function POST(req: Request) {
       [envUser, await hashPassword(envPass)]
     );
 
+    await clearLoginFailures(throttleKey);
     await setSessionCookie(
       await signSession({
         userId: created!.id,
