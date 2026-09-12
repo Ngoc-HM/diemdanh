@@ -1,24 +1,20 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
-import { Building2 } from "lucide-react";
+import { useState } from "react";
+import Link from "next/link";
 import { Button, Card, Field, Input, Message } from "@/app/_components/ui";
+import {
+  CompanyLogo,
+  useCompanyBranding,
+} from "@/app/_components/company-brand";
 
 export default function LoginPage() {
-  const router = useRouter();
-  const [companyName, setCompanyName] = useState("");
+  const { name: companyName, logo } = useCompanyBranding();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
-  useEffect(() => {
-    fetch("/api/settings/company")
-      .then((response) => (response.ok ? response.json() : null))
-      .then((data) => setCompanyName(data?.value || "Công ty của bạn"))
-      .catch(() => setCompanyName("Công ty của bạn"));
-  }, []);
 
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
@@ -32,8 +28,9 @@ export default function LoginPage() {
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "Đăng nhập thất bại");
-      router.push("/dashboard");
-      router.refresh();
+      // Điều hướng cả trang để middleware đọc cookie mới; bị đẩy ngược về đây
+      // thì form dựng lại, không kẹt ở "Đang đăng nhập...".
+      window.location.assign("/dashboard");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Đăng nhập thất bại");
       setLoading(false);
@@ -45,13 +42,11 @@ export default function LoginPage() {
       <div className="w-full max-w-md">
         <Card className="p-8">
           <div className="mb-6 flex flex-col items-center text-center">
-            <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-xl bg-sky-600 text-white">
-              <Building2 size={24} aria-hidden="true" />
-            </div>
-            <h1 className="text-2xl font-semibold text-slate-900">
-              {companyName || " "}
+            <CompanyLogo logo={logo} size="lg" className="mb-3" />
+            <h1 className="min-h-8 text-2xl font-semibold text-slate-900">
+              {companyName}
             </h1>
-            <p className="mt-1 text-sm text-slate-600">Hệ thống chấm công nội bộ</p>
+            <p className="mt-1 text-sm text-slate-600">Chấm công nội bộ</p>
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-4">
@@ -84,7 +79,12 @@ export default function LoginPage() {
         </Card>
 
         <p className="mt-4 text-center text-xs text-slate-500">
-          Quên mật khẩu? Liên hệ quản trị viên để được đặt lại.
+          <Link
+            href="/forgot-password"
+            className="font-medium text-sky-600 hover:underline"
+          >
+            Quên mật khẩu?
+          </Link>
         </p>
       </div>
     </div>

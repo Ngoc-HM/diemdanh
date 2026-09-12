@@ -1,6 +1,7 @@
 import { query, queryOne, transaction } from "@/lib/db";
 import { badRequest, handle, notFound, requireAdmin } from "@/lib/auth-guard";
 import {
+  dateKeyVN,
   formatTimeVN,
   getMonthRange,
   isValidDateKey,
@@ -16,11 +17,17 @@ import {
   minutesToHours,
 } from "@/lib/attendance-rules";
 import {
+  applyDayMark,
   getActiveSessionRules,
+  getDayMarks,
   getHolidayMap,
+  getLunchBreak,
+  getPendingShiftRequestDates,
   resolveUserMonthSchedule,
 } from "@/lib/attendance-service";
 import { EMPLOYMENT_TYPE_LABELS, EmploymentType } from "@/lib/schedule";
+import { toEntryView, WORK_REPORT_COLUMNS } from "@/lib/work-reports";
+import { WorkReportEntryRow } from "@/lib/types";
 
 const TIME_PATTERN = /^([01]\d|2[0-3]):[0-5]\d$/;
 
@@ -47,6 +54,7 @@ export async function GET(
     const { searchParams } = new URL(req.url);
     const month = searchParams.get("month") ?? monthKeyVN();
     if (!isValidMonth(month)) badRequest("Tháng không hợp lệ");
+    const today = dateKeyVN();
 
     const user = await queryOne<{
       id: string;
@@ -66,7 +74,7 @@ export async function GET(
     if (!user) notFound("Không tìm thấy nhân viên");
 
     const { startDate, endDate } = getMonthRange(month);
-    const [rules, rows, holidays] = await Promise.all([
+    const [rules, rows, holidays, lunchBreak, reportRows] = await Promise.all([
       getActiveSessionRules(),
       query<PunchRow>(
         `SELECT a."date", a."note", a."editedAt",
@@ -80,9 +88,30 @@ export async function GET(
         [userId, startDate, endDate]
       ),
       getHolidayMap(startDate, endDate),
+      getLunchBreak(),
+      // Nội dung công việc nhân viên tự khai, chỉ để admin xem — không tham
+      // gia vào việc tính giờ công hay xếp loại ngày.
+      query<WorkReportEntryRow>(
+        `SELECT ${WORK_REPORT_COLUMNS} FROM "WorkReportEntry"
+          WHERE "userId" = $1 AND "date" BETWEEN $2 AND $3
+          ORDER BY "date" ASC, "startAt" ASC`,
+        [userId, startDate, endDate]
+      ),
     ]);
 
-    const schedule = await resolveUserMonthSchedule(user!, month, rules);
+    const reportsByDate = new Map<string, WorkReportEntryRow[]>();
+    for (const row of reportRows) {
+      const list = reportsByDate.get(row.date) ?? [];
+      list.push(row);
+      reportsByDate.set(row.date, list);
+    }
+
+    const [schedule, marks, pendingRequests] = await Promise.all([
+      resolveUserMonthSchedule(user!, month, rules),
+      getDayMarks([userId], startDate, endDate),
+      getPendingShiftRequestDates([userId], startDate, endDate),
+    ]);
+    const ruleById = new Map(rules.map((rule) => [rule.id, rule]));
 
     const byDate = new Map<string, PunchRow[]>();
     for (const row of rows) {
@@ -94,7 +123,9 @@ export async function GET(
     const days = listMonthDates(month).map((date) => {
       const rowsForDate = byDate.get(date) ?? [];
       const punchRows = rowsForDate.filter((row) => row.punchId && row.at);
-      const scheduled = schedule.get(date) ?? [];
+      const reports = (reportsByDate.get(date) ?? []).map(toEntryView);
+      const mark = marks.get(`${userId}|${date}`);
+      const scheduled = applyDayMark(schedule.get(date) ?? [], mark, ruleById);
 
       const evaluation = evaluateDay({
         scheduled,
@@ -104,11 +135,17 @@ export async function GET(
           withinRadius: row.withinRadius ?? true,
         })),
         isHoliday: holidays.has(date),
+        isPast: date < today,
+        leaveCode: mark?.leaveCode ?? null,
+        lunchBreak,
       });
 
       return {
         date,
         weekday: weekdayLabel(date),
+        adminEdited: mark?.isAdminEdit ?? false,
+        // Đang có yêu cầu đổi ca chờ duyệt: dòng tô vàng để admin biết ngày đó đang treo.
+        pendingRequest: pendingRequests.has(`${userId}|${date}`),
         holidayName: holidays.get(date) ?? null,
         scheduled: scheduled.map((rule) => ({
           code: rule.code,
@@ -118,6 +155,7 @@ export async function GET(
           minHours: rule.minHours,
         })),
         status: evaluation.status,
+        countsAsWorkDay: evaluation.countsAsWorkDay,
         statusLabel: DAY_STATUS_LABELS[evaluation.status],
         workedHours: minutesToHours(evaluation.workedMinutes),
         requiredHours: minutesToHours(evaluation.requiredMinutes),
@@ -125,6 +163,8 @@ export async function GET(
         lateMinutes: evaluation.lateMinutes,
         earlyLeaveMinutes: evaluation.earlyLeaveMinutes,
         outsideRadius: evaluation.outsideRadius,
+        reports,
+        reportMinutes: reports.reduce((sum, entry) => sum + entry.minutes, 0),
         note: rowsForDate[0]?.note ?? null,
         editedAt: rowsForDate[0]?.editedAt?.toISOString() ?? null,
         punches: punchRows.map((row) => ({
@@ -151,9 +191,7 @@ export async function GET(
       sessions: rules,
       days,
       totals: {
-        passedDays: days.filter(
-          (day) => day.status === "passed" || day.status === "late"
-        ).length,
+        passedDays: days.filter((day) => day.countsAsWorkDay).length,
         lateDays: days.filter((day) => day.status === "late").length,
         absentDays: days.filter((day) => day.status === "absent").length,
         totalHours:
@@ -200,13 +238,21 @@ export async function PUT(
       }
     }
 
+    // Mỗi ngày đúng một giờ vào, giờ ra bấm bao nhiêu lần cũng được và phải
+    // nằm sau giờ vào; giờ công tính theo lần ra muộn nhất.
     const sorted = [...punches].sort((a, b) => a.time.localeCompare(b.time));
-    if (sorted.length % 2 !== 0) badRequest("Số lần vào và ra phải bằng nhau");
-    for (const [index, punch] of sorted.entries()) {
-      const expected = index % 2 === 0 ? "in" : "out";
-      if (punch.type !== expected) {
-        badRequest("Giờ vào và giờ ra phải xen kẽ nhau theo thứ tự thời gian");
-      }
+    const ins = sorted.filter((punch) => punch.type === "in");
+    const outs = sorted.filter((punch) => punch.type === "out");
+
+    if (ins.length > 1) badRequest("Mỗi ngày chỉ có một giờ vào");
+    if (outs.length > 0 && ins.length === 0) {
+      badRequest("Có giờ ra thì phải có giờ vào");
+    }
+    if (ins.length === 1 && outs.some((punch) => punch.time <= ins[0].time)) {
+      badRequest("Giờ ra phải sau giờ vào");
+    }
+    if (new Set(sorted.map((punch) => punch.time)).size !== sorted.length) {
+      badRequest("Có hai lần bấm giờ trùng nhau");
     }
 
     await transaction(async (client) => {

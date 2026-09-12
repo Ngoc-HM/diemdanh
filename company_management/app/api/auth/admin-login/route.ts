@@ -50,10 +50,12 @@ export async function POST(req: Request) {
     }
 
     // Chưa có admin nào trong DB: dùng thông tin trong .env để khởi tạo lần đầu.
+    // Không có mật khẩu mặc định — thiếu AUTH_ADMIN_PASSWORD thì không ai đăng
+    // nhập được, thà vậy còn hơn để lọt một tài khoản quản trị đoán được.
     const envUser = process.env.AUTH_ADMIN_USERNAME || "admin";
-    const envPass = process.env.AUTH_ADMIN_PASSWORD || "admin123";
+    const envPass = process.env.AUTH_ADMIN_PASSWORD;
 
-    if (username !== envUser || password !== envPass) {
+    if (!envPass || username !== envUser || password !== envPass) {
       throw new HttpError(401, "Tài khoản hoặc mật khẩu không đúng");
     }
 

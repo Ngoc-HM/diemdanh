@@ -1,12 +1,13 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
-import { useParams } from "next/navigation";
+import { Suspense, useCallback, useEffect, useState } from "react";
+import { useParams, useSearchParams } from "next/navigation";
 import {
   ChevronLeft,
   ChevronRight,
   LogIn,
   LogOut,
+  NotebookText,
   Pencil,
   Plus,
   Trash2,
@@ -24,8 +25,9 @@ import {
   TableSkeleton,
 } from "@/app/_components/ui";
 import { addMonths, formatMonthLabel, monthKeyVN } from "@/lib/datetime";
+import { formatDuration } from "@/lib/work-reports";
 import type { DayStatus } from "@/lib/attendance-rules";
-import { DAY_STATUS_TONE } from "@/app/_components/status-styles";
+import { DAY_STATUS_TONE, ROW_HIGHLIGHT } from "@/app/_components/status-styles";
 
 type Punch = {
   id: string;
@@ -37,12 +39,27 @@ type Punch = {
   locationName: string | null;
 };
 
+/// Một khoảng trong báo cáo "Nội dung công việc hằng ngày" của nhân viên.
+type WorkReport = {
+  id: string;
+  start: string;
+  end: string;
+  minutes: number;
+  content: string;
+};
+
 type Day = {
   date: string;
   weekday: string;
   holidayName: string | null;
   scheduled: { code: string; name: string; workStart: string; workEnd: string }[];
   status: DayStatus;
+  /// Ngày được tính là một ngày công (kể cả "ngoài lịch" có đủ giờ vào/ra).
+  countsAsWorkDay: boolean;
+  /// Admin đã chấm lại ô này (DayMark isAdminEdit).
+  adminEdited: boolean;
+  /// Đang có yêu cầu đổi ca chờ duyệt cho ngày này.
+  pendingRequest: boolean;
   statusLabel: string;
   workedHours: number;
   requiredHours: number;
@@ -52,6 +69,9 @@ type Day = {
   note: string | null;
   editedAt: string | null;
   punches: Punch[];
+  /// Nhân viên tự khai, admin chỉ xem — không tham gia tính công.
+  reports: WorkReport[];
+  reportMinutes: number;
 };
 
 type Payload = {
@@ -76,11 +96,46 @@ type Payload = {
 
 type DraftPunch = { type: "in" | "out"; time: string };
 
+/// Nền và chú thích của một dòng ngày: đỏ = có lịch mà không đi (khác nghỉ N
+/// đã xin); vàng = có gì đó admin cần để ý (đã sửa, đang chờ duyệt, làm ngoài
+/// lịch). Vắng ưu tiên hơn vì là lỗi thật, còn vàng chỉ là nhắc nhở.
+function rowHighlight(day: Day): { className: string; title: string | undefined } {
+  if (day.status === "absent") {
+    return {
+      className: ROW_HIGHLIGHT.absent,
+      title: "Có lịch nhưng không chấm công",
+    };
+  }
+  const notes: string[] = [];
+  if (day.adminEdited) notes.push("Admin đã sửa ngày này");
+  if (day.pendingRequest) notes.push("Đang chờ duyệt đổi ca");
+  if (day.status === "unscheduled") {
+    notes.push("Đi làm không đăng ký lịch, vẫn tính công");
+  }
+  if (notes.length === 0) return { className: "", title: undefined };
+  return { className: ROW_HIGHLIGHT.attention, title: notes.join(" · ") };
+}
+
+/// Link từ trang "Quên checkout" mang theo ?month= để mở đúng tháng có sự cố.
 export default function UserAttendanceDetailPage() {
+  return (
+    <Suspense fallback={<TableSkeleton rows={6} />}>
+      <UserAttendanceDetail />
+    </Suspense>
+  );
+}
+
+function UserAttendanceDetail() {
   const params = useParams<{ userId: string }>();
   const userId = params.userId;
+  const searchParams = useSearchParams();
+  const requestedMonth = searchParams.get("month");
 
-  const [month, setMonth] = useState(() => monthKeyVN());
+  const [month, setMonth] = useState(() =>
+    requestedMonth && /^\d{4}-\d{2}$/.test(requestedMonth)
+      ? requestedMonth
+      : monthKeyVN()
+  );
   const [data, setData] = useState<Payload | null>(null);
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState<{
@@ -89,6 +144,7 @@ export default function UserAttendanceDetailPage() {
   } | null>(null);
 
   const [editingDay, setEditingDay] = useState<Day | null>(null);
+  const [reportDay, setReportDay] = useState<Day | null>(null);
   const [draft, setDraft] = useState<DraftPunch[]>([]);
   const [note, setNote] = useState("");
   const [saving, setSaving] = useState(false);
@@ -254,116 +310,164 @@ export default function UserAttendanceDetailPage() {
                   <th className="px-4 py-3 font-semibold text-slate-900">
                     Trạng thái
                   </th>
-                  <th className="w-20 px-4 py-3" />
+                  <th className="w-28 px-4 py-3" />
                 </tr>
               </thead>
               <tbody>
-                {data.days.map((day) => (
-                  <tr
-                    key={day.date}
-                    className="border-b border-slate-100 last:border-0"
-                  >
-                    <td className="px-4 py-3">
-                      <div className="font-medium text-slate-900">
-                        {day.date.slice(8, 10)}/{day.date.slice(5, 7)}
-                      </div>
-                      <div className="text-xs text-slate-500">{day.weekday}</div>
-                      {day.holidayName && (
-                        <div className="mt-1 text-xs text-sky-700">
-                          {day.holidayName}
+                {data.days.map((day) => {
+                  const highlight = rowHighlight(day);
+                  return (
+                    <tr
+                      key={day.date}
+                      title={highlight.title}
+                      className={`border-b border-slate-100 last:border-0 ${highlight.className}`}
+                    >
+                      <td className="px-4 py-3">
+                        <div className="font-medium text-slate-900">
+                          {day.date.slice(8, 10)}/{day.date.slice(5, 7)}
                         </div>
-                      )}
-                    </td>
-                    <td className="px-4 py-3">
-                      {day.scheduled.length === 0 ? (
-                        <span className="text-slate-400">—</span>
-                      ) : (
-                        <div className="flex flex-wrap gap-1">
-                          {day.scheduled.map((rule) => (
-                            <Badge key={rule.code} tone="brand">
-                              {rule.code} {rule.workStart}–{rule.workEnd}
-                            </Badge>
-                          ))}
-                        </div>
-                      )}
-                    </td>
-                    <td className="px-4 py-3">
-                      {day.punches.length === 0 ? (
-                        <span className="text-slate-400">—</span>
-                      ) : (
+                        <div className="text-xs text-slate-500">{day.weekday}</div>
+                        {day.holidayName && (
+                          <div className="mt-1 text-xs text-sky-700">
+                            {day.holidayName}
+                          </div>
+                        )}
+                      </td>
+                      <td className="px-4 py-3">
+                        {day.scheduled.length === 0 ? (
+                          <span className="text-slate-400">—</span>
+                        ) : (
+                          <div className="flex flex-wrap gap-1">
+                            {day.scheduled.map((rule) => (
+                              <Badge key={rule.code} tone="brand">
+                                {rule.code} {rule.workStart}–{rule.workEnd}
+                              </Badge>
+                            ))}
+                          </div>
+                        )}
+                      </td>
+                      <td className="px-4 py-3">
+                        {day.punches.length === 0 ? (
+                          <span className="text-slate-400">—</span>
+                        ) : (
+                          <div className="flex flex-wrap gap-1.5">
+                            {day.punches.map((punch) => (
+                              <span
+                                key={punch.id}
+                                title={
+                                  punch.isManual
+                                    ? "Do admin nhập"
+                                    : `${punch.locationName ?? ""} ${
+                                        punch.distance != null
+                                          ? `· ${Math.round(punch.distance)}m`
+                                          : ""
+                                      }`
+                                }
+                                className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${
+                                  punch.type === "in"
+                                    ? "bg-emerald-50 text-emerald-700"
+                                    : "bg-slate-100 text-slate-700"
+                                }`}
+                              >
+                                {punch.type === "in" ? (
+                                  <LogIn size={11} aria-hidden="true" />
+                                ) : (
+                                  <LogOut size={11} aria-hidden="true" />
+                                )}
+                                {punch.time}
+                                {punch.isManual && (
+                                  <Pencil size={10} aria-hidden="true" className="text-slate-400" />
+                                )}
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                      </td>
+                      <td className="px-4 py-3 text-slate-700">
+                        {day.workedHours}h
+                        {day.requiredHours > 0 && (
+                          <span className="text-slate-400"> / {day.requiredHours}h</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3">
                         <div className="flex flex-wrap gap-1.5">
-                          {day.punches.map((punch) => (
-                            <span
-                              key={punch.id}
-                              title={
-                                punch.isManual
-                                  ? "Do admin nhập"
-                                  : `${punch.locationName ?? ""} ${
-                                      punch.distance != null
-                                        ? `· ${Math.round(punch.distance)}m`
-                                        : ""
-                                    }`
-                              }
-                              className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${
-                                punch.type === "in"
-                                  ? "bg-emerald-50 text-emerald-700"
-                                  : "bg-slate-100 text-slate-700"
-                              }`}
-                            >
-                              {punch.type === "in" ? (
-                                <LogIn size={11} aria-hidden="true" />
-                              ) : (
-                                <LogOut size={11} aria-hidden="true" />
-                              )}
-                              {punch.time}
-                              {punch.isManual && (
-                                <Pencil size={10} aria-hidden="true" className="text-slate-400" />
-                              )}
-                            </span>
-                          ))}
+                          <Badge tone={DAY_STATUS_TONE[day.status]}>
+                            {day.statusLabel}
+                          </Badge>
+                          {day.lateMinutes > 0 && (
+                            <Badge tone="warning">Muộn {day.lateMinutes}′</Badge>
+                          )}
+                          {day.outsideRadius && (
+                            <Badge tone="danger">Ngoài bán kính</Badge>
+                          )}
+                          {day.editedAt && <Badge>Sửa tay</Badge>}
+                          {day.adminEdited && (
+                            <Badge tone="warning">Admin đổi lịch</Badge>
+                          )}
+                          {day.pendingRequest && (
+                            <Badge tone="warning">Chờ duyệt đổi ca</Badge>
+                          )}
                         </div>
-                      )}
-                    </td>
-                    <td className="px-4 py-3 text-slate-700">
-                      {day.workedHours}h
-                      {day.requiredHours > 0 && (
-                        <span className="text-slate-400"> / {day.requiredHours}h</span>
-                      )}
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="flex flex-wrap gap-1.5">
-                        <Badge tone={DAY_STATUS_TONE[day.status]}>
-                          {day.statusLabel}
-                        </Badge>
-                        {day.lateMinutes > 0 && (
-                          <Badge tone="warning">Muộn {day.lateMinutes}′</Badge>
+                        {day.note && (
+                          <div className="mt-1 text-xs text-slate-500">{day.note}</div>
                         )}
-                        {day.outsideRadius && (
-                          <Badge tone="danger">Ngoài bán kính</Badge>
-                        )}
-                        {day.editedAt && <Badge>Sửa tay</Badge>}
-                      </div>
-                      {day.note && (
-                        <div className="mt-1 text-xs text-slate-500">{day.note}</div>
-                      )}
-                    </td>
-                    <td className="px-4 py-3 text-right">
-                      <Button
-                        variant="secondary"
-                        size="sm"
-                        onClick={() => openEdit(day)}
-                        aria-label={`Sửa công ngày ${day.date}`}
-                      >
-                        <Pencil size={14} aria-hidden="true" />
-                      </Button>
-                    </td>
-                  </tr>
-                ))}
+                      </td>
+                      <td className="px-4 py-3 text-right">
+                        <div className="flex justify-end gap-1.5">
+                          {day.reports.length > 0 && (
+                            <Button
+                              variant="secondary"
+                              size="sm"
+                              onClick={() => setReportDay(day)}
+                              title={`Nội dung công việc · ${formatDuration(day.reportMinutes)}`}
+                              aria-label={`Xem nội dung công việc ngày ${day.date}`}
+                            >
+                              <NotebookText size={14} aria-hidden="true" />
+                            </Button>
+                          )}
+                          <Button
+                            variant="secondary"
+                            size="sm"
+                            onClick={() => openEdit(day)}
+                            aria-label={`Sửa công ngày ${day.date}`}
+                          >
+                            <Pencil size={14} aria-hidden="true" />
+                          </Button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </Card>
         )
       )}
+
+      <Modal
+        open={reportDay !== null}
+        title={`Nội dung công việc ngày ${reportDay?.date ?? ""}`}
+        onClose={() => setReportDay(null)}
+      >
+        <p className="mb-2 text-sm text-slate-600">
+          Nhân viên tự khai, tổng {formatDuration(reportDay?.reportMinutes ?? 0)}.
+        </p>
+        <ul className="divide-y divide-slate-100">
+          {reportDay?.reports.map((report) => (
+            <li key={report.id} className="py-3">
+              <div className="text-sm font-medium tabular-nums text-slate-900">
+                {report.start} – {report.end}
+                <span className="ml-2 font-normal text-slate-500">
+                  {formatDuration(report.minutes)}
+                </span>
+              </div>
+              <p className="mt-1 whitespace-pre-wrap text-sm text-slate-700">
+                {report.content}
+              </p>
+            </li>
+          ))}
+        </ul>
+      </Modal>
 
       <Modal
         open={editingDay !== null}
@@ -372,8 +476,8 @@ export default function UserAttendanceDetailPage() {
       >
         <form onSubmit={saveDay} className="space-y-4">
           <p className="text-sm text-slate-600">
-            Giờ vào và giờ ra phải xen kẽ theo thứ tự thời gian. Xoá hết dòng để
-            đánh dấu ngày này không có công.
+            Một giờ vào, giờ ra có thể nhiều lần và phải sau giờ vào; giờ công
+            tính theo lần ra muộn nhất. Xoá hết dòng để đánh dấu không có công.
           </p>
 
           <div className="space-y-2">

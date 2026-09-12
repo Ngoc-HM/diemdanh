@@ -9,8 +9,12 @@ import {
 } from "@/lib/datetime";
 import { evaluateDay, minutesToHours } from "@/lib/attendance-rules";
 import {
+  applyDayMark,
   getActiveSessionRules,
+  getDayMarks,
   getHolidayMap,
+  getLunchBreak,
+  getPendingShiftRequestDates,
   resolveUserMonthSchedule,
 } from "@/lib/attendance-service";
 import { AttendancePunchRow } from "@/lib/types";
@@ -47,7 +51,7 @@ export async function GET(req: Request) {
     ]);
     if (!user) badRequest("Không tìm thấy tài khoản");
 
-    const [rows, rules, holidays] = await Promise.all([
+    const [rows, rules, holidays, lunchBreak, pending] = await Promise.all([
       query<AttendanceWithPunch>(
         `SELECT a."id" AS "attendanceId", a."date", a."note",
                 p."id", p."type", p."at", p."distance", p."isManual"
@@ -59,9 +63,13 @@ export async function GET(req: Request) {
       ),
       getActiveSessionRules(),
       getHolidayMap(startDate, endDate),
+      getLunchBreak(),
+      getPendingShiftRequestDates([user!.id], startDate, endDate),
     ]);
 
     const schedule = await resolveUserMonthSchedule(user!, month, rules);
+    const marks = await getDayMarks([user!.id], startDate, endDate);
+    const ruleById = new Map(rules.map((rule) => [rule.id, rule]));
 
     // Gộp kết quả JOIN thành từng ngày kèm danh sách punch.
     const byDate = new Map<
@@ -84,21 +92,30 @@ export async function GET(req: Request) {
 
     const days = listMonthDates(month).map((date) => {
       const entry = byDate.get(date);
+      const mark = marks.get(`${user!.id}|${date}`);
       const evaluation = evaluateDay({
-        scheduled: schedule.get(date) ?? [],
+        scheduled: applyDayMark(schedule.get(date) ?? [], mark, ruleById),
         punches: (entry?.punches ?? []).map((punch) => ({
           type: punch.type,
           at: punch.at,
           withinRadius: true,
         })),
         isHoliday: holidays.has(date),
+        isPast: date < today,
+        leaveCode: mark?.leaveCode ?? null,
+        lunchBreak,
       });
 
       return {
         date,
         holidayName: holidays.get(date) ?? null,
+        adminEdited: mark?.isAdminEdit ?? false,
+        // Đang có yêu cầu đổi ca chờ duyệt: bảng tô vàng để nhân viên biết
+        // ngày đó còn treo.
+        pendingRequest: pending.has(`${user!.id}|${date}`),
         note: entry?.note ?? null,
         status: evaluation.status,
+        countsAsWorkDay: evaluation.countsAsWorkDay,
         codes: evaluation.codes,
         workedHours: minutesToHours(evaluation.workedMinutes),
         requiredHours: minutesToHours(evaluation.requiredMinutes),
@@ -115,21 +132,26 @@ export async function GET(req: Request) {
     });
 
     const todayEntry = days.find((day) => day.date === today) ?? null;
-    // Ca đang mở = lần bấm giờ cuối cùng trong ngày là "in".
-    const lastPunch = todayEntry?.punches.at(-1);
-    const openShift = lastPunch?.type === "in" ? lastPunch.at : null;
+    // Mỗi ngày chỉ check-in một lần; check-out bấm được nhiều lần nên lấy
+    // lần muộn nhất sau giờ vào.
+    const todayPunches = todayEntry?.punches ?? [];
+    const checkInAt = todayPunches.find((punch) => punch.type === "in")?.at ?? null;
+    const lastOutAt = checkInAt
+      ? (todayPunches
+          .filter((punch) => punch.type === "out" && punch.at > checkInAt)
+          .at(-1)?.at ?? null)
+      : null;
 
     return {
       user: { name: user!.name, employmentType: user!.employmentType },
       month,
       today,
       todayEntry,
-      openShift,
+      checkInAt,
+      lastOutAt,
       days,
       summary: {
-        passedDays: days.filter(
-          (day) => day.status === "passed" || day.status === "late"
-        ).length,
+        passedDays: days.filter((day) => day.countsAsWorkDay).length,
         workedHours:
           Math.round(days.reduce((sum, day) => sum + day.workedHours, 0) * 10) / 10,
         absentDays: days.filter((day) => day.status === "absent").length,

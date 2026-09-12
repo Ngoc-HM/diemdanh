@@ -31,16 +31,14 @@ export async function PUT(
       }
       const result = await client.query<WorkSessionRow>(
         `UPDATE "WorkSession" SET
-           "code" = $2, "name" = $3, "checkInStart" = $4, "checkInEnd" = $5,
-           "workStart" = $6, "workEnd" = $7, "minHours" = $8, "sortOrder" = $9,
-           "isActive" = $10, "isDefaultFull" = $11, "updatedAt" = now()
+           "code" = $2, "name" = $3,
+           "workStart" = $4, "workEnd" = $5, "minHours" = $6, "sortOrder" = $7,
+           "isActive" = $8, "isDefaultFull" = $9, "updatedAt" = now()
          WHERE "id" = $1 RETURNING *`,
         [
           id,
           session.code,
           session.name,
-          session.checkInStart,
-          session.checkInEnd,
           session.workStart,
           session.workEnd,
           session.minHours,

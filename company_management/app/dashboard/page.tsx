@@ -5,6 +5,7 @@ import { LogIn, LogOut, MapPin } from "lucide-react";
 import { Badge, Button, Card, Message } from "@/app/_components/ui";
 import type { DayStatus } from "@/lib/attendance-rules";
 import { DAY_STATUS_TONE } from "@/app/_components/status-styles";
+import DashboardPageHeader from "@/app/dashboard/_components/page-header";
 
 type Punch = {
   id: string;
@@ -28,7 +29,8 @@ type Payload = {
   user: { name: string; employmentType: string };
   today: string;
   todayEntry: TodayEntry | null;
-  openShift: string | null;
+  checkInAt: string | null;
+  lastOutAt: string | null;
 };
 
 const STATUS_TEXT: Record<DayStatus, string> = {
@@ -36,27 +38,30 @@ const STATUS_TEXT: Record<DayStatus, string> = {
   late: "Đủ giờ nhưng vào ca muộn",
   insufficient: "Chưa đủ giờ tối thiểu",
   open: "Đang trong ca",
+  missed_out: "Quên checkout",
+  leave: "Hôm nay bạn đăng ký nghỉ",
+  sick: "Hôm nay được chấm nghỉ ốm",
   absent: "Chưa chấm công",
   unscheduled: "Đang làm ngoài lịch đăng ký",
   holiday: "Hôm nay là ngày nghỉ lễ",
   off: "Hôm nay bạn không có lịch làm",
 };
 
+function timeVN(value: string) {
+  return new Date(value).toLocaleTimeString("vi-VN", {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
 export default function DashboardPage() {
   const [data, setData] = useState<Payload | null>(null);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
-  const [now, setNow] = useState<Date | null>(null);
   const [message, setMessage] = useState<{
     type: "success" | "error";
     text: string;
   } | null>(null);
-
-  useEffect(() => {
-    setNow(new Date());
-    const timer = setInterval(() => setNow(new Date()), 1000);
-    return () => clearInterval(timer);
-  }, []);
 
   const load = useCallback(async () => {
     try {
@@ -127,42 +132,20 @@ export default function DashboardPage() {
   if (loading) {
     return (
       <div className="space-y-4" aria-hidden="true">
-        <div className="h-32 animate-pulse rounded-xl bg-slate-200" />
-        <div className="h-24 animate-pulse rounded-xl bg-slate-200" />
+        <div className="h-9 w-48 animate-pulse rounded-lg bg-slate-200" />
+        <div className="h-40 animate-pulse rounded-xl bg-slate-200" />
       </div>
     );
   }
 
   const entry = data?.todayEntry;
-  const inShift = Boolean(data?.openShift);
+  const checkedIn = Boolean(data?.checkInAt);
   const status: DayStatus = entry?.status ?? "off";
+  const punches = entry?.punches ?? [];
 
   return (
     <div className="space-y-4">
-      <Card className="p-6 text-center">
-        <p className="text-sm text-slate-600">
-          Xin chào, <span className="font-medium text-slate-900">{data?.user.name}</span>
-        </p>
-        <p className="mt-3 text-3xl font-bold tabular-nums text-slate-900">
-          {now
-            ? now.toLocaleTimeString("vi-VN", {
-                hour: "2-digit",
-                minute: "2-digit",
-                second: "2-digit",
-              })
-            : "--:--:--"}
-        </p>
-        <p className="mt-1 text-sm text-slate-500">
-          {now
-            ? now.toLocaleDateString("vi-VN", {
-                weekday: "long",
-                day: "2-digit",
-                month: "2-digit",
-                year: "numeric",
-              })
-            : ""}
-        </p>
-      </Card>
+      <DashboardPageHeader title="Chấm công" />
 
       {message && (
         <Message type={message.type} onDismiss={() => setMessage(null)}>
@@ -171,91 +154,112 @@ export default function DashboardPage() {
       )}
 
       <Card className="p-5">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <p className="text-sm text-slate-600">{STATUS_TEXT[status]}</p>
-            {entry && entry.codes.length > 0 && (
-              <p className="mt-1 text-sm text-slate-900">
-                Ca hôm nay: <span className="font-medium">{entry.codes.join(" + ")}</span>
-                {entry.requiredHours > 0 && (
-                  <span className="text-slate-500"> · cần {entry.requiredHours}h</span>
-                )}
-              </p>
-            )}
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="min-w-0">
+            <p className="text-xl font-semibold text-slate-900">
+              {STATUS_TEXT[status]}
+            </p>
+            <p className="mt-1 text-sm text-slate-600">
+              {entry && entry.codes.length > 0
+                ? `Ca ${entry.codes.join(" + ")}`
+                : "Không có ca đăng ký"}
+              {entry && entry.requiredHours > 0 && ` · cần ${entry.requiredHours}h`}
+              {data?.checkInAt && ` · vào ${timeVN(data.checkInAt)}`}
+              {data?.lastOutAt && ` · ra ${timeVN(data.lastOutAt)}`}
+            </p>
           </div>
           <Badge tone={DAY_STATUS_TONE[status]}>
             {entry?.workedHours ?? 0}h đã làm
           </Badge>
         </div>
 
-        <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
           <Button
             size="lg"
             onClick={() => punch("in")}
-            disabled={submitting || inShift}
-            className="h-14"
+            disabled={submitting || checkedIn}
           >
             <LogIn size={18} aria-hidden="true" />
-            Check in
+            Vào ca
           </Button>
           <Button
             size="lg"
             variant="secondary"
             onClick={() => punch("out")}
-            disabled={submitting || !inShift}
-            className="h-14"
+            disabled={submitting || !checkedIn}
           >
             <LogOut size={18} aria-hidden="true" />
-            Check out
+            Ra ca
           </Button>
         </div>
 
-        {inShift && (
-          <p className="mt-3 text-center text-sm text-sky-700">
-            Bạn đang trong ca từ{" "}
-            {new Date(data!.openShift!).toLocaleTimeString("vi-VN", {
-              hour: "2-digit",
-              minute: "2-digit",
-            })}
+        {checkedIn && (
+          <p className="mt-3 text-sm text-slate-500">
+            Bấm ra ca được nhiều lần, hệ thống tính theo lần muộn nhất.
           </p>
         )}
       </Card>
 
-      {entry && entry.punches.length > 0 && (
-        <Card className="p-5">
-          <h2 className="mb-3 text-xl font-semibold text-slate-900">
-            Các lần bấm giờ hôm nay
-          </h2>
-          <ol className="space-y-2">
-            {entry.punches.map((item) => (
-              <li
-                key={item.id}
-                className="flex items-center justify-between rounded-xl bg-slate-50 px-3 py-2 text-sm"
-              >
-                <span className="flex items-center gap-2 text-slate-600">
-                  {item.type === "in" ? (
-                    <LogIn size={14} aria-hidden="true" className="text-emerald-600" />
-                  ) : (
-                    <LogOut size={14} aria-hidden="true" className="text-slate-500" />
-                  )}
-                  {item.type === "in" ? "Vào ca" : "Ra ca"}
-                  {item.isManual && <Badge>Admin nhập</Badge>}
-                </span>
-                <span className="flex items-center gap-2 font-medium text-slate-900">
-                  {new Date(item.at).toLocaleTimeString("vi-VN", {
-                    hour: "2-digit",
-                    minute: "2-digit",
-                  })}
-                  {item.distance != null && (
-                    <span className="flex items-center gap-1 text-xs font-normal text-slate-500">
-                      <MapPin size={12} aria-hidden="true" />
-                      {Math.round(item.distance)}m
-                    </span>
-                  )}
-                </span>
-              </li>
-            ))}
-          </ol>
+      {punches.length > 0 && (
+        <Card>
+          <div className="border-b border-slate-200 px-4 py-3">
+            <h2 className="text-xl font-semibold text-slate-900">
+              Lần bấm giờ hôm nay
+            </h2>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-slate-200 bg-slate-50 text-left">
+                  <th className="px-4 py-2 font-semibold text-slate-900">Loại</th>
+                  <th className="px-4 py-2 text-right font-semibold text-slate-900">
+                    Giờ
+                  </th>
+                  <th className="px-4 py-2 text-right font-semibold text-slate-900">
+                    Khoảng cách
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {punches.map((item) => (
+                  <tr key={item.id}>
+                    <td className="px-4 py-2">
+                      <span className="flex items-center gap-2 text-slate-900">
+                        {item.type === "in" ? (
+                          <LogIn
+                            size={14}
+                            aria-hidden="true"
+                            className="text-emerald-600"
+                          />
+                        ) : (
+                          <LogOut
+                            size={14}
+                            aria-hidden="true"
+                            className="text-slate-500"
+                          />
+                        )}
+                        {item.type === "in" ? "Vào ca" : "Ra ca"}
+                        {item.isManual && <Badge>Admin nhập</Badge>}
+                      </span>
+                    </td>
+                    <td className="px-4 py-2 text-right font-medium tabular-nums text-slate-900">
+                      {timeVN(item.at)}
+                    </td>
+                    <td className="px-4 py-2 text-right tabular-nums text-slate-500">
+                      {item.distance != null ? (
+                        <span className="inline-flex items-center gap-1">
+                          <MapPin size={12} aria-hidden="true" />
+                          {Math.round(item.distance)}m
+                        </span>
+                      ) : (
+                        "—"
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </Card>
       )}
     </div>

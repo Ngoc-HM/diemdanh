@@ -1,42 +1,96 @@
 "use client";
 
-import { ReactNode } from "react";
+import { ReactNode, useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
+  AlarmClockOff,
   Building2,
   CalendarCheck,
   CalendarDays,
+  ClipboardCheck,
+  ExternalLink,
   KeyRound,
   LogOut,
+  Mail,
   MapPin,
+  NotebookText,
   PartyPopper,
   Clock,
   Users,
 } from "lucide-react";
+import {
+  CompanyLogo,
+  useCompanyBranding,
+} from "@/app/_components/company-brand";
 
 type NavItem = {
   href: string;
   label: string;
   icon: ReactNode;
+  /// Link ra ngoài hệ thống: mở tab mới, không bao giờ ở trạng thái đang chọn.
+  external?: boolean;
 };
 
 const navItems: NavItem[] = [
   { href: "/admin/attendance", label: "Điểm danh", icon: <CalendarCheck size={18} /> },
+  { href: "/admin/missed-checkout", label: "Quên checkout", icon: <AlarmClockOff size={18} /> },
+  { href: "/admin/work-reports", label: "Báo cáo công việc", icon: <NotebookText size={18} /> },
   { href: "/admin/schedules", label: "Lịch làm việc", icon: <CalendarDays size={18} /> },
+  { href: "/admin/shift-requests", label: "Duyệt đổi ca", icon: <ClipboardCheck size={18} /> },
   { href: "/admin/users", label: "Nhân viên", icon: <Users size={18} /> },
   { href: "/admin/sessions", label: "Ca làm việc", icon: <Clock size={18} /> },
   { href: "/admin/locations", label: "Vị trí", icon: <MapPin size={18} /> },
   { href: "/admin/holidays", label: "Ngày lễ", icon: <PartyPopper size={18} /> },
   { href: "/admin/company", label: "Công ty", icon: <Building2 size={18} /> },
+  { href: "/admin/email", label: "Email", icon: <Mail size={18} /> },
+  { href: "https://app.clickup.com", label: "ClickUp", icon: <ExternalLink size={18} />, external: true },
 ];
+
+/// Mục menu nào có badge đếm: chỉ "Duyệt đổi ca" cần nhắc admin còn việc.
+const SHIFT_REQUESTS_HREF = "/admin/shift-requests";
+
+/// Chấm đỏ nhỏ cạnh nhãn menu, chỉ hiện khi còn yêu cầu chờ duyệt.
+function PendingBadge({ count }: { count: number }) {
+  if (count <= 0) return null;
+  return (
+    <span
+      aria-label={`${count} yêu cầu chờ duyệt`}
+      className="inline-flex min-w-[18px] items-center justify-center rounded-full bg-rose-600 px-1.5 py-px text-[11px] font-semibold leading-4 text-white"
+    >
+      {count}
+    </span>
+  );
+}
 
 /// Quyền truy cập đã được chặn ở `middleware.ts` trước khi render, nên layout
 /// không cần gọi lại /api/auth/session và không còn màn hình "Đang tải".
 export default function AdminLayout({ children }: { children: ReactNode }) {
   const pathname = usePathname();
+  const { name: companyName, logo } = useCompanyBranding();
+  const [pendingRequests, setPendingRequests] = useState(0);
+
+  /// Đếm lại mỗi khi đổi trang để admin duyệt xong là badge giảm ngay,
+  /// không phải tải lại toàn bộ. Lỗi mạng thì ẩn badge, không báo gì.
+  useEffect(() => {
+    let cancelled = false;
+    fetch(`/api/admin/shift-requests?status=pending`)
+      .then((response) => (response.ok ? response.json() : null))
+      .then((payload) => {
+        if (cancelled) return;
+        const count = Number(payload?.pendingCount);
+        setPendingRequests(Number.isFinite(count) ? count : 0);
+      })
+      .catch(() => {
+        if (!cancelled) setPendingRequests(0);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [pathname]);
 
   async function handleLogout() {
+
     await fetch("/api/auth/logout", { method: "POST" });
     window.location.href = "/admin-login-app";
   }
@@ -46,15 +100,18 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
       <header className="sticky top-0 z-40 border-b border-slate-200 bg-white">
         {/* Không đệm trái ở đây — khối thương hiệu tự đệm để thẳng hàng với cột trái */}
         <div className="flex h-16 items-center justify-between pr-4 sm:pr-6">
-          <div className="flex shrink-0 items-center gap-3 px-4 lg:w-56 lg:px-3">
-            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-sky-600 text-white">
-              <Building2 size={18} aria-hidden="true" />
-            </div>
-            <div>
+          {/* Tên công ty hiện đủ, không cắt; chỉ giữ chiều rộng tối thiểu để
+              thẳng hàng với cột trái, dài hơn thì tự nới ra. */}
+          <div className="flex min-w-0 shrink items-center gap-3 px-4 lg:min-w-56 lg:px-3">
+            <CompanyLogo logo={logo} />
+            <div className="min-w-0">
               <p className="text-base font-semibold text-slate-900">Quản trị</p>
-              <p className="text-xs text-slate-500">Hệ thống chấm công</p>
+              <p className="text-xs leading-tight text-slate-500">
+                {companyName || "Hệ thống chấm công"}
+              </p>
             </div>
           </div>
+
           <div className="flex items-center gap-2">
             <Link
               href="/admin/change-password"
@@ -80,11 +137,14 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
           <nav className="space-y-1 p-3">
             {navItems.map((item) => {
               const isActive =
-                pathname === item.href || pathname.startsWith(item.href + "/");
+                !item.external &&
+                (pathname === item.href || pathname.startsWith(item.href + "/"));
               return (
                 <Link
                   key={item.href}
                   href={item.href}
+                  target={item.external ? "_blank" : undefined}
+                  rel={item.external ? "noopener noreferrer" : undefined}
                   aria-current={isActive ? "page" : undefined}
                   className={`flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors ${
                     isActive
@@ -95,7 +155,10 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
                   <span className={isActive ? "text-sky-600" : "text-slate-400"}>
                     {item.icon}
                   </span>
-                  {item.label}
+                  <span className="flex-1">{item.label}</span>
+                  {item.href === SHIFT_REQUESTS_HREF && (
+                    <PendingBadge count={pendingRequests} />
+                  )}
                 </Link>
               );
             })}
@@ -109,11 +172,14 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
       <nav className="sticky bottom-0 z-40 flex overflow-x-auto border-t border-slate-200 bg-white lg:hidden">
         {navItems.map((item) => {
           const isActive =
-            pathname === item.href || pathname.startsWith(item.href + "/");
+            !item.external &&
+            (pathname === item.href || pathname.startsWith(item.href + "/"));
           return (
             <Link
               key={item.href}
               href={item.href}
+              target={item.external ? "_blank" : undefined}
+              rel={item.external ? "noopener noreferrer" : undefined}
               aria-current={isActive ? "page" : undefined}
               className={`flex min-w-[76px] flex-1 flex-col items-center gap-1 px-2 py-2 text-xs font-medium ${
                 isActive ? "text-sky-700" : "text-slate-500"
@@ -122,7 +188,12 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
               <span className={isActive ? "text-sky-600" : "text-slate-400"}>
                 {item.icon}
               </span>
-              {item.label}
+              <span className="inline-flex items-center gap-1">
+                {item.label}
+                {item.href === SHIFT_REQUESTS_HREF && (
+                  <PendingBadge count={pendingRequests} />
+                )}
+              </span>
             </Link>
           );
         })}

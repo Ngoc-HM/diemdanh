@@ -30,8 +30,6 @@ export type WorkSessionRow = {
   id: string;
   code: string;
   name: string;
-  checkInStart: string;
-  checkInEnd: string;
   workStart: string;
   workEnd: string;
   minHours: number;
@@ -93,9 +91,47 @@ export type ScheduleDayRow = {
 
 export type HolidayRow = {
   id: string;
+  /// Ngày đại diện (= startDate), giữ để tương thích dữ liệu cũ.
   date: string;
+  startDate: string;
+  endDate: string;
   name: string;
   createdAt: Date;
+};
+
+
+export type ShiftChangeRequestStatus = "pending" | "approved" | "rejected";
+
+/// Yêu cầu đổi ca / xin nghỉ một ngày của nhân viên, admin duyệt hoặc từ chối.
+export type ShiftChangeRequestRow = {
+  id: string;
+  userId: string;
+  date: string;
+  /// 'N' = xin nghỉ; null = đổi sang các ca trong sessionIds.
+  leaveCode: "N" | null;
+  sessionIds: string[] | null;
+  reason: string;
+  status: ShiftChangeRequestStatus;
+  adminNote: string | null;
+  reviewedBy: string | null;
+  reviewedAt: Date | null;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
+/// Một khoảng thời gian trong báo cáo "Nội dung công việc hằng ngày".
+/// Các khoảng của cùng một ngày nối tiếp nhau: `endAt` của khoảng trước là
+/// `startAt` của khoảng sau.
+export type WorkReportEntryRow = {
+  id: string;
+  userId: string;
+  /// "YYYY-MM-DD" theo lịch Việt Nam.
+  date: string;
+  startAt: Date;
+  endAt: Date;
+  content: string;
+  createdAt: Date;
+  updatedAt: Date;
 };
 
 export type AdminRow = {

@@ -1,14 +1,19 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { CalendarDays, ChevronLeft, ChevronRight, Save } from "lucide-react";
-import { Badge, Button, Card, Message } from "@/app/_components/ui";
+import Link from "next/link";
+import { Eye, Save } from "lucide-react";
+import { Button, Card, Message } from "@/app/_components/ui";
 import {
   addMonths,
+  dateKeyVN,
   formatMonthLabel,
   monthKeyVN,
   weekdayLabel,
 } from "@/lib/datetime";
+import { toggleSessionSelection } from "@/lib/schedule";
+import DashboardPageHeader from "@/app/dashboard/_components/page-header";
+import MonthNav from "@/app/dashboard/_components/month-nav";
 
 type SessionRule = {
   id: string;
@@ -23,18 +28,102 @@ type Payload = {
   month: string;
   employmentType: string;
   selfScheduled: boolean;
+  /// Nhân viên tự đăng ký và tháng này đang trong cửa sổ đăng ký.
   canEdit: boolean;
   openMonth: string | null;
   window: { opensOn: string; closesOn: string };
   sessions: SessionRule[];
   dates: string[];
   days: Record<string, string[]>;
+  offDays: string[];
+  adminEdited: string[];
+  /// Ngày đang có yêu cầu đổi ca chờ duyệt: khoá và tô vàng như admin đã sửa.
+  pendingDates: string[];
+  /// Ngày có lịch mà không bấm giờ: ô đang có ca tô đỏ.
+  absentDates: string[];
+  /// Ngày đi làm không đăng ký lịch (vẫn tính công): đầu cột tô vàng nhẹ.
+  unscheduledDates: string[];
 };
+
+function formatDateVN(dateKey: string) {
+  const [year, month, day] = dateKey.split("-");
+  return `${day}/${month}/${year}`;
+}
+
+/// Vì sao lưới đang ở chế độ chỉ xem; null nghĩa là được sửa.
+function readOnlyReason(data: Payload): string | null {
+  if (!data.selfScheduled) {
+    return "Nhân viên toàn thời gian dùng lịch cố định do hệ thống gán, không cần đăng ký. Cần đổi ca hoặc nghỉ một ngày thì gửi yêu cầu ở tab Chỉnh sửa ca.";
+  }
+  if (data.canEdit) return null;
+
+  const label = formatMonthLabel(data.month);
+  const range = `từ ${formatDateVN(data.window.opensOn)} đến hết ${formatDateVN(data.window.closesOn)}`;
+  if (dateKeyVN() < data.window.opensOn) {
+    return `Chưa mở đăng ký. Lịch ${label} nhận đăng ký ${range}.`;
+  }
+  return `Đã hết hạn đăng ký. Lịch ${label} chỉ nhận đăng ký ${range}; muốn đổi một ngày cụ thể thì gửi yêu cầu ở tab Chỉnh sửa ca.`;
+}
+
+/// Nhấn mạnh của một ô, ngoài chuyện đang có ca hay không:
+/// - "absent": có ca mà không bấm giờ → đỏ, chỉ tô ở ô đang có ca;
+/// - "pending": đang chờ duyệt đổi ca → vàng, khoá cả cột;
+/// - "edited": admin đã sửa → vàng, khoá cả cột;
+/// - null: ô thường.
+type CellHighlight = "absent" | "pending" | "edited" | null;
+
+const CELL_TITLES: Record<NonNullable<CellHighlight>, string> = {
+  absent: "Có lịch nhưng không chấm công",
+  pending: "Đang chờ duyệt yêu cầu đổi ca",
+  edited: "Admin đã sửa ngày này, liên hệ quản trị viên để đổi",
+};
+
+/// Màu ô đang có ca: sky cho ca làm, slate cho N; nhạt đi khi chỉ xem.
+const ACTIVE_CELL: Record<"sky" | "slate", { editable: string; readOnly: string }> = {
+  sky: {
+    editable: "bg-sky-600 text-white hover:bg-sky-700",
+    readOnly: "cursor-default bg-sky-100 text-sky-800",
+  },
+  slate: {
+    editable: "bg-slate-700 text-white hover:bg-slate-800",
+    readOnly: "cursor-default bg-slate-200 text-slate-800",
+  },
+};
+
+/// Ô trong lưới. Ô khoá (admin sửa / chờ duyệt) luôn nền vàng kể cả khi đang
+/// có ca, để nhân viên nhận ra ngay ô nào mình không đổi được; ô vắng nền đỏ.
+function cellClass(options: {
+  active: boolean;
+  highlight: CellHighlight;
+  readOnly: boolean;
+  tone: "sky" | "slate";
+}) {
+  const { active, highlight, readOnly, tone } = options;
+  const base = "h-8 w-full rounded-md text-xs font-medium transition-colors";
+
+  if (highlight === "absent") {
+    return `${base} cursor-default bg-rose-100 text-rose-700`;
+  }
+  if (highlight) {
+    return `${base} cursor-not-allowed bg-amber-100 text-amber-800 ${
+      active ? "ring-2 ring-inset ring-amber-400" : ""
+    }`;
+  }
+  if (!active) {
+    return `${base} ${
+      readOnly
+        ? "cursor-default bg-slate-50 text-slate-300"
+        : "bg-slate-50 text-slate-400 hover:bg-slate-100"
+    }`;
+  }
+  return `${base} ${ACTIVE_CELL[tone][readOnly ? "readOnly" : "editable"]}`;
+}
 
 export default function SchedulePage() {
   const [month, setMonth] = useState(() => addMonths(monthKeyVN(), 1));
   const [data, setData] = useState<Payload | null>(null);
   const [draft, setDraft] = useState<Record<string, string[]>>({});
+  const [offDraft, setOffDraft] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<{
@@ -50,6 +139,7 @@ export default function SchedulePage() {
       if (!response.ok) throw new Error(payload.error || "Không tải được lịch");
       setData(payload);
       setDraft(payload.days);
+      setOffDraft(new Set<string>(payload.offDays ?? []));
     } catch (error) {
       setMessage({
         type: "error",
@@ -64,17 +154,42 @@ export default function SchedulePage() {
     load(month);
   }, [month, load]);
 
-  function toggle(date: string, sessionId: string) {
-    if (!data?.canEdit) return;
+  /// Chọn ca theo quy tắc chung (CN loại trừ S/C, T cộng thêm).
+  /// Đăng ký ca thì bỏ đánh dấu nghỉ của ngày đó.
+  function toggle(date: string, rule: SessionRule) {
+    if (!data) return;
+    const codeById = new Map(data.sessions.map((item) => [item.id, item.code]));
+
+    setOffDraft((current) => {
+      if (!current.has(date)) return current;
+      const next = new Set(current);
+      next.delete(date);
+      return next;
+    });
+
     setDraft((current) => {
-      const existing = current[date] ?? [];
-      const next = existing.includes(sessionId)
-        ? existing.filter((id) => id !== sessionId)
-        : [...existing, sessionId];
+      const next = toggleSessionSelection(current[date] ?? [], rule.id, codeById);
       const copy = { ...current };
       if (next.length === 0) delete copy[date];
       else copy[date] = next;
       return copy;
+    });
+  }
+
+  /// Đăng ký nghỉ: xoá hết ca của ngày đó.
+  function toggleOff(date: string) {
+    setOffDraft((current) => {
+      const next = new Set(current);
+      if (next.has(date)) next.delete(date);
+      else {
+        next.add(date);
+        setDraft((days) => {
+          const copy = { ...days };
+          delete copy[date];
+          return copy;
+        });
+      }
+      return next;
     });
   }
 
@@ -85,7 +200,7 @@ export default function SchedulePage() {
       const response = await fetch("/api/schedule", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ month, days: draft }),
+        body: JSON.stringify({ month, days: draft, offDays: [...offDraft] }),
       });
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || "Không thể lưu");
@@ -104,6 +219,28 @@ export default function SchedulePage() {
     }
   }
 
+  const adminEdited = new Set(data?.adminEdited ?? []);
+  const pendingDates = new Set(data?.pendingDates ?? []);
+  const absentDates = new Set(data?.absentDates ?? []);
+  const unscheduledDates = new Set(data?.unscheduledDates ?? []);
+
+  /// Nhấn mạnh chung cho cả cột ngày (khoá không cho bấm). Chờ duyệt xét
+  /// trước admin đã sửa vì đó là việc đang treo, cần nhân viên để ý hơn.
+  function dayHighlight(date: string): CellHighlight {
+    if (pendingDates.has(date)) return "pending";
+    if (adminEdited.has(date)) return "edited";
+    return null;
+  }
+
+  /// Nhấn mạnh của từng ô ca: vắng chỉ tô ở ô đang có ca của ngày đó, và
+  /// thắng vàng vì "không đi" là sự thật đã xảy ra, còn vàng chỉ là ghi chú.
+  function cellHighlight(date: string, active: boolean): CellHighlight {
+    if (active && absentDates.has(date)) return "absent";
+    return dayHighlight(date);
+  }
+
+  const readOnly = data ? !data.canEdit : true;
+  const reason = data ? readOnlyReason(data) : null;
   const totalShifts = Object.values(draft).reduce(
     (sum, ids) => sum + ids.length,
     0
@@ -120,34 +257,10 @@ export default function SchedulePage() {
 
   return (
     <div className="space-y-4">
-      <div>
-        <h1 className="text-2xl font-semibold text-slate-900">Đăng ký lịch làm việc</h1>
-        <p className="mt-1 text-sm text-slate-600">
-          Chọn các ca bạn sẽ làm trong từng ngày của tháng.
-        </p>
-      </div>
-
-      <div className="flex items-center justify-center gap-3">
-        <Button
-          variant="secondary"
-          size="sm"
-          onClick={() => setMonth(addMonths(month, -1))}
-          aria-label="Tháng trước"
-        >
-          <ChevronLeft size={16} aria-hidden="true" />
-        </Button>
-        <span className="min-w-40 text-center text-base font-semibold text-slate-900">
-          {formatMonthLabel(month)}
-        </span>
-        <Button
-          variant="secondary"
-          size="sm"
-          onClick={() => setMonth(addMonths(month, 1))}
-          aria-label="Tháng sau"
-        >
-          <ChevronRight size={16} aria-hidden="true" />
-        </Button>
-      </div>
+      <DashboardPageHeader
+        title="Đăng ký lịch làm việc"
+        actions={<MonthNav month={month} onChange={setMonth} />}
+      />
 
       {message && (
         <Message type={message.type} onDismiss={() => setMessage(null)}>
@@ -158,125 +271,203 @@ export default function SchedulePage() {
       {loading ? (
         <div className="h-96 animate-pulse rounded-xl bg-slate-200" aria-hidden="true" />
       ) : data ? (
-        !data.selfScheduled ? (
-          <Card className="p-5">
-            <div className="flex items-start gap-3">
-              <CalendarDays
-                size={20}
-                aria-hidden="true"
-                className="mt-0.5 shrink-0 text-sky-600"
-              />
-              <div>
-                <p className="font-medium text-slate-900">
-                  Lịch của bạn là lịch cố định
-                </p>
-                <p className="mt-1 text-sm text-slate-600">
-                  Nhân viên toàn thời gian làm từ thứ Hai đến thứ Sáu, hệ thống tự
-                  gán ca nên bạn không cần đăng ký. Xem lịch cụ thể ở mục Lịch sử.
-                </p>
-              </div>
-            </div>
-          </Card>
-        ) : (
-          <>
-            {!data.canEdit && (
-              <Message type="info">
-                Ngoài hạn đăng ký cho {formatMonthLabel(month)}. Lịch tháng này chỉ
-                nhận từ {data.window.opensOn} đến {data.window.closesOn}.
-                {data.openMonth && (
+        <>
+          {reason && <Message type="info">{reason}</Message>}
+
+          <Card className="px-4 py-3">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="text-sm text-slate-600">
+                <span className="font-semibold text-slate-900">{totalShifts}</span>{" "}
+                ca
+                {offDraft.size > 0 && (
                   <>
-                    {" "}
-                    Hiện đang mở đăng ký cho {formatMonthLabel(data.openMonth)}.{" "}
-                    <button
-                      className="font-medium underline"
-                      onClick={() => setMonth(data.openMonth!)}
-                    >
-                      Chuyển sang tháng đó
-                    </button>
+                    {" · "}
+                    <span className="font-semibold text-slate-900">
+                      {offDraft.size}
+                    </span>{" "}
+                    ngày nghỉ
                   </>
                 )}
-              </Message>
-            )}
-
-            <Card className="p-4">
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <div className="text-sm text-slate-600">
-                  Đã chọn{" "}
-                  <span className="font-semibold text-slate-900">{totalShifts}</span> ca
-                  {plannedHours > 0 && (
-                    <>
-                      {" "}
-                      · dự kiến{" "}
-                      <span className="font-semibold text-slate-900">
-                        {Math.round(plannedHours * 10) / 10}h
-                      </span>
-                    </>
-                  )}
-                </div>
-                <Button onClick={save} disabled={!data.canEdit || saving}>
+                {plannedHours > 0 && (
+                  <>
+                    {" · "}
+                    <span className="font-semibold text-slate-900">
+                      {Math.round(plannedHours * 10) / 10}h
+                    </span>{" "}
+                    dự kiến
+                  </>
+                )}
+              </div>
+              {readOnly ? (
+                <span className="inline-flex items-center gap-1.5 text-sm text-slate-500">
+                  <Eye size={16} aria-hidden="true" />
+                  Chỉ xem
+                </span>
+              ) : (
+                <Button onClick={save} disabled={saving}>
                   <Save size={16} aria-hidden="true" />
                   {saving ? "Đang lưu..." : "Lưu lịch"}
                 </Button>
-              </div>
-            </Card>
+              )}
+            </div>
+          </Card>
 
-            <Card className="divide-y divide-slate-100">
-              {data.dates.map((date) => {
-                const selected = draft[date] ?? [];
-                const weekend = ["T7", "CN"].includes(weekdayLabel(date));
-                return (
-                  <div
-                    key={date}
-                    className="flex items-center justify-between gap-3 px-4 py-2.5"
-                  >
-                    <span className="w-24 shrink-0 text-sm">
-                      <span className="font-medium text-slate-900">
-                        {date.slice(8, 10)}/{date.slice(5, 7)}
-                      </span>{" "}
-                      <span className={weekend ? "text-rose-600" : "text-slate-400"}>
-                        {weekdayLabel(date)}
-                      </span>
-                    </span>
-                    <div className="flex flex-wrap justify-end gap-1.5">
-                      {data.sessions.map((rule) => {
-                        const active = selected.includes(rule.id);
-                        return (
-                          <button
-                            key={rule.id}
-                            type="button"
-                            onClick={() => toggle(date, rule.id)}
-                            aria-pressed={active}
-                            disabled={!data.canEdit}
-                            title={`${rule.name} ${rule.workStart}–${rule.workEnd}`}
-                            className={`rounded-lg px-2.5 py-1.5 text-xs font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
-                              active
-                                ? "bg-sky-600 text-white"
-                                : "bg-white text-slate-600 ring-1 ring-slate-200 hover:bg-slate-100"
-                            }`}
-                          >
-                            {rule.code}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-                );
-              })}
-            </Card>
-
-            <Card className="p-4">
-              <p className="mb-2 text-sm font-medium text-slate-900">Chú thích ca</p>
-              <div className="flex flex-wrap gap-2">
+          {/* Lưới đăng ký: hàng = ca, cột = ngày trong tháng */}
+          <Card className="overflow-x-auto">
+            <table className="w-full border-collapse text-sm">
+              <thead>
+                <tr className="border-b border-slate-200 bg-slate-50">
+                  <th className="sticky left-0 z-10 min-w-40 bg-slate-50 px-3 py-2 text-left font-semibold text-slate-900">
+                    Ca
+                  </th>
+                  {data.dates.map((date) => {
+                    const weekend = ["T7", "CN"].includes(weekdayLabel(date));
+                    // Đi làm mà không có ca nào để tô, nên nhấn ở đầu cột.
+                    const unscheduled = unscheduledDates.has(date);
+                    return (
+                      <th
+                        key={date}
+                        title={
+                          unscheduled
+                            ? "Đi làm không đăng ký lịch, vẫn tính công"
+                            : undefined
+                        }
+                        className={`min-w-12 px-1.5 py-2 text-center font-medium ${
+                          weekend ? "text-rose-600" : "text-slate-500"
+                        } ${unscheduled ? "bg-amber-50" : ""}`}
+                      >
+                        <div>{date.slice(8, 10)}</div>
+                        <div className="text-xs font-normal text-slate-400">
+                          {weekdayLabel(date)}
+                        </div>
+                      </th>
+                    );
+                  })}
+                </tr>
+              </thead>
+              <tbody>
                 {data.sessions.map((rule) => (
-                  <Badge key={rule.id}>
-                    {rule.code} · {rule.name} {rule.workStart}–{rule.workEnd} (
-                    {rule.minHours}h)
-                  </Badge>
+                  <tr key={rule.id} className="border-b border-slate-100">
+                    <td className="sticky left-0 z-10 bg-white px-3 py-2">
+                      <div className="font-medium text-slate-900">{rule.code}</div>
+                      <div className="text-xs text-slate-500">
+                        {rule.workStart}–{rule.workEnd} ({rule.minHours}h)
+                      </div>
+                    </td>
+                    {data.dates.map((date) => {
+                      const active = (draft[date] ?? []).includes(rule.id);
+                      const highlight = cellHighlight(date, active);
+                      return (
+                        <td key={date} className="p-1 text-center">
+                          <button
+                            type="button"
+                            onClick={() => toggle(date, rule)}
+                            disabled={readOnly || dayHighlight(date) !== null}
+                            aria-pressed={active}
+                            aria-label={`${rule.code} ngày ${date}`}
+                            title={highlight ? CELL_TITLES[highlight] : undefined}
+                            className={cellClass({ active, highlight, readOnly, tone: "sky" })}
+                          >
+                            {active ? rule.code : ""}
+                          </button>
+                        </td>
+                      );
+                    })}
+                  </tr>
                 ))}
+
+                {/* Nghỉ: chọn N là ngày đó không đăng ký ca nào */}
+                <tr>
+                  <td className="sticky left-0 z-10 bg-white px-3 py-2">
+                    <div className="font-medium text-slate-900">N</div>
+                    <div className="text-xs text-slate-500">Nghỉ</div>
+                  </td>
+                  {data.dates.map((date) => {
+                    const active = offDraft.has(date);
+                    // Ngày nghỉ N không bao giờ bị tính vắng nên hàng N chỉ
+                    // cần nhấn mạnh chung của cột.
+                    const highlight = dayHighlight(date);
+                    return (
+                      <td key={date} className="p-1 text-center">
+                        <button
+                          type="button"
+                          onClick={() => toggleOff(date)}
+                          disabled={readOnly || highlight !== null}
+                          aria-pressed={active}
+                          aria-label={`Nghỉ ngày ${date}`}
+                          title={highlight ? CELL_TITLES[highlight] : undefined}
+                          className={cellClass({ active, highlight, readOnly, tone: "slate" })}
+                        >
+                          {active ? "N" : ""}
+                        </button>
+                      </td>
+                    );
+                  })}
+                </tr>
+              </tbody>
+            </table>
+          </Card>
+
+          <Card className="px-4 py-3">
+            <p className="mb-2 text-sm font-medium text-slate-900">Chú thích</p>
+            <dl className="space-y-1.5 text-sm">
+              {data.sessions.map((rule) => (
+                <div key={rule.id} className="flex items-baseline gap-2">
+                  <dt className="w-8 shrink-0 font-semibold text-slate-900">
+                    {rule.code}
+                  </dt>
+                  <dd className="text-slate-600">
+                    {rule.name} · {rule.workStart}–{rule.workEnd} ({rule.minHours}h)
+                  </dd>
+                </div>
+              ))}
+              <div className="flex items-baseline gap-2">
+                <dt className="w-8 shrink-0 font-semibold text-slate-900">N</dt>
+                <dd className="text-slate-600">Nghỉ · không tính công</dd>
               </div>
-            </Card>
-          </>
-        )
+              <div className="flex items-baseline gap-2">
+                <dt className="w-8 shrink-0 font-semibold text-slate-900">O</dt>
+                <dd className="text-slate-600">Ốm · do admin chấm</dd>
+              </div>
+              {/* Chú giải màu: ô mẫu thay cho mã ca */}
+              <div className="flex items-center gap-2">
+                <dt className="w-8 shrink-0">
+                  <span className="sr-only">Ô vàng</span>
+                  <span
+                    aria-hidden="true"
+                    className="block h-4 w-8 rounded-sm bg-amber-100 ring-1 ring-inset ring-amber-300"
+                  />
+                </dt>
+                <dd className="text-slate-600">
+                  Vàng · admin đã sửa hoặc đang chờ duyệt đổi ca — ô bị khoá.
+                  Đầu cột vàng: đi làm không đăng ký lịch, vẫn tính công
+                </dd>
+              </div>
+              <div className="flex items-center gap-2">
+                <dt className="w-8 shrink-0">
+                  <span className="sr-only">Ô đỏ</span>
+                  <span
+                    aria-hidden="true"
+                    className="block h-4 w-8 rounded-sm bg-rose-100 ring-1 ring-inset ring-rose-300"
+                  />
+                </dt>
+                <dd className="text-slate-600">
+                  Đỏ · có lịch mà không đi (vắng), khác với nghỉ N đã xin
+                </dd>
+              </div>
+            </dl>
+            <p className="mt-3 border-t border-slate-100 pt-3 text-sm text-slate-600">
+              Muốn đổi ca đã đăng ký hoặc báo làm khác lịch: vào tab{" "}
+              <Link
+                href="/dashboard/shift-requests"
+                className="font-medium text-sky-700 hover:underline"
+              >
+                Chỉnh sửa ca
+              </Link>
+              .
+            </p>
+          </Card>
+        </>
       ) : null}
     </div>
   );

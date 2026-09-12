@@ -1,12 +1,64 @@
-import { query } from "@/lib/db";
-import { SessionRule } from "@/lib/attendance-rules";
-import { fullTimeWorkingDates, isSelfScheduled } from "@/lib/schedule";
-import { WorkSessionRow } from "@/lib/types";
+import { query, queryOne } from "@/lib/db";
+import {
+  LunchBreak,
+  parseLunchBreak,
+  SessionRule,
+} from "@/lib/attendance-rules";
+import {
+  DEFAULT_WEEKLY_OFF_DAYS,
+  fullTimeWorkingDates,
+  isSelfScheduled,
+  parseRegistrationWindow,
+  RegistrationWindowConfig,
+} from "@/lib/schedule";
+import { listDateRange } from "@/lib/datetime";
+import { HolidayRow, WorkSessionRow } from "@/lib/types";
+
 
 export type ScheduleMap = Map<string, SessionRule[]>;
 
+export type DayMark = {
+  userId: string;
+  date: string;
+  leaveCode: "N" | "O" | null;
+  sessionIds: string[] | null;
+  isAdminEdit: boolean;
+};
+
+/// Đánh dấu ngày (nghỉ N / ốm O / admin đổi ca) của một nhóm nhân viên trong
+/// khoảng ngày. Khoá của map là `userId|date`.
+export async function getDayMarks(
+  userIds: string[],
+  startDate: string,
+  endDate: string
+): Promise<Map<string, DayMark>> {
+  if (userIds.length === 0) return new Map();
+  const rows = await query<DayMark>(
+    `SELECT "userId", "date", "leaveCode", "sessionIds", "isAdminEdit"
+       FROM "DayMark"
+      WHERE "userId" = ANY($1::text[]) AND "date" BETWEEN $2 AND $3`,
+    [userIds, startDate, endDate]
+  );
+  return new Map(rows.map((row) => [`${row.userId}|${row.date}`, row]));
+}
+
+/// Ca thực tế của một ngày sau khi áp đánh dấu: admin đổi ca thì lấy ca mới,
+/// ngày nghỉ/ốm thì không còn ca nào.
+export function applyDayMark(
+  scheduled: SessionRule[],
+  mark: DayMark | undefined,
+  ruleById: Map<string, SessionRule>
+): SessionRule[] {
+  if (!mark) return scheduled;
+  if (mark.leaveCode) return [];
+  if (!mark.sessionIds) return scheduled;
+  return mark.sessionIds
+    .map((id) => ruleById.get(id))
+    .filter((rule): rule is SessionRule => Boolean(rule));
+}
+
 const SESSION_COLUMNS = `
-  "id", "code", "name", "checkInStart", "checkInEnd", "workStart", "workEnd",
+  "id", "code", "name", "workStart", "workEnd",
   "minHours", "isDefaultFull", "isActive", "sortOrder"
 `;
 
@@ -36,46 +88,114 @@ export function pickFullTimeSessions(rules: SessionRule[]): SessionRule[] {
   ];
 }
 
+/// Bung mọi đợt nghỉ lễ (mỗi đợt trải từ startDate tới endDate) thành
+/// map ngày -> tên, để việc chấm công tra cứu từng ngày một.
 export async function getHolidayMap(
   startDate: string,
   endDate: string
 ): Promise<Map<string, string>> {
-  const rows = await query<{ date: string; name: string }>(
-    `SELECT "date", "name" FROM "Holiday" WHERE "date" BETWEEN $1 AND $2`,
+  const rows = await query<Pick<HolidayRow, "startDate" | "endDate" | "name">>(
+    `SELECT "startDate", "endDate", "name" FROM "Holiday"
+      WHERE "startDate" <= $2 AND "endDate" >= $1`,
     [startDate, endDate]
   );
-  return new Map(rows.map((row) => [row.date, row.name]));
+
+  const map = new Map<string, string>();
+  for (const row of rows) {
+    const from = row.startDate > startDate ? row.startDate : startDate;
+    const to = row.endDate < endDate ? row.endDate : endDate;
+    for (const date of listDateRange(from, to)) {
+      map.set(date, row.name);
+    }
+  }
+  return map;
+}
+
+/// Ngày nghỉ cố định hằng tuần (0 = CN ... 6 = T7), admin chỉnh trong
+/// trang Ngày lễ. Chưa cấu hình thì mặc định nghỉ Thứ 7 + Chủ nhật.
+export async function getWeeklyOffDays(): Promise<number[]> {
+  const setting = await queryOne<{ value: string }>(
+    `SELECT "value" FROM "Settings" WHERE "key" = 'weekly_off_days'`
+  );
+  if (!setting) return [...DEFAULT_WEEKLY_OFF_DAYS];
+  const days = setting.value
+    .split(",")
+    .map((part) => Number(part.trim()))
+    .filter((day) => Number.isInteger(day) && day >= 0 && day <= 6);
+  return [...new Set(days)];
+}
+
+/// Những ngày đang có yêu cầu đổi ca chờ duyệt của một nhóm nhân viên, khoá
+/// `userId|date`. Lưới lịch và bảng công tô vàng các ngày này để cả admin lẫn
+/// nhân viên biết ngày đó đang treo.
+export async function getPendingShiftRequestDates(
+  userIds: string[],
+  startDate: string,
+  endDate: string
+): Promise<Set<string>> {
+  if (userIds.length === 0) return new Set();
+  const rows = await query<{ userId: string; date: string }>(
+    `SELECT "userId", "date" FROM "ShiftChangeRequest"
+      WHERE "status" = 'pending'
+        AND "userId" = ANY($1::text[]) AND "date" BETWEEN $2 AND $3`,
+    [userIds, startDate, endDate]
+  );
+  return new Set(rows.map((row) => `${row.userId}|${row.date}`));
+}
+
+/// Cửa sổ đăng ký lịch tháng sau (ngày mở / ngày đóng trong tháng trước đó),
+/// admin đặt ở trang Lịch làm việc. Chưa đặt thì dùng mặc định 20 → hết tháng.
+export async function getRegistrationWindowConfig(): Promise<RegistrationWindowConfig> {
+  const setting = await queryOne<{ value: string }>(
+    `SELECT "value" FROM "Settings" WHERE "key" = 'schedule_registration_window'`
+  );
+  return parseRegistrationWindow(setting?.value);
+}
+
+/// Giờ nghỉ trưa chung của công ty, admin đặt ở trang Ca làm việc. Chưa đặt
+/// hoặc đã tắt thì giờ công không trừ gì.
+export async function getLunchBreak(): Promise<LunchBreak | null> {
+  const setting = await queryOne<{ value: string }>(
+    `SELECT "value" FROM "Settings" WHERE "key" = 'lunch_break'`
+  );
+  return parseLunchBreak(setting?.value);
 }
 
 type ScheduledUser = { id: string; employmentType: string };
 
 /// Lịch làm việc thực tế của từng nhân viên trong tháng.
-/// full-time: T2–T6 với ca mặc định, sinh tự động, không cần đăng ký.
+/// full-time: tự sinh cho mọi ngày không phải ngày nghỉ hằng tuần, với ca mặc
+/// định; nếu admin đã xếp lịch riêng cho tháng đó thì dùng lịch admin xếp.
 /// part-time & intern: đúng những ca đã đăng ký.
 export async function resolveMonthSchedules(
   users: ScheduledUser[],
   month: string,
   rules: SessionRule[]
 ): Promise<Map<string, ScheduleMap>> {
+  const result = new Map<string, ScheduleMap>();
+  if (users.length === 0) return result;
+
   const ruleById = new Map(rules.map((rule) => [rule.id, rule]));
   const defaultSessions = pickFullTimeSessions(rules);
-  const fullTimeDates = fullTimeWorkingDates(month);
+  const fullTimeDates = fullTimeWorkingDates(month, await getWeeklyOffDays());
+  const userIds = users.map((user) => user.id);
 
-  const selfScheduledIds = users
-    .filter((user) => isSelfScheduled(user.employmentType))
-    .map((user) => user.id);
+  const [registrations, registeredDays] = await Promise.all([
+    query<{ userId: string }>(
+      `SELECT "userId" FROM "ScheduleRegistration"
+        WHERE "month" = $1 AND "userId" = ANY($2::text[])`,
+      [month, userIds]
+    ),
+    query<{ userId: string; date: string; sessionId: string }>(
+      `SELECT r."userId", d."date", d."sessionId"
+         FROM "ScheduleDay" d
+         JOIN "ScheduleRegistration" r ON r."id" = d."registrationId"
+        WHERE r."month" = $1 AND r."userId" = ANY($2::text[])`,
+      [month, userIds]
+    ),
+  ]);
 
-  const registeredDays =
-    selfScheduledIds.length > 0
-      ? await query<{ userId: string; date: string; sessionId: string }>(
-          `SELECT r."userId", d."date", d."sessionId"
-             FROM "ScheduleDay" d
-             JOIN "ScheduleRegistration" r ON r."id" = d."registrationId"
-            WHERE r."month" = $1 AND r."userId" = ANY($2::text[])`,
-          [month, selfScheduledIds]
-        )
-      : [];
-
+  const registeredIds = new Set(registrations.map((row) => row.userId));
   const daysByUser = new Map<string, typeof registeredDays>();
   for (const row of registeredDays) {
     const list = daysByUser.get(row.userId) ?? [];
@@ -83,12 +203,13 @@ export async function resolveMonthSchedules(
     daysByUser.set(row.userId, list);
   }
 
-  const result = new Map<string, ScheduleMap>();
-
   for (const user of users) {
     const schedule: ScheduleMap = new Map();
+    // full-time chỉ dùng lịch đăng ký khi admin đã xếp riêng cho tháng này.
+    const useRegistration =
+      isSelfScheduled(user.employmentType) || registeredIds.has(user.id);
 
-    if (isSelfScheduled(user.employmentType)) {
+    if (useRegistration) {
       for (const day of daysByUser.get(user.id) ?? []) {
         const rule = ruleById.get(day.sessionId);
         // Ca đã bị admin xoá khỏi danh mục thì không còn dùng để tính công.

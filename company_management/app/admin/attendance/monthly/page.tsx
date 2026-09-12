@@ -2,7 +2,13 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { ChevronLeft, ChevronRight, Download } from "lucide-react";
+import {
+  AlarmClockOff,
+  ChevronLeft,
+  ChevronRight,
+  ClipboardCheck,
+  Download,
+} from "lucide-react";
 import PageHeader from "../../_components/page-header";
 import {
   Button,
@@ -14,14 +20,18 @@ import {
 import { addMonths, formatMonthLabel, monthKeyVN, weekdayLabel } from "@/lib/datetime";
 import type { DayStatus } from "@/lib/attendance-rules";
 import { DAY_STATUS_CELL, LEGEND } from "@/app/_components/status-styles";
+import DayMarkMenu, { type MarkChoice } from "./day-mark-menu";
 
 type DayCell = {
   status: DayStatus;
   label: string;
+  adminEdited: boolean;
   codes: string[];
   workedHours: number;
   lateMinutes: number;
   outsideRadius: boolean;
+  /// Đang có yêu cầu đổi ca chờ duyệt: ô tô vàng dù ngày còn trống.
+  pendingRequest: boolean;
 };
 
 type Row = {
@@ -37,6 +47,7 @@ type Row = {
   passedDays: number;
   lateDays: number;
   absentDays: number;
+  missedCheckoutDays: number;
   totalHours: number;
   sessions: Record<string, number>;
 };
@@ -54,6 +65,10 @@ export default function MonthlyAttendancePage() {
   const [data, setData] = useState<Payload | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [editing, setEditing] = useState<{ userId: string; date: string } | null>(
+    null
+  );
+  const [saving, setSaving] = useState(false);
 
   const load = useCallback(async (target: string) => {
     setLoading(true);
@@ -76,15 +91,53 @@ export default function MonthlyAttendancePage() {
     load(month);
   }, [month, load]);
 
+  /// Admin chấm lại một ô rồi tải lại bảng để mọi con số khớp với đánh dấu mới.
+  async function markDay(userId: string, date: string, choice: MarkChoice) {
+    setSaving(true);
+    setError(null);
+    try {
+      const body =
+        choice.kind === "session"
+          ? { userId, date, leaveCode: null, sessionIds: [choice.sessionId] }
+          : choice.kind === "leave"
+            ? { userId, date, leaveCode: choice.code, sessionIds: null }
+            : { userId, date, leaveCode: null, sessionIds: null };
+
+      const response = await fetch("/api/admin/attendance/day-mark", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || "Không lưu được");
+      setEditing(null);
+      await load(month);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Không lưu được");
+    } finally {
+      setSaving(false);
+    }
+  }
+
   const totals = data?.summary.reduce(
     (acc, row) => ({
       passed: acc.passed + row.passedDays,
       late: acc.late + row.lateDays,
       absent: acc.absent + row.absentDays,
+      missedCheckout: acc.missedCheckout + row.missedCheckoutDays,
       hours: acc.hours + row.totalHours,
     }),
-    { passed: 0, late: 0, absent: 0, hours: 0 }
+    { passed: 0, late: 0, absent: 0, missedCheckout: 0, hours: 0 }
   );
+
+  /// Số ô đang chờ duyệt đổi ca trong tháng, để nhắc admin sang trang duyệt.
+  const pendingRequests =
+    data?.summary.reduce(
+      (count, row) =>
+        count +
+        Object.values(row.days).filter((cell) => cell.pendingRequest).length,
+      0
+    ) ?? 0;
 
   return (
     <>
@@ -107,6 +160,38 @@ export default function MonthlyAttendancePage() {
           </Button>
         }
       />
+
+      {totals && totals.missedCheckout > 0 && (
+        <Link
+          href="/admin/missed-checkout"
+          className="mb-4 flex items-center justify-between gap-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 hover:bg-amber-100"
+        >
+          <span className="flex items-center gap-2">
+            <AlarmClockOff size={16} aria-hidden="true" />
+            <span>
+              <span className="font-semibold">{totals.missedCheckout}</span> ca quên
+              checkout trong {formatMonthLabel(month)}
+            </span>
+          </span>
+          <span className="font-medium">Xem danh sách</span>
+        </Link>
+      )}
+
+      {pendingRequests > 0 && (
+        <Link
+          href="/admin/shift-requests"
+          className="mb-4 flex items-center justify-between gap-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 hover:bg-amber-100"
+        >
+          <span className="flex items-center gap-2">
+            <ClipboardCheck size={16} aria-hidden="true" />
+            <span>
+              <span className="font-semibold">{pendingRequests}</span> yêu cầu đổi
+              ca đang chờ duyệt trong {formatMonthLabel(month)}
+            </span>
+          </span>
+          <span className="font-medium">Duyệt ngay</span>
+        </Link>
+      )}
 
       <div className="mb-6 flex items-center justify-center gap-3">
         <Button
@@ -145,6 +230,14 @@ export default function MonthlyAttendancePage() {
             <span className="text-slate-600">{item.label}</span>
           </span>
         ))}
+        <span className="flex items-center gap-1.5">
+          <span className="h-3.5 w-3.5 rounded-sm bg-amber-100" />
+          <span className="text-slate-600">Admin đã sửa</span>
+        </span>
+        <span className="flex items-center gap-1.5">
+          <span className="h-3.5 w-3.5 rounded-sm bg-amber-100" />
+          <span className="text-slate-600">Chờ duyệt đổi ca</span>
+        </span>
       </div>
 
       {loading ? (
@@ -214,21 +307,55 @@ export default function MonthlyAttendancePage() {
                     {data.dates.map((date) => {
                       const cell = row.days[date];
                       const status: DayStatus = cell?.status ?? "off";
+                      const open =
+                        editing?.userId === row.user.id && editing?.date === date;
+                      const edited = cell?.adminEdited ?? false;
+                      const pending = cell?.pendingRequest ?? false;
+                      // Admin đã sửa hoặc đang chờ duyệt đều tô vàng "cần để ý",
+                      // đè lên màu trạng thái thường của ô.
+                      const cellClass =
+                        edited || pending ? "bg-amber-100" : DAY_STATUS_CELL[status];
                       return (
                         <td
                           key={date}
-                          title={
-                            cell
-                              ? `${date} · ${cell.workedHours}h${
-                                  cell.lateMinutes
-                                    ? ` · muộn ${cell.lateMinutes} phút`
-                                    : ""
-                                }${cell.outsideRadius ? " · ngoài bán kính" : ""}`
-                              : undefined
-                          }
-                          className={`px-1 py-2 text-center font-medium ${DAY_STATUS_CELL[status]}`}
+                          className={`relative p-0 text-center font-medium ${cellClass}`}
                         >
-                          {cell?.label ?? ""}
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setEditing(
+                                open ? null : { userId: row.user.id, date }
+                              )
+                            }
+                            aria-haspopup="menu"
+                            aria-expanded={open}
+                            title={
+                              (cell
+                                ? `${date} · ${cell.workedHours}h${
+                                    cell.lateMinutes
+                                      ? ` · muộn ${cell.lateMinutes} phút`
+                                      : ""
+                                  }${cell.outsideRadius ? " · ngoài bán kính" : ""}`
+                                : date) +
+                              (edited ? " · admin đã sửa" : "") +
+                              (pending ? " · chờ duyệt đổi ca" : "")
+                            }
+                            className={`h-full w-full px-1 py-2 hover:ring-2 hover:ring-inset hover:ring-sky-500 ${
+                              open ? "ring-2 ring-inset ring-sky-600" : ""
+                            }`}
+                          >
+                            {cell?.label ?? ""}
+                          </button>
+                          {open && (
+                            <DayMarkMenu
+                              sessions={data.sessions}
+                              saving={saving}
+                              onPick={(choice) =>
+                                markDay(row.user.id, date, choice)
+                              }
+                              onClose={() => setEditing(null)}
+                            />
+                          )}
                         </td>
                       );
                     })}

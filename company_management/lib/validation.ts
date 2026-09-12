@@ -4,18 +4,21 @@
 
 export const TIME_PATTERN = /^([01]\d|2[0-3]):[0-5]\d$/;
 
+/// Giờ nghỉ trưa mặc định (Settings `lunch_break`, dạng "HH:MM-HH:MM").
+export const DEFAULT_LUNCH_BREAK = "12:00-13:30";
+
+/// Bộ ca mặc định. `minHours` tính theo giờ làm thực (đã trừ nghỉ trưa) và nới
+/// 30 phút so với độ dài ca, để ra sớm một chút vẫn đủ công.
 export const DEFAULT_WORK_SESSIONS = [
-  { code: "S", name: "Ca sáng", checkInStart: "07:00", checkInEnd: "09:00", workStart: "08:00", workEnd: "12:00", minHours: 4, sortOrder: 1, isDefaultFull: false },
-  { code: "C", name: "Ca chiều", checkInStart: "12:00", checkInEnd: "14:00", workStart: "13:00", workEnd: "17:00", minHours: 4, sortOrder: 2, isDefaultFull: false },
-  { code: "T", name: "Tăng ca", checkInStart: "17:00", checkInEnd: "19:00", workStart: "18:00", workEnd: "21:00", minHours: 3, sortOrder: 3, isDefaultFull: false },
-  { code: "HC", name: "Hành chính", checkInStart: "07:00", checkInEnd: "09:00", workStart: "08:00", workEnd: "17:00", minHours: 8, sortOrder: 4, isDefaultFull: true },
+  { code: "S", name: "Ca sáng", workStart: "08:30", workEnd: "12:00", minHours: 3, sortOrder: 1, isDefaultFull: false },
+  { code: "C", name: "Ca chiều", workStart: "13:30", workEnd: "17:30", minHours: 3.5, sortOrder: 2, isDefaultFull: false },
+  { code: "CN", name: "Cả ngày", workStart: "08:30", workEnd: "17:30", minHours: 7, sortOrder: 3, isDefaultFull: true },
+  { code: "T", name: "Tăng ca", workStart: "18:00", workEnd: "21:00", minHours: 2.5, sortOrder: 4, isDefaultFull: false },
 ];
 
 export type NormalizedSession = {
   code: string;
   name: string;
-  checkInStart: string;
-  checkInEnd: string;
   workStart: string;
   workEnd: string;
   minHours: number;
@@ -28,8 +31,6 @@ export function normalizeSession(body: Record<string, unknown>): NormalizedSessi
   return {
     code: String(body.code || "").trim().toUpperCase(),
     name: String(body.name || "").trim(),
-    checkInStart: String(body.checkInStart || ""),
-    checkInEnd: String(body.checkInEnd || ""),
     workStart: String(body.workStart || ""),
     workEnd: String(body.workEnd || ""),
     minHours: Number(body.minHours),
@@ -43,17 +44,9 @@ export function validateSession(session: NormalizedSession): string | null {
   if (!session.code || !session.name) return "Vui lòng nhập mã và tên ca";
   if (session.code.length > 8) return "Mã ca tối đa 8 ký tự";
 
-  const times = [
-    session.checkInStart,
-    session.checkInEnd,
-    session.workStart,
-    session.workEnd,
-  ];
+  const times = [session.workStart, session.workEnd];
   if (times.some((time) => !TIME_PATTERN.test(time))) {
     return "Khung giờ phải theo dạng HH:MM";
-  }
-  if (session.checkInStart >= session.checkInEnd) {
-    return "Giờ kết thúc nhận check-in phải sau giờ bắt đầu";
   }
   if (session.workStart >= session.workEnd) {
     return "Giờ tan ca phải sau giờ vào ca";

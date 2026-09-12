@@ -1,13 +1,16 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
-import { ShieldCheck } from "lucide-react";
 import { Button, Card, Field, Input, Message } from "@/app/_components/ui";
+import {
+  CompanyLogo,
+  useCompanyBranding,
+} from "@/app/_components/company-brand";
 
 export default function AdminLoginPage() {
-  const router = useRouter();
+  const { name: companyName, logo } = useCompanyBranding();
   const [username, setUsername] = useState("");
+
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -24,8 +27,10 @@ export default function AdminLoginPage() {
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "Đăng nhập thất bại");
-      router.push("/admin/attendance");
-      router.refresh();
+      // Điều hướng cả trang thay vì client-side: middleware đọc cookie mới ngay,
+      // và nếu bị đẩy ngược về đây thì form được dựng lại chứ không kẹt ở
+      // trạng thái "Đang đăng nhập...".
+      window.location.assign("/admin/attendance");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Đăng nhập thất bại");
       setLoading(false);
@@ -37,14 +42,15 @@ export default function AdminLoginPage() {
       <div className="w-full max-w-md">
         <Card className="p-8">
           <div className="mb-6 flex flex-col items-center text-center">
-            <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-xl bg-sky-600 text-white">
-              <ShieldCheck size={24} aria-hidden="true" />
+            <div className="mb-3">
+              <CompanyLogo logo={logo} size="lg" />
             </div>
             <h1 className="text-2xl font-semibold text-slate-900">Quản trị viên</h1>
             <p className="mt-1 text-sm text-slate-600">
-              Khu vực dành cho người quản lý chấm công
+              {companyName ? `${companyName} · ` : ""}Khu vực dành cho người quản lý chấm công
             </p>
           </div>
+
 
           <form onSubmit={handleSubmit} className="space-y-4">
             <Field label="Tài khoản" required>

@@ -2,7 +2,14 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { CalendarSearch, KeyRound, Pencil, Plus, UserMinus } from "lucide-react";
+import {
+  CalendarSearch,
+  KeyRound,
+  Pencil,
+  Plus,
+  Trash2,
+  UserMinus,
+} from "lucide-react";
 import PageHeader from "../_components/page-header";
 import {
   Badge,
@@ -186,6 +193,28 @@ export default function UsersPage() {
     load();
   }
 
+  /// Xoá hẳn chỉ dành cho nhân viên đã ngừng hoạt động và chưa có ngày công
+  /// nào (server kiểm tra lại và trả 409 nếu đã có công).
+  async function hardDelete(user: Employee) {
+    if (
+      !confirm(
+        `Xoá hẳn ${user.name}? Chỉ xoá được khi nhân viên chưa có ngày công nào. Không hoàn tác được.`
+      )
+    ) {
+      return;
+    }
+    const response = await fetch(`/api/users/${user.id}?hard=true`, {
+      method: "DELETE",
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      setMessage({ type: "error", text: data.error || "Không thể xoá" });
+      return;
+    }
+    setMessage({ type: "success", text: `Đã xoá hẳn ${user.name}` });
+    load();
+  }
+
   return (
     <>
       <PageHeader
@@ -299,7 +328,7 @@ export default function UsersPage() {
                       >
                         <KeyRound size={14} aria-hidden="true" />
                       </Button>
-                      {user.isActive && (
+                      {user.isActive ? (
                         <Button
                           variant="danger"
                           size="sm"
@@ -307,6 +336,16 @@ export default function UsersPage() {
                           aria-label={`Ngừng hoạt động ${user.name}`}
                         >
                           <UserMinus size={14} aria-hidden="true" />
+                        </Button>
+                      ) : (
+                        <Button
+                          variant="danger"
+                          size="sm"
+                          onClick={() => hardDelete(user)}
+                          aria-label={`Xoá hẳn ${user.name}`}
+                          title="Chỉ xoá được khi chưa có ngày công"
+                        >
+                          <Trash2 size={14} aria-hidden="true" />
                         </Button>
                       )}
                     </div>

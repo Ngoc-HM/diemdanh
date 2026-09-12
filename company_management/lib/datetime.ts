@@ -77,6 +77,24 @@ export function isWeekend(dateKey: string): boolean {
   return weekday === 0 || weekday === 6;
 }
 
+/// Cộng/trừ ngày cho khoá YYYY-MM-DD.
+export function addDays(dateKey: string, delta: number): string {
+  const [year, month, day] = dateKey.split("-").map(Number);
+  const shifted = new Date(Date.UTC(year, month - 1, day + delta));
+  return `${shifted.getUTCFullYear()}-${String(shifted.getUTCMonth() + 1).padStart(2, "0")}-${String(shifted.getUTCDate()).padStart(2, "0")}`;
+}
+
+/// Liệt kê mọi ngày từ startDate tới endDate (gồm cả hai đầu).
+/// Khoá ngày dạng YYYY-MM-DD so sánh chuỗi là đúng thứ tự thời gian.
+export function listDateRange(startDate: string, endDate: string): string[] {
+  const dates: string[] = [];
+  for (let date = startDate; date <= endDate; date = addDays(date, 1)) {
+    dates.push(date);
+  }
+  return dates;
+}
+
+
 export function isValidMonth(month: string | null | undefined): month is string {
   if (!month || !/^\d{4}-\d{2}$/.test(month)) return false;
   const monthNumber = Number(month.slice(5, 7));

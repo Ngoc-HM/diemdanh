@@ -4,7 +4,10 @@ import { resolveNearestLocation, formatDistance } from "@/lib/utils";
 import { dateKeyVN } from "@/lib/datetime";
 import { evaluateDay } from "@/lib/attendance-rules";
 import {
+  applyDayMark,
   getActiveSessionRules,
+  getDayMarks,
+  getLunchBreak,
   resolveUserMonthSchedule,
 } from "@/lib/attendance-service";
 import { AttendancePunchRow, WorkLocationRow } from "@/lib/types";
@@ -55,17 +58,18 @@ export async function POST(req: Request) {
       [session.userId, today]
     );
 
-    const lastPunch = await queryOne<{ type: string }>(
-      `SELECT "type" FROM "AttendancePunch"
-        WHERE "attendanceId" = $1 ORDER BY "at" DESC LIMIT 1`,
+    // Mỗi ngày chỉ được check-in một lần. Check-out thì bấm bao nhiêu lần
+    // cũng được, không giới hạn giờ; giờ ra lấy theo lần muộn nhất.
+    const checkIn = await queryOne<{ at: Date }>(
+      `SELECT "at" FROM "AttendancePunch"
+        WHERE "attendanceId" = $1 AND "type" = 'in' ORDER BY "at" ASC LIMIT 1`,
       [attendance!.id]
     );
-    const hasOpenShift = lastPunch?.type === "in";
 
-    if (type === "in" && hasOpenShift) {
-      badRequest("Bạn đang trong ca. Hãy check-out trước khi check-in ca mới.");
+    if (type === "in" && checkIn) {
+      badRequest("Hôm nay bạn đã check-in rồi, mỗi ngày chỉ check-in một lần.");
     }
-    if (type === "out" && !hasOpenShift) {
+    if (type === "out" && !checkIn) {
       badRequest("Bạn chưa check-in nên không thể check-out.");
     }
 
@@ -85,7 +89,7 @@ export async function POST(req: Request) {
       ]
     );
 
-    const [punches, rules, user] = await Promise.all([
+    const [punches, rules, user, lunchBreak] = await Promise.all([
       query<AttendancePunchRow>(
         `SELECT "id", "type", "at", "distance", "isManual", "withinRadius"
            FROM "AttendancePunch" WHERE "attendanceId" = $1 ORDER BY "at" ASC`,
@@ -96,6 +100,7 @@ export async function POST(req: Request) {
         `SELECT "id", "employmentType" FROM "User" WHERE "id" = $1`,
         [session.userId]
       ),
+      getLunchBreak(),
     ]);
 
     const schedule = await resolveUserMonthSchedule(
@@ -104,14 +109,24 @@ export async function POST(req: Request) {
       rules
     );
     const holiday = await queryOne<{ name: string }>(
-      `SELECT "name" FROM "Holiday" WHERE "date" = $1`,
+      `SELECT "name" FROM "Holiday"
+        WHERE "startDate" <= $1 AND "endDate" >= $1 LIMIT 1`,
       [today]
     );
 
+    // Ngày admin đã đánh dấu nghỉ/ốm hoặc đổi ca phải được áp ở đây luôn, nếu
+    // không kết quả trả về ngay sau khi bấm giờ sẽ lệch với bảng công.
+    const mark = (await getDayMarks([session.userId], today, today)).get(
+      `${session.userId}|${today}`
+    );
+    const ruleById = new Map(rules.map((rule) => [rule.id, rule]));
+
     const evaluation = evaluateDay({
-      scheduled: schedule.get(today) ?? [],
+      scheduled: applyDayMark(schedule.get(today) ?? [], mark, ruleById),
       punches,
       isHoliday: Boolean(holiday),
+      leaveCode: mark?.leaveCode ?? null,
+      lunchBreak,
     });
 
     return {

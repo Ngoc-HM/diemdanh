@@ -19,8 +19,6 @@ type WorkSession = {
   id: string;
   code: string;
   name: string;
-  checkInStart: string;
-  checkInEnd: string;
   workStart: string;
   workEnd: string;
   minHours: number;
@@ -32,14 +30,20 @@ type WorkSession = {
 const EMPTY_FORM = {
   code: "",
   name: "",
-  checkInStart: "07:00",
-  checkInEnd: "09:00",
-  workStart: "08:00",
-  workEnd: "17:00",
-  minHours: "8",
+  workStart: "08:30",
+  workEnd: "17:30",
+  minHours: "7",
   sortOrder: "1",
   isActive: true,
   isDefaultFull: false,
+};
+
+/// Giờ nghỉ trưa chung của công ty. Tắt thì giờ công không trừ gì.
+type LunchForm = { enabled: boolean; start: string; end: string };
+const DEFAULT_LUNCH_FORM: LunchForm = {
+  enabled: false,
+  start: "12:00",
+  end: "13:30",
 };
 
 export default function SessionsPage() {
@@ -49,6 +53,8 @@ export default function SessionsPage() {
   const [editing, setEditing] = useState<WorkSession | null>(null);
   const [form, setForm] = useState(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
+  const [lunch, setLunch] = useState<LunchForm>(DEFAULT_LUNCH_FORM);
+  const [savingLunch, setSavingLunch] = useState(false);
   const [message, setMessage] = useState<{
     type: "success" | "error";
     text: string;
@@ -57,10 +63,22 @@ export default function SessionsPage() {
   async function load() {
     setLoading(true);
     try {
-      const response = await fetch("/api/admin/work-sessions");
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error);
+      const [sessionRes, lunchRes] = await Promise.all([
+        fetch("/api/admin/work-sessions"),
+        fetch("/api/settings/lunch-break"),
+      ]);
+      const data = await sessionRes.json();
+      if (!sessionRes.ok) throw new Error(data.error);
       setSessions(data.sessions);
+
+      if (lunchRes.ok) {
+        const current = await lunchRes.json();
+        setLunch(
+          current.start && current.end
+            ? { enabled: true, start: current.start, end: current.end }
+            : { ...DEFAULT_LUNCH_FORM, enabled: false }
+        );
+      }
     } catch (error) {
       setMessage({
         type: "error",
@@ -74,6 +92,37 @@ export default function SessionsPage() {
   useEffect(() => {
     load();
   }, []);
+
+  async function saveLunch() {
+    setSavingLunch(true);
+    setMessage(null);
+    try {
+      const response = await fetch("/api/settings/lunch-break", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(
+          lunch.enabled
+            ? { start: lunch.start, end: lunch.end }
+            : { start: "", end: "" }
+        ),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "Không thể lưu");
+      setMessage({
+        type: "success",
+        text: data.start
+          ? `Giờ công sẽ trừ nghỉ trưa ${data.start}–${data.end}`
+          : "Đã tắt trừ giờ nghỉ trưa",
+      });
+    } catch (error) {
+      setMessage({
+        type: "error",
+        text: error instanceof Error ? error.message : "Không thể lưu",
+      });
+    } finally {
+      setSavingLunch(false);
+    }
+  }
 
   async function seedDefaults() {
     const response = await fetch("/api/admin/work-sessions", {
@@ -101,8 +150,6 @@ export default function SessionsPage() {
     setForm({
       code: session.code,
       name: session.name,
-      checkInStart: session.checkInStart,
-      checkInEnd: session.checkInEnd,
       workStart: session.workStart,
       workEnd: session.workEnd,
       minHours: String(session.minHours),
@@ -178,12 +225,68 @@ export default function SessionsPage() {
         </div>
       )}
 
+      <Card className="mb-6">
+        <div className="p-5">
+          <h2 className="text-sm font-semibold text-slate-900">Giờ nghỉ trưa</h2>
+          <p className="mt-1 text-sm text-slate-600">
+            Nhân viên chỉ bấm vào một lần buổi sáng và ra một lần buổi chiều,
+            không phải bấm giờ cho bữa trưa. Phần thời gian rơi vào khoảng này
+            được trừ khỏi giờ công trước khi so với số giờ tối thiểu của ca.
+          </p>
+          <div className="mt-3 flex flex-wrap items-end gap-3">
+            <label className="flex h-11 items-center gap-2 text-sm text-slate-700">
+              <input
+                type="checkbox"
+                checked={lunch.enabled}
+                onChange={(event) =>
+                  setLunch({ ...lunch, enabled: event.target.checked })
+                }
+                className="h-4 w-4 rounded-sm border-slate-300 text-sky-600"
+              />
+              Trừ giờ nghỉ trưa
+            </label>
+            <div className="w-32">
+              <Field label="Từ">
+                <Input
+                  type="time"
+                  value={lunch.start}
+                  disabled={!lunch.enabled}
+                  onChange={(event) =>
+                    setLunch({ ...lunch, start: event.target.value })
+                  }
+                />
+              </Field>
+            </div>
+            <div className="w-32">
+              <Field label="Đến">
+                <Input
+                  type="time"
+                  value={lunch.end}
+                  disabled={!lunch.enabled}
+                  onChange={(event) =>
+                    setLunch({ ...lunch, end: event.target.value })
+                  }
+                />
+              </Field>
+            </div>
+            <Button
+              size="sm"
+              className="ml-auto"
+              onClick={saveLunch}
+              disabled={savingLunch || loading}
+            >
+              {savingLunch ? "Đang lưu..." : "Lưu"}
+            </Button>
+          </div>
+        </div>
+      </Card>
+
       {loading ? (
         <TableSkeleton />
       ) : sessions.length === 0 ? (
         <EmptyState
           title="Chưa có ca làm việc"
-          description="Tạo bộ ca mặc định (Sáng, Chiều, Tăng ca, Hành chính) rồi chỉnh lại cho đúng công ty."
+          description="Tạo bộ ca mặc định (Sáng, Chiều, Cả ngày, Tăng ca) rồi chỉnh lại cho đúng công ty."
           action={
             <Button onClick={seedDefaults}>
               <Wand2 size={16} aria-hidden="true" />
@@ -193,14 +296,11 @@ export default function SessionsPage() {
         />
       ) : (
         <Card className="overflow-x-auto">
-          <table className="w-full min-w-[820px] text-sm">
+          <table className="w-full min-w-[720px] text-sm">
             <thead>
               <tr className="border-b border-slate-200 bg-slate-50 text-left">
                 <th className="px-4 py-3 font-semibold text-slate-900">Mã</th>
                 <th className="px-4 py-3 font-semibold text-slate-900">Tên ca</th>
-                <th className="px-4 py-3 font-semibold text-slate-900">
-                  Nhận check-in
-                </th>
                 <th className="px-4 py-3 font-semibold text-slate-900">Giờ làm</th>
                 <th className="px-4 py-3 font-semibold text-slate-900">Tối thiểu</th>
                 <th className="px-4 py-3 font-semibold text-slate-900">Trạng thái</th>
@@ -215,9 +315,6 @@ export default function SessionsPage() {
                   </td>
                   <td className="px-4 py-3 font-medium text-slate-900">
                     {session.name}
-                  </td>
-                  <td className="px-4 py-3 text-slate-600">
-                    {session.checkInStart}–{session.checkInEnd}
                   </td>
                   <td className="px-4 py-3 text-slate-600">
                     {session.workStart}–{session.workEnd}
@@ -302,30 +399,11 @@ export default function SessionsPage() {
           </Field>
 
           <div className="grid grid-cols-2 gap-3">
-            <Field label="Nhận check-in từ" required>
-              <Input
-                type="time"
-                value={form.checkInStart}
-                onChange={(event) =>
-                  setForm({ ...form, checkInStart: event.target.value })
-                }
-                required
-              />
-            </Field>
-            <Field label="Đến" required>
-              <Input
-                type="time"
-                value={form.checkInEnd}
-                onChange={(event) =>
-                  setForm({ ...form, checkInEnd: event.target.value })
-                }
-                required
-              />
-            </Field>
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <Field label="Giờ vào ca" required hint="Dùng để tính đi muộn">
+            <Field
+              label="Giờ vào ca"
+              required
+              hint="Vào sau giờ này quá 5 phút thì ghi nhận đi muộn"
+            >
               <Input
                 type="time"
                 value={form.workStart}
@@ -347,7 +425,11 @@ export default function SessionsPage() {
             </Field>
           </div>
 
-          <Field label="Số giờ tối thiểu để tính đủ công" required>
+          <Field
+            label="Số giờ tối thiểu để tính đủ công"
+            required
+            hint="So với giờ công thực tế (giờ ra trừ giờ vào, đã trừ nghỉ trưa). Ca 08:30–12:00 dài 3,5h thì đặt 3h là vừa."
+          >
             <Input
               type="number"
               step="0.5"
@@ -383,7 +465,7 @@ export default function SessionsPage() {
               <span>
                 Ca mặc định cho nhân viên toàn thời gian
                 <span className="mt-0.5 block text-xs text-slate-500">
-                  Hệ thống gán ca này cho mọi ngày T2–T6. Chỉ một ca được đánh dấu.
+                  Hệ thống gán ca này cho mọi ngày làm việc trong tuần. Chỉ một ca được đánh dấu.
                 </span>
               </span>
             </label>

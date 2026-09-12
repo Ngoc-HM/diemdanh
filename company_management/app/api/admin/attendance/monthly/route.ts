@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { query } from "@/lib/db";
 import { badRequest, handle, requireAdmin } from "@/lib/auth-guard";
 import {
+  dateKeyVN,
   getMonthRange,
   isValidMonth,
   listMonthDates,
@@ -15,8 +16,12 @@ import {
   PunchInput,
 } from "@/lib/attendance-rules";
 import {
+  applyDayMark,
   getActiveSessionRules,
+  getDayMarks,
   getHolidayMap,
+  getLunchBreak,
+  getPendingShiftRequestDates,
   resolveMonthSchedules,
   type ScheduleMap,
 } from "@/lib/attendance-service";
@@ -36,6 +41,7 @@ export async function GET(req: Request) {
     await requireAdmin();
     const { searchParams } = new URL(req.url);
     const month = searchParams.get("month") ?? monthKeyVN();
+    const today = dateKeyVN();
     const wantsCsv = searchParams.get("export") === "csv";
 
     if (!isValidMonth(month)) badRequest("Tháng không hợp lệ");
@@ -43,7 +49,7 @@ export async function GET(req: Request) {
     const { startDate, endDate, daysInMonth } = getMonthRange(month);
     const dates = listMonthDates(month);
 
-    const [users, rules, punchRows, holidays] = await Promise.all([
+    const [users, rules, punchRows, holidays, lunchBreak] = await Promise.all([
       query<EmployeeRow>(
         `SELECT "id", "name", "email", "employeeCode", "employmentType", "department"
            FROM "User"
@@ -66,9 +72,16 @@ export async function GET(req: Request) {
         [startDate, endDate]
       ),
       getHolidayMap(startDate, endDate),
+      getLunchBreak(),
     ]);
 
-    const schedules = await resolveMonthSchedules(users, month, rules);
+    const userIds = users.map((user) => user.id);
+    const [schedules, marks, pendingRequests] = await Promise.all([
+      resolveMonthSchedules(users, month, rules),
+      getDayMarks(userIds, startDate, endDate),
+      getPendingShiftRequestDates(userIds, startDate, endDate),
+    ]);
+    const ruleById = new Map(rules.map((rule) => [rule.id, rule]));
 
     // Gom punch theo userId -> date.
     const punchesByUser = new Map<string, Map<string, PunchInput[]>>();
@@ -93,11 +106,15 @@ export async function GET(req: Request) {
           workedHours: number;
           lateMinutes: number;
           outsideRadius: boolean;
+          adminEdited: boolean;
+          /// Đang có yêu cầu đổi ca chờ duyệt cho ngày này.
+          pendingRequest: boolean;
         }
       > = {};
 
       let passedDays = 0;
       let lateDays = 0;
+      let missedCheckoutDays = 0;
       let absentDays = 0;
       let attendanceDays = 0;
       let totalMinutes = 0;
@@ -107,7 +124,9 @@ export async function GET(req: Request) {
       );
 
       for (const date of dates) {
-        const scheduled = schedule.get(date) ?? [];
+        const mark = marks.get(`${user.id}|${date}`);
+        const pendingRequest = pendingRequests.has(`${user.id}|${date}`);
+        const scheduled = applyDayMark(schedule.get(date) ?? [], mark, ruleById);
         const punches = byDate.get(date) ?? [];
 
         scheduledShifts += scheduled.length;
@@ -116,12 +135,25 @@ export async function GET(req: Request) {
           scheduled,
           punches,
           isHoliday: holidays.has(date),
+          isPast: date < today,
+          leaveCode: mark?.leaveCode ?? null,
+          lunchBreak,
         });
 
-        if (evaluation.status === "off" && punches.length === 0) continue;
+        // Ngày trống vẫn phải có ô nếu đang chờ duyệt đổi ca, để lưới tô vàng được.
+        if (
+          evaluation.status === "off" &&
+          punches.length === 0 &&
+          !mark &&
+          !pendingRequest
+        ) {
+          continue;
+        }
 
         days[date] = {
           status: evaluation.status,
+          adminEdited: mark?.isAdminEdit ?? false,
+          pendingRequest,
           label: dayCellLabel(evaluation),
           codes: evaluation.codes,
           workedHours: minutesToHours(evaluation.workedMinutes),
@@ -131,7 +163,7 @@ export async function GET(req: Request) {
 
         totalMinutes += evaluation.workedMinutes;
         if (punches.length > 0) attendanceDays++;
-        if (evaluation.status === "passed" || evaluation.status === "late") {
+        if (evaluation.countsAsWorkDay) {
           passedDays++;
           for (const code of evaluation.codes) {
             sessionCounts[code] = (sessionCounts[code] || 0) + 1;
@@ -139,6 +171,7 @@ export async function GET(req: Request) {
         }
         if (evaluation.status === "late") lateDays++;
         if (evaluation.status === "absent") absentDays++;
+        if (evaluation.status === "missed_out") missedCheckoutDays++;
       }
 
       return {
@@ -152,6 +185,7 @@ export async function GET(req: Request) {
         passedDays,
         lateDays,
         absentDays,
+        missedCheckoutDays,
         attendanceDays,
         scheduledShifts,
         totalHours: minutesToHours(totalMinutes),

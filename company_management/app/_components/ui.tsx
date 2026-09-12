@@ -36,7 +36,7 @@ export function Button({
   return (
     <button
       {...props}
-      className={`inline-flex items-center justify-center gap-2 rounded-xl font-medium transition-colors disabled:cursor-not-allowed ${BUTTON_VARIANTS[variant]} ${BUTTON_SIZES[size]} ${className}`}
+      className={`inline-flex items-center justify-center gap-2 rounded-lg font-medium transition-colors disabled:cursor-not-allowed ${BUTTON_VARIANTS[variant]} ${BUTTON_SIZES[size]} ${className}`}
     />
   );
 }
@@ -64,8 +64,10 @@ export function Field({
   );
 }
 
-const CONTROL_CLASS =
-  "h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-slate-900 placeholder:text-slate-400 focus:border-sky-600 disabled:bg-slate-50 disabled:text-slate-500";
+const CONTROL_BASE =
+  "w-full rounded-lg border border-slate-300 bg-white px-3 text-slate-900 placeholder:text-slate-400 focus:border-sky-600 disabled:bg-slate-50 disabled:text-slate-500";
+
+const CONTROL_CLASS = `h-11 ${CONTROL_BASE}`;
 
 export function Input({
   className = "",
@@ -83,6 +85,20 @@ export function Select({
     <select {...props} className={`${CONTROL_CLASS} ${className}`}>
       {children}
     </select>
+  );
+}
+
+/// Ô nhập nhiều dòng: cùng khung viền / màu với Input, chỉ thay chiều cao cố
+/// định bằng chiều cao tối thiểu.
+export function Textarea({
+  className = "",
+  ...props
+}: React.TextareaHTMLAttributes<HTMLTextAreaElement>) {
+  return (
+    <textarea
+      {...props}
+      className={`min-h-24 py-2 ${CONTROL_BASE} ${className}`}
+    />
   );
 }
 
@@ -120,7 +136,7 @@ export function Message({
   return (
     <div
       role="status"
-      className={`flex items-start justify-between gap-3 rounded-xl border px-3 py-2 text-sm ${styles}`}
+      className={`flex items-start justify-between gap-3 rounded-lg border px-3 py-2 text-sm ${styles}`}
     >
       <span>{children}</span>
       {onDismiss && (
@@ -153,7 +169,7 @@ export function Badge({
 
   return (
     <span
-      className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${tones}`}
+      className={`inline-flex items-center rounded-sm px-2 py-0.5 text-xs font-medium ${tones}`}
     >
       {children}
     </span>
@@ -190,7 +206,7 @@ export function Modal({
         role="dialog"
         aria-modal="true"
         aria-label={title}
-        className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-2xl bg-white shadow-md"
+        className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-xl bg-white shadow-md"
       >
         <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
           <h3 className="text-xl font-semibold text-slate-900">{title}</h3>
@@ -223,7 +239,7 @@ export function EmptyState({
   action?: ReactNode;
 }) {
   return (
-    <div className="rounded-xl border border-dashed border-slate-300 bg-white px-6 py-12 text-center">
+    <div className="rounded-lg border border-dashed border-slate-300 bg-white px-6 py-12 text-center">
       <p className="text-base font-medium text-slate-900">{title}</p>
       {description && (
         <p className="mx-auto mt-1 max-w-md text-sm text-slate-600">{description}</p>
@@ -237,7 +253,7 @@ export function TableSkeleton({ rows = 5 }: { rows?: number }) {
   return (
     <div className="space-y-2" aria-hidden="true">
       {Array.from({ length: rows }, (_, index) => (
-        <div key={index} className="h-12 animate-pulse rounded-xl bg-slate-200" />
+        <div key={index} className="h-12 animate-pulse rounded-lg bg-slate-200" />
       ))}
     </div>
   );
