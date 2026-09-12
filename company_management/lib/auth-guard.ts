@@ -12,10 +12,20 @@ export class HttpError extends Error {
 }
 
 /// Trả về session admin, hoặc ném HttpError 401 để `handle` biến thành response.
+/// Phiên là JWT tự ký, sống 7 ngày, nên phải đối chiếu tài khoản còn tồn tại:
+/// admin đã bị xoá mà vẫn giữ cookie thì không được dùng tiếp.
 export async function requireAdmin(): Promise<SessionPayload> {
   const session = await getSession();
   if (!session || session.role !== "admin") {
     throw new HttpError(401, "Bạn không có quyền truy cập");
+  }
+  const admin = await queryOne<{ id: string }>(
+    `SELECT "id" FROM "Admin" WHERE "id" = $1`,
+    [session.userId]
+  );
+  if (!admin) {
+    await clearSessionCookie();
+    throw new HttpError(401, "Tài khoản quản trị không còn tồn tại");
   }
   return session;
 }

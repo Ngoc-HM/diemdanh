@@ -42,11 +42,12 @@ export async function PUT(req: Request) {
 }
 
 const MAX_LOGO_BYTES = 2 * 1024 * 1024; // 2MB
+/// Không nhận SVG: file SVG phục vụ từ cùng tên miền có thể mang mã chạy
+/// được trong trình duyệt khi ai đó mở thẳng đường dẫn ảnh.
 const LOGO_MIME: Record<string, string> = {
   "image/png": ".png",
   "image/jpeg": ".jpg",
   "image/webp": ".webp",
-  "image/svg+xml": ".svg",
 };
 
 /// Upload logo công ty (multipart/form-data, field "file").
@@ -60,7 +61,7 @@ export async function POST(req: Request) {
     if (!file || !(file instanceof File)) badRequest("Vui lòng chọn file logo");
 
     const ext = LOGO_MIME[file.type];
-    if (!ext) badRequest("Chỉ nhận file PNG, JPG, WebP hoặc SVG");
+    if (!ext) badRequest("Chỉ nhận file PNG, JPG hoặc WebP");
     if (file.size > MAX_LOGO_BYTES) badRequest("Logo tối đa 2MB");
 
     const buffer = Buffer.from(await file.arrayBuffer());

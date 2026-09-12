@@ -488,6 +488,19 @@ async function main() {
     check("admin đặt lại mật khẩu cũ", r.status === 200, `(${r.status})`);
 
     console.log("\n== phân quyền ==");
+    // Cookie admin còn hạn nhưng tài khoản admin đã bị xoá thì phải chặn.
+    const ghost = makeJar();
+    await client.query(`DELETE FROM "Admin" WHERE "username" = '__smoketest_ghost'`);
+    await client.query(
+      `INSERT INTO "Admin" ("username", "password") VALUES ('__smoketest_ghost', $1)`,
+      [await bcrypt.hash(ADMIN_PASS, 10)]
+    );
+    r = await call(ghost, "POST", "/api/auth/admin-login", { username: "__smoketest_ghost", password: ADMIN_PASS });
+    check("admin tạm đăng nhập được", r.status === 200, `(${r.status})`);
+    await client.query(`DELETE FROM "Admin" WHERE "username" = '__smoketest_ghost'`);
+    r = await call(ghost, "GET", "/api/users");
+    check("admin đã bị xoá thì cookie cũ hết tác dụng", r.status === 401, `(${r.status})`);
+
     r = await call(emp, "GET", "/api/users");
     check("nhân viên không xem được danh sách NV", r.status === 401, `(${r.status})`);
     r = await call(emp, "PUT", "/api/settings/company", { value: "hack" });

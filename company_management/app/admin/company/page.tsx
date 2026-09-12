@@ -114,7 +114,7 @@ export default function CompanySettingsPage() {
             )}
           </Field>
 
-          <Field label="Logo" hint="PNG, JPG, WebP hoặc SVG — tối đa 2MB.">
+          <Field label="Logo" hint="PNG, JPG hoặc WebP — tối đa 2MB.">
             <div className="flex items-center gap-4">
               <CompanyLogo logo={logo} size="lg" />
               <div className="flex gap-2">
@@ -142,7 +142,7 @@ export default function CompanySettingsPage() {
               <input
                 ref={fileInput}
                 type="file"
-                accept="image/png,image/jpeg,image/webp,image/svg+xml"
+                accept="image/png,image/jpeg,image/webp"
                 className="hidden"
                 onChange={(event) => {
                   const file = event.target.files?.[0];
