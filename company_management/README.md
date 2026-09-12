@@ -219,7 +219,7 @@ Chỉ vậy thôi. `npm run dev` tự chạy `npm run db` trước, việc này 
 Cái gì đã có thì bỏ qua, nên chạy lại bao nhiêu lần cũng không đổi gì. Trên
 server thì gọi `npm run db` trước khi `npm start`.
 
-Thêm thay đổi schema: tạo file mới `db/migrations/015_<mô_tả>.sql`, không sửa
+Thêm thay đổi schema: tạo file mới `db/migrations/016_<mô_tả>.sql`, không sửa
 file cũ đã chạy.
 
 ### 3. Thiết lập lần đầu trong giao diện admin
@@ -255,6 +255,7 @@ file cũ đã chạy.
 | `/admin/sessions` | Admin — danh mục ca |
 | `/admin/locations` | Admin — vị trí GPS |
 | `/admin/holidays` | Admin — ngày lễ |
+| `/admin/access-violations` | Admin — nhật ký truy cập lạ |
 | `/admin/company`, `/admin/email`, `/admin/change-password` | Admin |
 
 Menu của cả hai khu vực có thêm mục **ClickUp** mở `https://app.clickup.com` ở
@@ -263,6 +264,20 @@ tab mới.
 `middleware.ts` chặn `/admin/*` và `/dashboard/*` ở tầng edge theo vai trò, và đưa
 mọi truy cập từ điện thoại hoặc máy tính bảng sang `/desktop-only` — hệ thống chỉ
 dùng trên máy tính.
+
+### Truy cập lạ
+
+Đã đăng nhập mà mở đường dẫn **không tồn tại** (404) hoặc **không thuộc quyền**
+của mình (nhân viên mò vào `/admin/*`) thì rơi vào trang cảnh báo `/canh-bao`:
+nền tối, nói rõ lần truy cập đã được ghi lại và báo cáo với quản trị viên.
+
+Câu đó là thật chứ không phải doạ: mỗi lần như vậy ghi một dòng vào bảng
+`AccessViolation` (tên người, vai trò, đường dẫn, thời điểm), admin xem ở
+`/admin/access-violations`. Khách **chưa đăng nhập** thì chỉ thấy trang cảnh báo
+chứ không ghi gì — bot quét đường dẫn mà cũng ghi thì bảng đầy rác ngay.
+
+Người chưa đăng nhập vào `/admin/*` vẫn được đưa về trang đăng nhập như cũ, không
+bị doạ: chưa đăng nhập thì chưa có gì để quy trách nhiệm.
 
 ## Cấu trúc
 

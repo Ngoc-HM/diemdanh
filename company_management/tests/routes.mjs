@@ -52,6 +52,7 @@ const ADMIN_PAGES = [
   ["/admin/company", "Thiết lập công ty"],
   ["/admin/change-password", "Đổi mật khẩu"],
   ["/admin/email", "Email (SMTP)"],
+  ["/admin/access-violations", "Truy cập lạ"],
 ];
 
 const EMPLOYEE_PAGES = [
@@ -204,11 +205,20 @@ async function main() {
     }
   }
 
-  console.log("\n== trang không tồn tại ==");
+  console.log("\n== trang không tồn tại & cảnh báo ==");
   const missing = await fetch(BASE + "/admin/khong-co-trang-nay", {
     headers: { Cookie: admin.header() },
   });
+  const missingHtml = await missing.text();
   check("đường dẫn lạ trả 404 đúng cách", missing.status === 404, `(${missing.status})`);
+  check(
+    "404 hiện trang cảnh báo",
+    missingHtml.includes("đã được ghi lại và báo cáo với quản trị viên"),
+    "(không thấy nội dung cảnh báo)"
+  );
+  const warned = await visit(anon, "/canh-bao?path=/admin/users");
+  check("trang cảnh báo mở được", warned.status === 200 && warned.url === "/canh-bao", `(${warned.status} -> ${warned.url})`);
+  check("cảnh báo nói rõ không đủ quyền", warned.html.includes("Bạn không có quyền vào khu vực này"));
 
   console.log(`\n===== ${pass} đạt / ${fail} hỏng =====`);
   if (bad.length) bad.forEach((f) => console.log(" -", f));

@@ -562,6 +562,23 @@ async function main() {
     r = await call(anon, "PUT", "/api/settings/company", { value: "hack" });
     check("khách vãng lai không đổi được tên công ty", r.status === 401, `(${r.status})`);
 
+    console.log("\n== ghi nhận truy cập lạ ==");
+    await client.query(`DELETE FROM "AccessViolation" WHERE "path" LIKE '/smoketest%'`);
+    r = await call(emp, "POST", "/api/access-violation", { path: "/smoketest/admin", kind: "forbidden" });
+    check("ghi nhận khi nhân viên mò đường dẫn lạ", r.status === 200 && r.json.recorded === true, `(${r.status})`);
+    r = await call(makeJar(), "POST", "/api/access-violation", { path: "/smoketest/khach", kind: "not_found" });
+    check("khách vãng lai thì không ghi (tránh rác)", r.status === 200 && r.json.recorded === false, `(${r.status})`);
+    r = await call(emp, "POST", "/api/access-violation", { path: "https://ngoai.test", kind: "not_found" });
+    check("chặn đường dẫn ra ngoài", r.json.recorded === false);
+
+    r = await call(admin, "GET", "/api/admin/access-violations");
+    const logged = r.json.items?.find((item) => item.path === "/smoketest/admin");
+    check("admin xem được nhật ký", r.status === 200 && Boolean(logged), `(${r.status})`);
+    check("nhật ký ghi đúng người", logged?.actorName === "__smoketest Nhân viên", `(${logged?.actorName})`);
+    r = await call(emp, "GET", "/api/admin/access-violations");
+    check("nhân viên không xem được nhật ký", r.status === 401, `(${r.status})`);
+    await client.query(`DELETE FROM "AccessViolation" WHERE "path" LIKE '/smoketest%'`);
+
     console.log("\n== chấm công ==");
     r = await call(emp, "POST", "/api/attendance/punch", {
       type: "out",

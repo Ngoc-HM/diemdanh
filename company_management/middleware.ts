@@ -13,6 +13,17 @@ import {
 const MOBILE_UA =
   /Android|iPhone|iPad|iPod|Mobile|Opera Mini|IEMobile|BlackBerry|webOS/i;
 const DESKTOP_ONLY_PATH = "/desktop-only";
+/// Đã đăng nhập nhưng mò sang khu vực không thuộc quyền thì đưa sang trang
+/// cảnh báo, không đưa về trang đăng nhập như trước: mò lung tung phải thấy
+/// cảnh báo, còn người chưa đăng nhập thì vẫn về trang đăng nhập bình thường.
+const ACCESS_DENIED_PATH = "/canh-bao";
+
+function accessDenied(req: NextRequest) {
+  const url = req.nextUrl.clone();
+  url.pathname = ACCESS_DENIED_PATH;
+  url.search = `?path=${encodeURIComponent(req.nextUrl.pathname)}`;
+  return NextResponse.redirect(url);
+}
 
 function redirectTo(req: NextRequest, pathname: string) {
   const url = req.nextUrl.clone();
@@ -45,10 +56,10 @@ export async function middleware(req: NextRequest) {
     return redirectTo(req, isAdminArea ? "/admin-login-app" : "/login");
   }
   if (isAdminArea && session.role !== "admin") {
-    return redirectTo(req, "/admin-login-app");
+    return accessDenied(req);
   }
   if (isEmployeeArea && session.role !== "employee") {
-    return redirectTo(req, "/admin/attendance");
+    return accessDenied(req);
   }
 
   return await withRefreshedSession(session);
@@ -82,6 +93,7 @@ export const config = {
     "/forgot-password",
     "/reset-password",
     "/desktop-only",
+    "/canh-bao",
     "/admin/:path*",
     "/dashboard/:path*",
   ],
