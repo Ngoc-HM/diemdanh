@@ -78,13 +78,24 @@ Việc đã làm trong phiên này:
 
 Đã sửa:
 
-- **Cấu hình chấm công trên DB** (qua API admin, không sửa thẳng DB): giờ nghỉ
-  trưa `12:00-13:30` → **`12:00-13:00`** cho khớp giờ vào ca chiều; ngưỡng giờ
-  tối thiểu `S 4 / C 4 / CN 8 / T 3` → **`S 3.5 / C 3.5 / CN 7.5 / T 2.5`**.
-  Trước khi sửa, làm đúng ca cả ngày (08:00–17:00) chỉ được 7,5h so với ngưỡng
-  8h nên **mọi ngày công đều bị chấm "Thiếu giờ"**; ca chiều còn bị trừ chồng
-  30 phút nghỉ trưa. Muốn quay lại giá trị cũ thì đặt lại đúng bốn con số trên
-  ở `/admin/sessions`.
+- **Cấu hình chấm công trên DB** (qua API admin, không sửa thẳng DB). Trước khi
+  sửa: nghỉ trưa 12:00–13:30 nhưng ca chiều bắt đầu 13:00, nên khoảng 13:00–13:30
+  vừa nằm trong ca vừa bị trừ như giờ nghỉ; cộng thêm ngưỡng đặt bằng đúng độ
+  dài ca nên **mọi ngày công đều bị chấm "Thiếu giờ"** (cả ngày 08:00–17:00 chỉ
+  được 7,5h so với ngưỡng 8h). Chủ dự án xác nhận công ty nghỉ trưa tới 13:30,
+  nên dời ca chiều cho khớp thay vì rút giờ nghỉ:
+
+  | | Trước | Sau |
+  |---|---|---|
+  | Nghỉ trưa | 12:00–13:30 | 12:00–13:30 (giữ) |
+  | S | 08:00–12:00 · 4h | 08:00–12:00 · **3,5h** |
+  | C | 13:00–17:00 · 4h | **13:30**–17:00 · **3h** |
+  | CN | 08:00–17:00 · 8h | 08:00–17:00 · **7h** |
+  | T | 18:00–21:00 · 3h | 18:00–21:00 · **2,5h** |
+
+  Ngưỡng thấp hơn giờ làm thực 30 phút để ra sớm một chút vẫn đủ công. Đổi lại
+  được bất cứ lúc nào ở `/admin/sessions` — **luật bất di bất dịch: giờ tan nghỉ
+  trưa phải bằng giờ vào ca chiều**, lệch là giờ công sai.
 - **Bỏ hẳn mật khẩu quản trị mặc định `admin123`**: `scripts/seed.ts` dừng nếu
   thiếu `AUTH_ADMIN_PASSWORD`, và `/api/auth/admin-login` không còn đường khởi
   tạo bằng mật khẩu đoán được (mục 4 phần "Việc còn lại" cũ coi như đã xử lý).
