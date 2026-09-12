@@ -149,14 +149,14 @@ export default function MonthlyAttendancePage() {
             variant="secondary"
             onClick={() =>
               window.open(
-                `/api/admin/attendance/monthly?month=${month}&export=csv`,
+                `/api/admin/attendance/monthly?month=${month}&export=xlsx`,
                 "_blank"
               )
             }
             disabled={!data || data.summary.length === 0}
           >
             <Download size={16} aria-hidden="true" />
-            Xuất CSV
+            Xuất Excel
           </Button>
         }
       />

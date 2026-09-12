@@ -26,6 +26,11 @@ import {
   type ScheduleMap,
 } from "@/lib/attendance-service";
 import { EMPLOYMENT_TYPE_LABELS, EmploymentType } from "@/lib/schedule";
+import {
+  attendanceFileName,
+  buildAttendanceWorkbook,
+  XLSX_CONTENT_TYPE,
+} from "@/lib/attendance-export";
 
 type EmployeeRow = {
   id: string;
@@ -42,7 +47,8 @@ export async function GET(req: Request) {
     const { searchParams } = new URL(req.url);
     const month = searchParams.get("month") ?? monthKeyVN();
     const today = dateKeyVN();
-    const wantsCsv = searchParams.get("export") === "csv";
+    // Giữ cả `export=csv` của link cũ: giờ luôn trả về file Excel.
+    const wantsExcel = ["xlsx", "csv"].includes(searchParams.get("export") ?? "");
 
     if (!isValidMonth(month)) badRequest("Tháng không hợp lệ");
 
@@ -116,6 +122,8 @@ export async function GET(req: Request) {
       let lateDays = 0;
       let missedCheckoutDays = 0;
       let absentDays = 0;
+      let leaveDays = 0;
+      let sickDays = 0;
       let attendanceDays = 0;
       let totalMinutes = 0;
       let scheduledShifts = 0;
@@ -171,6 +179,8 @@ export async function GET(req: Request) {
         }
         if (evaluation.status === "late") lateDays++;
         if (evaluation.status === "absent") absentDays++;
+        if (evaluation.status === "leave") leaveDays++;
+        if (evaluation.status === "sick") sickDays++;
         if (evaluation.status === "missed_out") missedCheckoutDays++;
       }
 
@@ -185,6 +195,8 @@ export async function GET(req: Request) {
         passedDays,
         lateDays,
         absentDays,
+        leaveDays,
+        sickDays,
         missedCheckoutDays,
         attendanceDays,
         scheduledShifts,
@@ -193,44 +205,18 @@ export async function GET(req: Request) {
       };
     });
 
-    if (wantsCsv) {
-      const header = [
-        "Mã NV",
-        "Nhân viên",
-        "Email",
-        "Loại hợp đồng",
-        ...dates.map((date) => date.slice(8, 10)),
-        "Ngày công",
-        "Đi muộn",
-        "Vắng",
-        "Tổng giờ",
-        ...rules.map((rule) => rule.code),
-      ];
+    if (wantsExcel) {
+      const file = await buildAttendanceWorkbook({
+        month,
+        dates,
+        sessionCodes: rules.map((rule) => rule.code),
+        rows: summary,
+      });
 
-      const rows = summary.map((item) => [
-        item.user.employeeCode ?? "",
-        item.user.name,
-        item.user.email,
-        item.user.employmentLabel,
-        ...dates.map((date) => item.days[date]?.label ?? ""),
-        item.passedDays,
-        item.lateDays,
-        item.absentDays,
-        item.totalHours,
-        ...rules.map((rule) => item.sessions[rule.code] ?? 0),
-      ]);
-
-      const csv =
-        "﻿" +
-        [header, ...rows]
-          .map((row) => row.map(escapeCsvCell).join(","))
-          .join("\n") +
-        "\n";
-
-      return new NextResponse(csv, {
+      return new NextResponse(new Uint8Array(file), {
         headers: {
-          "Content-Type": "text/csv; charset=utf-8",
-          "Content-Disposition": `attachment; filename="cham-cong-${month}.csv"`,
+          "Content-Type": XLSX_CONTENT_TYPE,
+          "Content-Disposition": `attachment; filename="${attendanceFileName(month)}"`,
         },
       });
     }
@@ -245,8 +231,4 @@ export async function GET(req: Request) {
       summary,
     };
   }, "Monthly attendance error");
-}
-
-function escapeCsvCell(value: unknown) {
-  return `"${String(value ?? "").replaceAll('"', '""')}"`;
 }

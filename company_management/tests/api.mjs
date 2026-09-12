@@ -520,12 +520,35 @@ async function main() {
     check("đếm đúng 1 ngày vắng", summary?.absentDays === 1, `(${summary?.absentDays})`);
     check("tổng giờ = 8h (đã trừ nghỉ trưa)", summary?.totalHours === 8, `(${summary?.totalHours})`);
 
-    const csv = await fetch(
+    const xlsx = await fetch(
+      BASE + "/api/admin/attendance/monthly?month=2026-09&export=xlsx",
+      { headers: { Cookie: admin.header() } }
+    );
+    const xlsxBuffer = Buffer.from(await xlsx.arrayBuffer());
+    check(
+      "xuất Excel",
+      xlsx.status === 200 &&
+        (xlsx.headers.get("content-type") ?? "").includes("spreadsheetml"),
+      `(${xlsx.status} ${xlsx.headers.get("content-type")})`
+    );
+    // File .xlsx là một file zip: hai byte đầu luôn là "PK".
+    check("file .xlsx hợp lệ", xlsxBuffer.subarray(0, 2).toString() === "PK", `(${xlsxBuffer.length} byte)`);
+    check(
+      "đặt tên file theo tháng",
+      (xlsx.headers.get("content-disposition") ?? "").includes("cham-cong-2026-09.xlsx"),
+      `(${xlsx.headers.get("content-disposition")})`
+    );
+    // Link cũ ?export=csv vẫn trả file Excel thay vì 200 rỗng.
+    const legacy = await fetch(
       BASE + "/api/admin/attendance/monthly?month=2026-09&export=csv",
       { headers: { Cookie: admin.header() } }
     );
-    const csvText = await csv.text();
-    check("xuất CSV", csv.status === 200 && csvText.includes("Nhân viên"), `(${csv.status})`);
+    check(
+      "link export=csv cũ vẫn tải được file",
+      legacy.status === 200 &&
+        (legacy.headers.get("content-type") ?? "").includes("spreadsheetml"),
+      `(${legacy.status})`
+    );
 
     r = await call(admin, "GET", "/api/admin/attendance/monthly?month=2026-13");
     check("chặn tháng không hợp lệ", r.status === 400, `(${r.status})`);

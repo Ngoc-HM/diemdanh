@@ -54,6 +54,20 @@ Vị trí bắt buộc nằm trong bán kính của một `WorkLocation` đang b
 từ chối. Trường hợp sai vị trí hoặc quên bấm giờ thì admin bổ sung tay ở trang chi
 tiết nhân viên (các dòng nhập tay được đánh dấu `isManual`).
 
+### Bảng chấm công gửi kế toán
+
+`/admin/attendance/monthly` → nút **Xuất Excel** tải file `.xlsx` của tháng đang
+xem: mỗi nhân viên một dòng (mã NV, họ tên, email, loại hợp đồng), mỗi ngày một
+ô ký hiệu, rồi các cột tổng **Ngày công · Đi muộn · Vắng · Nghỉ (N) · Ốm (O) ·
+Tổng giờ** và số ngày theo từng mã ca. Không có giờ vào/ra chi tiết — muốn xem
+thì vào trang chi tiết nhân viên.
+
+Ô ngày tô màu theo trạng thái (xanh đủ công, vàng cần để ý, đỏ vắng, xám nghỉ),
+dòng tiêu đề và hai cột đầu được khoá để cuộn ngang qua 31 ngày vẫn đọc được.
+Ký hiệu trong ô lấy từ `dayCellLabel` (`lib/attendance-rules.ts`): mã ca (`S`,
+`C`, `CN`, ghép `S+C`), `*` đi muộn, `!` thiếu giờ, `N` nghỉ, `O` ốm, `V` vắng,
+`NL` làm ngoài lịch, `L` nghỉ lễ, `?` quên checkout, ô trống là không có lịch.
+
 ### Cách xếp loại một ngày
 
 | Trạng thái | Điều kiện |
@@ -197,7 +211,7 @@ file cũ đã chạy.
 | `/dashboard/work-reports` | Nhân viên — khai nội dung công việc theo khoảng thời gian |
 | `/dashboard/shift-requests` | Nhân viên — gửi yêu cầu đổi ca / xin nghỉ một ngày |
 | `/dashboard/change-password` | Nhân viên — đổi mật khẩu |
-| `/admin/attendance/monthly` | Admin — bảng chấm công tháng, xuất CSV |
+| `/admin/attendance/monthly` | Admin — bảng chấm công tháng, xuất Excel |
 | `/admin/attendance/user/[userId]` | Admin — chi tiết theo ngày, sửa công tay |
 | `/admin/schedules` | Admin — lịch cả công ty, xếp lịch cho nhân viên |
 | `/admin/shift-requests` | Admin — duyệt / từ chối yêu cầu đổi ca |
@@ -232,6 +246,7 @@ lib/
 ├── attendance-rules.ts # Ghép cặp punch, xếp loại ngày công
 ├── attendance-service.ts # Truy vấn lịch thực tế của nhân viên theo tháng
 ├── work-reports.ts     # Luật chuỗi khoảng thời gian của báo cáo công việc
+├── attendance-export.ts # Dựng file Excel bảng chấm công tháng
 ├── auth-guard.ts       # requireAdmin / requireEmployee / handle
 ├── validation.ts       # Chuẩn hoá + kiểm tra input dùng chung
 ├── session.ts          # JWT session qua cookie
