@@ -272,9 +272,7 @@ export default function ShiftRequestsPage() {
       />
 
       <Message type="info">
-        Quên đăng ký mà vẫn đi làm thì hệ thống vẫn tính công và tô vàng. Chỉ
-        cần gửi yêu cầu khi muốn đổi ca đã đăng ký, hoặc xin nghỉ một ngày đã
-        có lịch.
+        Quên đăng ký mà vẫn đi làm thì vẫn được tính công, không cần gửi gì.
       </Message>
 
       {feedback && (

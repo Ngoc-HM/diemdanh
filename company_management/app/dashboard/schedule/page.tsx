@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import Link from "next/link";
 import { Eye, Save } from "lucide-react";
 import { Button, Card, Message } from "@/app/_components/ui";
 import {
@@ -408,65 +407,20 @@ export default function SchedulePage() {
             </table>
           </Card>
 
-          <Card className="px-4 py-3">
-            <p className="mb-2 text-sm font-medium text-slate-900">Chú thích</p>
-            <dl className="space-y-1.5 text-sm">
-              {data.sessions.map((rule) => (
-                <div key={rule.id} className="flex items-baseline gap-2">
-                  <dt className="w-8 shrink-0 font-semibold text-slate-900">
-                    {rule.code}
-                  </dt>
-                  <dd className="text-slate-600">
-                    {rule.name} · {rule.workStart}–{rule.workEnd} ({rule.minHours}h)
-                  </dd>
-                </div>
-              ))}
-              <div className="flex items-baseline gap-2">
-                <dt className="w-8 shrink-0 font-semibold text-slate-900">N</dt>
-                <dd className="text-slate-600">Nghỉ · không tính công</dd>
-              </div>
-              <div className="flex items-baseline gap-2">
-                <dt className="w-8 shrink-0 font-semibold text-slate-900">O</dt>
-                <dd className="text-slate-600">Ốm · do admin chấm</dd>
-              </div>
-              {/* Chú giải màu: ô mẫu thay cho mã ca */}
-              <div className="flex items-center gap-2">
-                <dt className="w-8 shrink-0">
-                  <span className="sr-only">Ô vàng</span>
-                  <span
-                    aria-hidden="true"
-                    className="block h-4 w-8 rounded-sm bg-amber-100 ring-1 ring-inset ring-amber-300"
-                  />
-                </dt>
-                <dd className="text-slate-600">
-                  Vàng · admin đã sửa hoặc đang chờ duyệt đổi ca — ô bị khoá.
-                  Đầu cột vàng: đi làm không đăng ký lịch, vẫn tính công
-                </dd>
-              </div>
-              <div className="flex items-center gap-2">
-                <dt className="w-8 shrink-0">
-                  <span className="sr-only">Ô đỏ</span>
-                  <span
-                    aria-hidden="true"
-                    className="block h-4 w-8 rounded-sm bg-rose-100 ring-1 ring-inset ring-rose-300"
-                  />
-                </dt>
-                <dd className="text-slate-600">
-                  Đỏ · có lịch mà không đi (vắng), khác với nghỉ N đã xin
-                </dd>
-              </div>
-            </dl>
-            <p className="mt-3 border-t border-slate-100 pt-3 text-sm text-slate-600">
-              Muốn đổi ca đã đăng ký hoặc báo làm khác lịch: vào tab{" "}
-              <Link
-                href="/dashboard/shift-requests"
-                className="font-medium text-sky-700 hover:underline"
-              >
-                Chỉnh sửa ca
-              </Link>
-              .
-            </p>
-          </Card>
+          {/* Một dòng ký hiệu là đủ: giờ giấc từng ca đã nằm ngay ở cột trái
+              của lưới, không lặp lại thành một danh sách dài. */}
+          <p className="px-1 text-sm text-slate-500">
+            {[
+              ...data.sessions.map((rule) => [rule.code, rule.name] as const),
+              ["N", "Nghỉ"] as const,
+              ["O", "Ốm"] as const,
+            ].map(([code, name], index) => (
+              <span key={code}>
+                {index > 0 && <span className="mx-2 text-slate-300">·</span>}
+                <span className="font-semibold text-slate-700">{code}</span> {name}
+              </span>
+            ))}
+          </p>
         </>
       ) : null}
     </div>

@@ -229,9 +229,7 @@ export default function WorkReportsPage() {
       />
 
       <Message type="info">
-        Các khoảng nối tiếp nhau: khoảng sau bắt đầu đúng lúc khoảng trước kết
-        thúc, kể cả nghỉ trưa hay ra ngoài cũng khai thành một khoảng. Chỉ khai
-        và sửa được trong ngày hôm nay — hết ngày là chốt sổ.
+        Chỉ khai và sửa được trong ngày hôm nay.
       </Message>
 
       {feedback && (
