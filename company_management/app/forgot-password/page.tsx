@@ -125,7 +125,7 @@ export default function ForgotPasswordPage() {
                     setCode(event.target.value.replace(/\D/g, "").slice(0, 8))
                   }
                   placeholder="12345678"
-                  className="text-center text-lg tracking-[0.4em]"
+                  className="text-center text-lg"
                   required
                 />
               </Field>

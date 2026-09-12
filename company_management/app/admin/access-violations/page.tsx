@@ -42,7 +42,7 @@ export default function AccessViolationsPage() {
     <>
       <PageHeader
         title="Truy cập lạ"
-        description="Người đã đăng nhập mở đường dẫn không tồn tại hoặc không thuộc quyền của mình. 100 lần gần nhất."
+        description="Người đã đăng nhập mở đường dẫn lạ hoặc không đủ quyền. 100 lần gần nhất."
       />
 
       {error && <Message type="error">{error}</Message>}
@@ -50,7 +50,7 @@ export default function AccessViolationsPage() {
       {!items ? (
         <TableSkeleton rows={6} />
       ) : items.length === 0 ? (
-        <EmptyState title="Chưa có ai mò lung tung" />
+        <EmptyState title="Chưa có truy cập lạ" />
       ) : (
         <Card className="overflow-x-auto">
           <table className="w-full text-sm">
