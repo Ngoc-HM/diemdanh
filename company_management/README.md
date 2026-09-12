@@ -146,7 +146,20 @@ phải nhập lại mật khẩu SMTP). Email dùng cho hai việc:
   server (`instrumentation.ts` → `lib/reminder.ts`), kiểm tra mỗi giờ. Admin
   bật/tắt hoặc bấm "Gửi nhắc ngay" ở trang Email.
 
-Nhân viên tự đổi mật khẩu ở `/dashboard/change-password`.
+### Hồ sơ nhân viên
+
+Nhân viên tự sửa hồ sơ ở tab **Cài đặt** (`/dashboard/settings`): họ tên, email
+đăng nhập, ảnh đại diện và mật khẩu. Email là tên đăng nhập nên phải là duy
+nhất; trùng người khác thì API trả 409.
+
+Tên và email nằm sẵn trong cookie phiên để header đọc nhanh, nên khi đổi hồ sơ
+API ký lại cookie ngay — không phải đợi JWT hết hạn. Mọi chỗ khác (bảng chấm
+công, file Excel, danh sách nhân viên) đọc thẳng từ database nên tự khớp.
+
+Ảnh đại diện lưu ở `public/uploads/avatar-<id>.<ext>` như logo công ty, đường
+dẫn có kèm dấu thời gian để trình duyệt không dùng lại ảnh cũ trong cache. Chỉ
+nhận PNG / JPG / WebP, tối đa 2MB — không nhận SVG vì file SVG phục vụ từ cùng
+tên miền có thể mang mã chạy được.
 
 ## Cài đặt
 
@@ -184,7 +197,7 @@ Chỉ vậy thôi. `npm run dev` tự chạy `npm run db` trước, việc này 
 Cái gì đã có thì bỏ qua, nên chạy lại bao nhiêu lần cũng không đổi gì. Trên
 server thì gọi `npm run db` trước khi `npm start`.
 
-Thêm thay đổi schema: tạo file mới `db/migrations/012_<mô_tả>.sql`, không sửa
+Thêm thay đổi schema: tạo file mới `db/migrations/013_<mô_tả>.sql`, không sửa
 file cũ đã chạy.
 
 ### 3. Thiết lập lần đầu trong giao diện admin
@@ -210,7 +223,7 @@ file cũ đã chạy.
 | `/dashboard/history` | Nhân viên — lịch sử chấm công |
 | `/dashboard/work-reports` | Nhân viên — khai nội dung công việc theo khoảng thời gian |
 | `/dashboard/shift-requests` | Nhân viên — gửi yêu cầu đổi ca / xin nghỉ một ngày |
-| `/dashboard/change-password` | Nhân viên — đổi mật khẩu |
+| `/dashboard/settings` | Nhân viên — đổi họ tên, email, ảnh đại diện, mật khẩu |
 | `/admin/attendance/monthly` | Admin — bảng chấm công tháng, xuất Excel |
 | `/admin/attendance/user/[userId]` | Admin — chi tiết theo ngày, sửa công tay |
 | `/admin/schedules` | Admin — lịch cả công ty, xếp lịch cho nhân viên |

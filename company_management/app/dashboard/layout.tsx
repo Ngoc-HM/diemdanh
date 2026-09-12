@@ -9,9 +9,9 @@ import {
   Clock,
   ExternalLink,
   History,
-  KeyRound,
   LogOut,
   NotebookPen,
+  Settings,
 } from "lucide-react";
 import {
   CompanyLogo,
@@ -32,11 +32,11 @@ const navItems: NavItem[] = [
   { href: "/dashboard/history", label: "Lịch sử", icon: <History size={18} /> },
   { href: "/dashboard/work-reports", label: "Nội dung công việc", icon: <NotebookPen size={18} /> },
   { href: "/dashboard/shift-requests", label: "Chỉnh sửa ca", icon: <CalendarCog size={18} /> },
-  { href: "/dashboard/change-password", label: "Đổi mật khẩu", icon: <KeyRound size={18} /> },
+  { href: "/dashboard/settings", label: "Cài đặt", icon: <Settings size={18} /> },
   { href: "https://app.clickup.com", label: "ClickUp", icon: <ExternalLink size={18} />, external: true },
 ];
 
-type SessionUser = { name: string; email: string };
+type SessionUser = { name: string; email: string; avatarUrl?: string | null };
 
 /// Layout khu vực nhân viên, cùng khung với khu vực quản trị: header cố định
 /// (thương hiệu trái, đồng hồ + đăng xuất phải), sidebar dọc trái chứa khối
@@ -159,12 +159,22 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
         <aside className="sticky top-16 hidden h-[calc(100vh-4rem)] w-60 shrink-0 flex-col border-r border-slate-200 bg-white lg:flex">
           {/* Thông tin người dùng nằm ngay dưới khối thương hiệu */}
           <div className="flex items-center gap-3 border-b border-slate-200 px-3 py-3">
-            <span
-              aria-hidden="true"
-              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-sky-600 text-sm font-semibold text-white"
-            >
-              {user?.name?.trim().slice(0, 1).toUpperCase() ?? "?"}
-            </span>
+            {user?.avatarUrl ? (
+              // Ảnh nhân viên tự upload nên dùng thẻ img thường.
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={user.avatarUrl}
+                alt=""
+                className="h-9 w-9 shrink-0 rounded-lg object-cover ring-1 ring-slate-200"
+              />
+            ) : (
+              <span
+                aria-hidden="true"
+                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-sky-600 text-sm font-semibold text-white"
+              >
+                {user?.name?.trim().slice(0, 1).toUpperCase() ?? "?"}
+              </span>
+            )}
             <div className="min-w-0">
               <p className="truncate text-sm font-medium text-slate-900">
                 {user?.name ?? " "}

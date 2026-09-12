@@ -60,6 +60,7 @@ const EMPLOYEE_PAGES = [
   ["/dashboard/history", "Lịch sử chấm công"],
   ["/dashboard/work-reports", "Nội dung công việc hằng ngày"],
   ["/dashboard/shift-requests", "Chỉnh sửa ca"],
+  ["/dashboard/settings", "Cài đặt"],
 ];
 
 async function main() {

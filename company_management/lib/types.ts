@@ -12,6 +12,8 @@ export type UserRow = {
   phone: string | null;
   department: string | null;
   position: string | null;
+  /// Ảnh đại diện nhân viên tự upload, dạng "/uploads/avatar-<id>.png".
+  avatarUrl: string | null;
   startDate: Date | null;
   isActive: boolean;
   createdAt: Date;
@@ -23,7 +25,7 @@ export type EmployeeRow = Omit<UserRow, "password" | "role" | "updatedAt">;
 
 export const EMPLOYEE_COLUMNS = `
   "id", "employeeCode", "name", "email", "employmentType", "phone",
-  "department", "position", "startDate", "isActive", "createdAt"
+  "department", "position", "avatarUrl", "startDate", "isActive", "createdAt"
 `;
 
 export type WorkSessionRow = {

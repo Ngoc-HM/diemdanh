@@ -38,6 +38,7 @@ type Employee = {
   phone: string | null;
   department: string | null;
   position: string | null;
+  avatarUrl: string | null;
   startDate: string | null;
   isActive: boolean;
 };
@@ -281,13 +282,33 @@ export default function UsersPage() {
                     {user.employeeCode || "—"}
                   </td>
                   <td className="px-4 py-3">
-                    <div className="font-medium text-slate-900">{user.name}</div>
-                    <div className="text-xs text-slate-500">{user.email}</div>
-                    {!user.isActive && (
-                      <div className="mt-1">
-                        <Badge tone="danger">Đã ngừng</Badge>
+                    <div className="flex items-center gap-2.5">
+                      {user.avatarUrl ? (
+                        // Ảnh nhân viên tự upload ở tab Cài đặt.
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          src={user.avatarUrl}
+                          alt=""
+                          className="h-8 w-8 shrink-0 rounded-full object-cover ring-1 ring-slate-200"
+                        />
+                      ) : (
+                        <span
+                          aria-hidden="true"
+                          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-slate-200 text-xs font-semibold text-slate-600"
+                        >
+                          {user.name.trim().slice(0, 1).toUpperCase()}
+                        </span>
+                      )}
+                      <div className="min-w-0">
+                        <div className="font-medium text-slate-900">{user.name}</div>
+                        <div className="text-xs text-slate-500">{user.email}</div>
+                        {!user.isActive && (
+                          <div className="mt-1">
+                            <Badge tone="danger">Đã ngừng</Badge>
+                          </div>
+                        )}
                       </div>
-                    )}
+                    </div>
                   </td>
                   <td className="px-4 py-3">
                     <Badge

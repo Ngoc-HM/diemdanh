@@ -11,14 +11,17 @@ export async function GET() {
   }
 
   if (session.role === "employee") {
-    const user = await queryOne<{ isActive: boolean }>(
-      `SELECT "isActive" FROM "User" WHERE "id" = $1`,
+    // Ảnh đại diện đọc từ database chứ không nhét vào JWT: đổi ảnh là thấy
+    // ngay, không phải đợi ký lại phiên.
+    const user = await queryOne<{ isActive: boolean; avatarUrl: string | null }>(
+      `SELECT "isActive", "avatarUrl" FROM "User" WHERE "id" = $1`,
       [session.userId]
     );
     if (!user || !user.isActive) {
       await clearSessionCookie();
       return NextResponse.json({ user: null });
     }
+    return NextResponse.json({ user: { ...session, avatarUrl: user.avatarUrl } });
   }
 
   return NextResponse.json({ user: session });

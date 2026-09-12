@@ -4,8 +4,14 @@
     {
       "name": "company-management-dev",
       "runtimeExecutable": "npm",
-      "runtimeArgs": ["--prefix", "company_management", "run", "dev"],
-      "port": 3000
+      "runtimeArgs": [
+        "--prefix",
+        "company_management",
+        "run",
+        "dev"
+      ],
+      "port": 3000,
+      "autoPort": true
     }
   ]
 }

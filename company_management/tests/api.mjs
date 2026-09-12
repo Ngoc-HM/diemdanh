@@ -389,6 +389,52 @@ async function main() {
     r = await call(emp, "POST", "/api/auth/password", { currentPassword: NEW_PASS, newPassword: EMP_PASS });
     check("đổi lại mật khẩu cũ", r.status === 200, `(${r.status})`);
 
+    console.log("\n== hồ sơ nhân viên (tab Cài đặt) ==");
+    r = await call(emp, "GET", "/api/auth/profile");
+    check("đọc được hồ sơ của chính mình", r.status === 200 && r.json.profile?.email === EMP_EMAIL, `(${r.status})`);
+    check("chưa đặt ảnh thì avatarUrl rỗng", r.json.profile?.avatarUrl === null, `(${r.json.profile?.avatarUrl})`);
+
+    r = await call(makeJar(), "GET", "/api/auth/profile");
+    check("chưa đăng nhập thì không đọc được hồ sơ", r.status === 401, `(${r.status})`);
+    r = await call(admin, "GET", "/api/auth/profile");
+    check("admin không dùng hồ sơ nhân viên", r.status === 403, `(${r.status})`);
+
+    r = await call(emp, "PUT", "/api/auth/profile", { name: "   ", email: EMP_EMAIL });
+    check("chặn tên rỗng", r.status === 400, `(${r.status})`);
+    r = await call(emp, "PUT", "/api/auth/profile", { name: "Tên Mới", email: "khong-phai-email" });
+    check("chặn email sai định dạng", r.status === 400, `(${r.status})`);
+
+    const NEW_EMAIL = "__smoketest_employee_moi@example.test";
+    r = await call(emp, "PUT", "/api/auth/profile", { name: "Nhân Viên Đổi Tên", email: NEW_EMAIL });
+    check("đổi được tên và email", r.status === 200 && r.json.profile?.name === "Nhân Viên Đổi Tên", `(${r.status})`);
+
+    // Cookie phiên phải mang tên mới ngay, không đợi JWT hết hạn.
+    r = await call(emp, "GET", "/api/auth/session");
+    check("phiên cập nhật theo tên mới", r.json.user?.name === "Nhân Viên Đổi Tên", `(${r.json.user?.name})`);
+    check("phiên cập nhật theo email mới", r.json.user?.email === NEW_EMAIL, `(${r.json.user?.email})`);
+
+    // Toàn hệ thống đọc từ database nên bảng công của admin phải thấy tên mới.
+    r = await call(admin, "GET", "/api/admin/attendance/monthly?month=2026-09");
+    const renamed = r.json.summary?.find((item) => item.user.id === employeeId);
+    check("bảng chấm công của admin thấy tên mới", renamed?.user.name === "Nhân Viên Đổi Tên", `(${renamed?.user.name})`);
+
+    r = await call(emp, "POST", "/api/auth/login", { email: NEW_EMAIL, password: EMP_PASS });
+    check("đăng nhập được bằng email mới", r.status === 200, `(${r.status})`);
+
+    // Email trùng người khác thì phải chặn, vì email là tên đăng nhập.
+    const otherEmail = "__smoketest_khac@example.test";
+    await client.query(
+      `INSERT INTO "User" ("name","email","password","role") VALUES ('__smoketest khác', $1, 'x', 'employee')`,
+      [otherEmail]
+    );
+    r = await call(emp, "PUT", "/api/auth/profile", { name: "Nhân Viên Đổi Tên", email: otherEmail });
+    check("chặn email đã có người dùng", r.status === 409, `(${r.status})`);
+    await client.query(`DELETE FROM "User" WHERE "email" = $1`, [otherEmail]);
+
+    // Trả lại email cũ để các bước sau vẫn đăng nhập được như cũ.
+    r = await call(emp, "PUT", "/api/auth/profile", { name: "__smoketest Nhân viên", email: EMP_EMAIL });
+    check("trả lại email cũ", r.status === 200, `(${r.status})`);
+
     console.log("\n== phân quyền ==");
     r = await call(emp, "GET", "/api/users");
     check("nhân viên không xem được danh sách NV", r.status === 401, `(${r.status})`);
