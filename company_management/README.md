@@ -117,6 +117,43 @@ nhật, ngày lễ (full-time làm ngày nghỉ mà không có phiếu thì 0 c�
   ba cột **OT T / T1 / T2 (giờ)**; Excel từng nhân viên có cột OT.
 - Lương OT (tính ở bảng lương) = lương ngày ÷ số giờ chuẩn × số giờ × hệ số.
 
+### Bảng lương
+
+`/admin/payroll` (cài đặt ở `/admin/payroll/settings`). Tính từ bảng công tháng
+(`computeMonthAttendance` trong `lib/attendance-month.ts` — cùng một hàm với trang
+bảng chấm công), phiếu OT đã duyệt, hồ sơ lương và khoản hỗ trợ. Công thức thuần
+ở `lib/payroll.ts` (có test đối chiếu từng dòng file lương kế toán T9/2026).
+
+- **Hồ sơ lương** (bảng `PayProfile`, mỗi người một dòng, chỉ admin): lương tháng
+  (chia theo ngày công / ngày công tháng) hoặc đơn giá theo ngày; loại HĐ CTV /
+  Thử việc (hưởng % lương, mặc định 85%) / Chính thức; thuế khấu trừ 10% /
+  luỹ tiến / không; có hay không đóng BH (mức đóng riêng hoặc theo lương cơ bản);
+  phép năm; STK. Chưa có hồ sơ thì 0 đồng và có cảnh báo.
+- **GROSS / NET** (`payBasis`, migration 019): GROSS = lương thoả thuận trước
+  thuế, BH, người lao động tự chịu khoản trừ. NET = số cầm về: thành tiền + hỗ
+  trợ + OT tính theo lương NET là số cam kết; hệ thống dò khoản **bù thuế & BH**
+  (`netGrossUp`) để sau khấu trừ vẫn đúng số đó, gross = cam kết + khoản bù. NET
+  có đóng BH thì bắt buộc nhập lương đóng BH (không suy từ số NET được).
+- **Khoản hỗ trợ** (`Allowance`, `EmployeeAllowance`): admin tạo, gắn từng người,
+  mức riêng được; cố định tháng / theo tỉ lệ ngày công / theo số ngày công; chịu
+  thuế hay không.
+- **Công thức**: lương ngày = lương áp dụng ÷ ngày công tháng (theo ngày thì là
+  đơn giá); thành tiền = lương ngày × (công + phép năm có lương); lương giờ =
+  lương ngày ÷ giờ chuẩn; OT = lương giờ × giờ × hệ số; BH = lương đóng BH × tỉ
+  lệ; thuế 10% trên thu nhập chịu thuế, hoặc luỹ tiến trên (thu nhập + OT tính
+  100% − BH − giảm trừ bản thân − người phụ thuộc). Mức BH, thuế, giảm trừ, biểu
+  thuế sửa được — **mặc định cần kế toán đối chiếu lại**.
+- **Phép năm**: cộng dần số ngày/năm ÷ 12 mỗi tháng từ ngày bắt đầu tính phép
+  (mặc định ngày vào làm), thêm 1 ngày/năm mỗi 5 năm, tồn tối đa 3 năm; nghỉ `N`
+  trừ dần, hết phép là không lương. Không áp cho CTV.
+- **Tạm tính**: tháng chưa hết thì hôm nay → cuối tháng tính là đi làm đủ theo
+  lịch (ngày đã xin nghỉ thì không).
+- **Chốt lương** (`PayrollClosing`): lưu nguyên kết quả lúc chốt; sau đó sửa chấm
+  công, hồ sơ hay cấu hình không làm đổi bảng đã chốt. Mở chốt để tính lại.
+- **Tải file** (admin tự tải, không gửi email): bảng lương toàn công ty (sheet
+  "Lương" theo mẫu "Bảng chi tiết lương" + sheet chấm công) và phiếu lương từng
+  người (phiếu lương + "Bảng chấm công làm thêm giờ" + chấm công từng ngày).
+
 ### Cách xếp loại một ngày
 
 | Trạng thái | Điều kiện |
@@ -333,6 +370,8 @@ file cũ đã chạy.
 | `/admin/schedules` | Admin — lịch cả công ty, xếp lịch cho nhân viên |
 | `/admin/shift-requests` | Admin — duyệt / từ chối yêu cầu đổi ca |
 | `/admin/overtime` | Admin — duyệt phiếu OT, chốt giờ, đặt hệ số OT |
+| `/admin/payroll` | Admin — bảng lương tháng, hồ sơ lương, chốt lương, tải file |
+| `/admin/payroll/settings` | Admin — khoản hỗ trợ, bảo hiểm, thuế, phép năm |
 | `/admin/work-reports` | Admin — xem nội dung công việc nhân viên khai, xuất CSV |
 | `/admin/users` | Admin — hồ sơ nhân viên |
 | `/admin/sessions` | Admin — danh mục ca |

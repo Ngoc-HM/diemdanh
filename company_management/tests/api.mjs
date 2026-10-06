@@ -931,6 +931,87 @@ async function main() {
     check("bị từ chối thì làm phiếu mới được", r.status === 200 && r.json.request?.status === "pending", `(${r.status})`);
     await client.query(`DELETE FROM "OvertimeRequest" WHERE "userId" = $1`, [employeeId]);
 
+    console.log("\n== bảng lương ==");
+    const PAY_MONTH = "2026-09";
+    const alreadyClosed = (await client.query(`SELECT 1 FROM "PayrollClosing" WHERE "month" = $1`, [PAY_MONTH])).rowCount > 0;
+    const payRow = async () => {
+      const result = await call(admin, "GET", `/api/admin/payroll?month=${PAY_MONTH}`);
+      return { sheet: result.json, row: result.json.rows?.find((item) => item.user.id === employeeId) };
+    };
+    let pr = await payRow();
+    check("bảng lương có nhân viên chưa có hồ sơ (0 đồng)", pr.row && pr.row.hasProfile === false && pr.row.payroll.net === 0, `(${pr.row?.payroll?.net})`);
+    check("cảnh báo người chưa có hồ sơ lương", pr.sheet.warnings?.missingProfiles?.includes("__smoketest Nhân viên"), JSON.stringify(pr.sheet.warnings?.missingProfiles));
+    check("tháng đã qua thì không tạm tính", pr.sheet.projected === false);
+    r = await call(emp, "GET", `/api/admin/payroll?month=${PAY_MONTH}`);
+    check("nhân viên không xem được bảng lương", r.status === 401 || r.status === 403, `(${r.status})`);
+
+    r = await call(admin, "POST", "/api/admin/allowances", { name: "__smoketest Hỗ trợ AI", amount: 300000, mode: "bừa" });
+    check("chặn cách tính hỗ trợ lạ", r.status === 400, `(${r.status})`);
+    r = await call(admin, "POST", "/api/admin/allowances", { name: "__smoketest Hỗ trợ AI", amount: 300000, mode: "monthly" });
+    const aiId = r.json.allowance?.id;
+    check("tạo khoản hỗ trợ", r.status === 200 && aiId, `(${r.status})`);
+    r = await call(admin, "POST", "/api/admin/allowances", { name: "__SMOKETEST hỗ trợ ai", amount: 1, mode: "monthly" });
+    check("chặn khoản hỗ trợ trùng tên", r.status === 409, `(${r.status})`);
+
+    r = await call(admin, "PUT", `/api/admin/payroll/profile/${employeeId}`, {
+      payBasis: "net", salaryType: "monthly", baseSalary: 15000000, contractType: "official", taxMode: "progressive", hasInsurance: true,
+    });
+    check("NET có BH mà không nhập lương đóng BH thì chặn", r.status === 400, `(${r.status})`);
+    r = await call(admin, "PUT", `/api/admin/payroll/profile/${employeeId}`, { salaryType: "bừa", baseSalary: 1 });
+    check("chặn kiểu lương lạ", r.status === 400, `(${r.status})`);
+    r = await call(admin, "PUT", `/api/admin/payroll/profile/${employeeId}`, {
+      salaryType: "monthly", baseSalary: 8800000, contractType: "collaborator", taxMode: "flat10",
+      annualLeave: true, bankAccount: "0123456789", allowances: [{ allowanceId: aiId, amount: null }],
+    });
+    check("lưu hồ sơ lương", r.status === 200, `(${r.status} ${r.json.error ?? ""})`);
+    check("CTV không có phép năm dù bật", r.json.profile?.annualLeave === false);
+    r = await call(admin, "GET", `/api/admin/payroll/profile/${employeeId}`);
+    check("đọc lại hồ sơ lương", r.json.hasProfile === true && r.json.profile?.baseSalary === 8800000 && r.json.allowances?.find((a) => a.id === aiId)?.assigned === true);
+
+    // 01/09 làm S + C = 1 công / 22: 8.800.000 / 22 = 400.000; + hỗ trợ 300.000; thuế 10%.
+    pr = await payRow();
+    check("thành tiền = 8.800.000 × 1/22 = 400.000", pr.row?.payroll?.earned === 400000, `(${pr.row?.payroll?.earned})`);
+    check("hỗ trợ AI 300.000", pr.row?.payroll?.allowanceTotal === 300000, `(${pr.row?.payroll?.allowanceTotal})`);
+    check("thuế 10% = 70.000, thực nhận 630.000", pr.row?.payroll?.tax === 70000 && pr.row?.payroll?.net === 630000, `(${pr.row?.payroll?.tax} ${pr.row?.payroll?.net})`);
+
+    const payXlsx = await fetch(BASE + `/api/admin/payroll/export?month=${PAY_MONTH}`, { headers: { Cookie: admin.header() } });
+    const payBuf = Buffer.from(await payXlsx.arrayBuffer());
+    check("tải bảng lương toàn công ty", payXlsx.status === 200 && payBuf.subarray(0, 2).toString() === "PK" &&
+      (payXlsx.headers.get("content-disposition") ?? "").includes("bang-luong-2026-09.xlsx"), `(${payXlsx.status})`);
+    const slip = await fetch(BASE + `/api/admin/payroll/export?month=${PAY_MONTH}&userId=${employeeId}`, { headers: { Cookie: admin.header() } });
+    const slipBuf = Buffer.from(await slip.arrayBuffer());
+    check("tải phiếu lương từng người", slip.status === 200 && slipBuf.subarray(0, 2).toString() === "PK" &&
+      (slip.headers.get("content-disposition") ?? "").includes("phieu-luong-2026-09-"), `(${slip.status})`);
+    r = await call(admin, "GET", `/api/admin/payroll/export?month=${PAY_MONTH}&userId=khong-co`);
+    check("phiếu lương người lạ = 404", r.status === 404, `(${r.status})`);
+
+    if (!alreadyClosed) {
+      r = await call(admin, "POST", "/api/admin/payroll/close", { month: PAY_MONTH });
+      check("chốt lương tháng", r.status === 200 && r.json.closedAt, `(${r.status})`);
+      r = await call(admin, "POST", "/api/admin/payroll/close", { month: PAY_MONTH });
+      check("không chốt hai lần", r.status === 409, `(${r.status})`);
+      await call(admin, "PUT", `/api/admin/payroll/profile/${employeeId}`, {
+        salaryType: "monthly", baseSalary: 17600000, contractType: "collaborator", taxMode: "flat10",
+        allowances: [{ allowanceId: aiId, amount: null }],
+      });
+      pr = await payRow();
+      check("đã chốt: đổi lương cơ bản không làm đổi bảng lương", pr.sheet.closed && pr.row?.payroll?.net === 630000, `(${pr.row?.payroll?.net})`);
+      r = await call(admin, "DELETE", `/api/admin/payroll/close?month=${PAY_MONTH}`);
+      check("mở chốt", r.status === 200, `(${r.status})`);
+      pr = await payRow();
+      // 17.600.000 / 22 = 800.000 + 300.000 = 1.100.000, thuế 110.000.
+      check("mở chốt thì tính lại theo lương mới: thực nhận 990.000", !pr.sheet.closed && pr.row?.payroll?.net === 990000, `(${pr.row?.payroll?.net})`);
+      r = await call(admin, "DELETE", `/api/admin/payroll/close?month=${PAY_MONTH}`);
+      check("mở chốt tháng chưa chốt = 404", r.status === 404, `(${r.status})`);
+    }
+
+    r = await call(admin, "GET", "/api/settings/payroll");
+    check("đọc cấu hình lương mặc định (BHXH 8%)", r.json.config?.insurance?.bhxh === 8, JSON.stringify(r.json.config?.insurance));
+    r = await call(admin, "PUT", "/api/settings/payroll", { ...r.json.config, taxBrackets: [{ upTo: 30, rate: 5 }, { upTo: 10, rate: 10 }, { upTo: null, rate: 20 }] });
+    check("chặn biểu thuế không tăng dần", r.status === 400, `(${r.status})`);
+    r = await call(admin, "DELETE", `/api/admin/allowances/${aiId}`);
+    check("xoá khoản hỗ trợ", r.status === 200, `(${r.status})`);
+
     // Đặt sau các kiểm tra "ngày đủ công" / "tổng giờ" ở trên: duyệt đổi ca sẽ
     // ghi DayMark cho ngày 01/09 và làm đổi lịch của ngày đó.
     console.log("\n== yêu cầu đổi ca ==");
@@ -1223,6 +1304,7 @@ async function main() {
     }
     await client.query(`DELETE FROM "User" WHERE "email" LIKE '__smoketest%'`);
     await client.query(`DELETE FROM "Holiday" WHERE "name" LIKE '__smoketest%'`);
+    await client.query(`DELETE FROM "Allowance" WHERE "name" ILIKE '__smoketest%'`);
     await client.query(`DELETE FROM "WorkLocation" WHERE "name" LIKE '__smoketest%'`);
     await client.query(`DELETE FROM "Admin" WHERE "username" = $1`, [ADMIN_USER]);
     // Trả lại cửa sổ đăng ký lịch như trước khi test.

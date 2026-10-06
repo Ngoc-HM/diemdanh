@@ -158,13 +158,7 @@ công":
 
 **Còn làm (đã chốt với chủ dự án):**
 - ~~B. Phiếu OT~~ **xong** (xem dưới).
-- **C. Lương**: hồ sơ lương từng người (theo tháng / theo ngày, lương cơ bản,
-  thử việc 85%, người phụ thuộc, STK, giới tính, loại HĐ CTV/Thử việc/Chính thức,
-  thuế khấu trừ 10% / lũy tiến / không, có/không BHXH 8% BHYT 1,5% BHTN 1%);
-  khoản hỗ trợ admin tự tạo, gắn từng người (cố định tháng hoặc theo ngày công,
-  chịu thuế hay không); phép năm 12 ngày/năm cộng 1 ngày/tháng, cộng dồn tối đa 3
-  năm, +1 ngày mỗi 5 năm, chỉ người có HĐLĐ, nghỉ phép có lương tính như công;
-  xuất Excel đúng mẫu "Bảng chi tiết lương" và "Bảng làm thêm giờ".
+- ~~C. Lương~~ **xong 06/10/2026, chưa deploy** — xem dưới.
 - **Đã deploy bước A + B lên VPS 06/10/2026** (migration 016, 017 chạy xong). Backup trước khi deploy: `~/backups/company_mana-20261006-030508.sql` trên VPS. Lệnh rsync dùng `--include .env.example --exclude ".env*"` để không xoá `.env` và `.env.bak-*` trên VPS.
 
 **Bước B — Phiếu OT (xong 05/10/2026):** bảng `OvertimeRequest` + Settings
@@ -173,6 +167,20 @@ công":
 README → "Làm thêm giờ (OT)". Ca `T` (Tăng ca) cũ vẫn còn trong danh mục ca với
 số công 0 — nên tắt để khỏi lẫn với ký hiệu OT `T` (chưa tắt, chờ chủ dự án).
 Test: `test:logic` 166/166, `test:api` 262/262, `test:routes` 70/70.
+
+**Bước C — Bảng lương (xong 06/10/2026, chưa deploy):** migration 018
+(`PayProfile`, `Allowance`, `EmployeeAllowance`, `PayrollClosing`, Settings
+`payroll_config`). `lib/payroll.ts` (thuần, test đối chiếu file kế toán T9 khớp
+từng đồng), `lib/payroll-service.ts`, `lib/payroll-export.ts`; phần tính bảng công
+tháng tách ra `lib/attendance-month.ts` dùng chung. Trang `/admin/payroll`,
+`/admin/payroll/settings`. Luật ở README → "Bảng lương". Test: `test:logic`
+203/203, `test:api` 288/288, `test:routes` 74/74.
+Thêm GROSS / NET từng người (migration 019): NET quy ngược ra gross, công ty
+chịu thuế và BH phần người lao động. Test sau khi thêm: `test:logic` 213/213,
+`test:api` 289/289, `test:routes` 74/74.
+Cần kế toán xác nhận: giảm trừ 15,5tr / 6,2tr, biểu thuế 5 bậc 5–35%, ngưỡng
+khấu trừ 10% (đang để 0 cho khớp file, luật là 2tr), BH tính trên lương cơ bản
+không chặn trần.
 
 ## Việc còn lại
 

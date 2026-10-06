@@ -21,6 +21,14 @@ import {
   validatePlannedTimes,
   DEFAULT_OVERTIME_CONFIG,
 } from "../lib/overtime.ts";
+import {
+  annualLeaveForMonth,
+  computePayroll,
+  DEFAULT_PAY_PROFILE,
+  parsePayrollConfig,
+  progressiveTax,
+  validatePayrollConfig,
+} from "../lib/payroll.ts";
 import { vnDateTimeToUtc, weekdayLabel, daysInMonth, addMonths, parseTimeToMinutes } from "../lib/datetime.ts";
 import {
   formatDuration,
@@ -284,6 +292,104 @@ const otOpen = ot("weekday", [caCN], [{ type: "in", at: at("2026-09-01", "08:30"
 check("quên checkout: lấy giờ dự kiến", otOpen.source === "planned");
 check("ca tăng ca (số công 0) không phải ca chính: OT cả giờ làm",
   ot("weekday", [tangCa], punchDay("18:00", "21:00")).minutes === 180);
+
+console.log("\n== bảng lương (đối chiếu file kế toán T9/2026) ==");
+const otConf = DEFAULT_OVERTIME_CONFIG;
+const payConf = parsePayrollConfig("{}");
+const noOt = { T: 0, T1: 0, T2: 0 };
+const aiSupport = { allowanceId: "ai", name: "Hỗ trợ AI", mode: "monthly", taxable: true, amount: 300000 };
+const pay = (profile, extra) => computePayroll({
+  profile: { ...DEFAULT_PAY_PROFILE, ...profile }, config: payConf, overtimeConfig: otConf,
+  standardWorkdays: 22, workdays: 0, paidLeaveDays: 0, overtimeMinutes: noOt, allowances: [], ...extra });
+// Dòng 1 file kế toán: CTV, đơn giá 40.000đ/công, 14 công, hỗ trợ AI 300.000, khấu trừ 10%.
+const ctvDaily = pay({ salaryType: "daily", baseSalary: 40000, contractType: "collaborator" },
+  { workdays: 14, allowances: [aiSupport] });
+check("CTV theo ngày: thành tiền 40.000 × 14 = 560.000", ctvDaily.earned === 560000, `(${ctvDaily.earned})`);
+check("CTV theo ngày: tổng 860.000", ctvDaily.gross === 860000, `(${ctvDaily.gross})`);
+check("CTV theo ngày: thuế 10% = 86.000", ctvDaily.tax === 86000, `(${ctvDaily.tax})`);
+check("CTV theo ngày: thực nhận 774.000 (khớp file)", ctvDaily.net === 774000, `(${ctvDaily.net})`);
+// Dòng 6: thử việc, lương 8.300.000, 85% = 7.055.000, 21/22 công.
+const probation = pay({ baseSalary: 8300000, contractType: "probation", probationPercent: 85 }, { workdays: 21 });
+check("thử việc: lương áp dụng 85% = 7.055.000", probation.appliedSalary === 7055000, `(${probation.appliedSalary})`);
+check("thử việc: 7.055.000 × 21/22 = 6.734.318 (khớp file)", probation.earned === 6734318, `(${probation.earned})`);
+// Dòng 7: CTV lương tháng 7.000.000, 14,5/22 công (có nửa ngày x/2).
+const ctvMonthly = pay({ baseSalary: 7000000, contractType: "collaborator" }, { workdays: 14.5 });
+check("CTV lương tháng: 7.000.000 × 14,5/22 = 4.613.636 (khớp file)", ctvMonthly.earned === 4613636, `(${ctvMonthly.earned})`);
+check("CTV lương tháng: thực nhận = 90% (khớp 4.152.272)", ctvMonthly.net === 4152272, `(${ctvMonthly.net})`);
+// Dòng 8: thử việc 12.000.000 → 10.200.000, 19,5/22.
+const probation2 = pay({ baseSalary: 12000000, contractType: "probation" }, { workdays: 19.5 });
+check("thử việc 12tr: 10.200.000 × 19,5/22 = 9.040.909 (khớp file)", probation2.earned === 9040909, `(${probation2.earned})`);
+
+const withOt = pay({ baseSalary: 8800000 }, { workdays: 22, overtimeMinutes: { T: 180, T1: 480, T2: 60 } });
+// lương ngày 400.000, lương giờ 50.000.
+check("lương giờ = lương ngày ÷ 8 = 50.000", withOt.hourlyRate === 50000, `(${withOt.hourlyRate})`);
+check("OT T 3h × 150% = 225.000", withOt.overtime.find((o) => o.code === "T")?.amount === 225000);
+check("OT T1 8h × 200% = 800.000", withOt.overtime.find((o) => o.code === "T1")?.amount === 800000);
+check("OT T2 1h × 300% = 150.000", withOt.overtime.find((o) => o.code === "T2")?.amount === 150000);
+check("tổng = 8.800.000 + 1.175.000", withOt.gross === 9975000, `(${withOt.gross})`);
+const july = pay({ baseSalary: 8800000 }, { standardWorkdays: 23, workdays: 23, overtimeMinutes: { T: 180, T1: 0, T2: 0 } });
+check("tháng 23 công: làm đủ vẫn nhận đủ 8.800.000", july.earned === 8800000, `(${july.earned})`);
+check("tháng 23 công: OT 3h tính trên lương ngày ÷ 23", july.overtime[0]?.amount === Math.round(8800000 / 23 / 8 * 3 * 1.5), `(${july.overtime[0]?.amount})`);
+
+const leave = pay({ baseSalary: 8800000 }, { workdays: 20, paidLeaveDays: 2 });
+check("2 ngày phép có lương: được trả như 22 công", leave.earned === 8800000 && leave.paidWorkdays === 22);
+const prorated = pay({ baseSalary: 8800000 }, { workdays: 11, allowances: [
+  { allowanceId: "a", name: "Gửi xe", mode: "prorated", taxable: false, amount: 200000 },
+  { allowanceId: "b", name: "Ăn trưa", mode: "per_day", taxable: false, amount: 30000 }] });
+check("hỗ trợ theo tỉ lệ: 200.000 × 11/22 = 100.000", prorated.allowances[0].amount === 100000);
+check("hỗ trợ theo ngày: 30.000 × 11 = 330.000", prorated.allowances[1].amount === 330000);
+check("khoản không chịu thuế không vào thu nhập tính thuế 10%", prorated.taxableIncome === prorated.earned, `(${prorated.taxableIncome})`);
+check("không có công thì 0 đồng", pay({ baseSalary: 8800000 }, {}).net === 0);
+
+const official = pay({ baseSalary: 30000000, taxMode: "progressive", hasInsurance: true, dependents: 1 }, { workdays: 22 });
+check("BH 10,5% trên 30tr = 3.150.000", official.insurance.total === 3150000, `(${official.insurance.total})`);
+// 30.000.000 - 3.150.000 - 15.500.000 - 6.200.000 = 5.150.000 → bậc 1 5% = 257.500
+check("thu nhập tính thuế sau giảm trừ = 5.150.000", official.taxableIncome === 5150000, `(${official.taxableIncome})`);
+check("thuế luỹ tiến bậc 1 = 257.500", official.tax === 257500, `(${official.tax})`);
+check("thực nhận = 30tr - BH - thuế", official.net === 30000000 - 3150000 - 257500);
+check("luỹ tiến qua nhiều bậc: 40tr = 500k + 2tr + 2tr = 4.500.000",
+  progressiveTax(40000000, payConf.taxBrackets) === 4500000, `(${progressiveTax(40000000, payConf.taxBrackets)})`);
+const otExempt = pay({ baseSalary: 30000000, taxMode: "progressive" }, { workdays: 22, overtimeMinutes: { T: 0, T1: 480, T2: 0 } });
+check("luỹ tiến: phần OT vượt lương thường không chịu thuế",
+  otExempt.taxableIncome === Math.max(0, 30000000 + Math.round(30000000 / 22) - 15500000), `(${otExempt.taxableIncome})`);
+check("không khấu trừ thì thuế 0", pay({ baseSalary: 5000000, taxMode: "none" }, { workdays: 22 }).tax === 0);
+check("ngưỡng khấu trừ 2tr: dưới ngưỡng không trừ",
+  computePayroll({ profile: { ...DEFAULT_PAY_PROFILE, salaryType: "daily", baseSalary: 40000 }, config: { ...payConf, flatTaxThreshold: 2000000 },
+    overtimeConfig: otConf, standardWorkdays: 22, workdays: 14, paidLeaveDays: 0, overtimeMinutes: noOt, allowances: [] }).tax === 0);
+check("cấu hình lương hỏng thì về mặc định", parsePayrollConfig("{bừa").insurance.bhxh === 8);
+check("chặn bậc thuế không tăng dần", validatePayrollConfig({ ...payConf, taxBrackets: [{ upTo: 30, rate: 5 }, { upTo: 10, rate: 10 }, { upTo: null, rate: 20 }] }) !== null);
+
+console.log("\n== lương GROSS / NET ==");
+const gross15 = pay({ baseSalary: 15000000, taxMode: "progressive", hasInsurance: true, insuranceSalary: 7100000 }, { workdays: 22 });
+check("GROSS 15tr, BH trên 7,1tr: BH = 745.500", gross15.insurance.total === 745500, `(${gross15.insurance.total})`);
+check("GROSS 15tr: dưới mức giảm trừ nên thuế 0, thực nhận 14.254.500", gross15.tax === 0 && gross15.net === 14254500, `(${gross15.net})`);
+check("GROSS thì không có khoản bù", gross15.netGrossUp === 0 && gross15.targetNet === null);
+const net15 = pay({ payBasis: "net", baseSalary: 15000000, taxMode: "progressive", hasInsurance: true, insuranceSalary: 7100000 }, { workdays: 22 });
+check("NET 15tr: cầm về đúng 15.000.000", net15.net === 15000000, `(${net15.net})`);
+check("NET 15tr: gross = 15.745.500 (công ty bù đúng phần BH)", net15.gross === 15745500 && net15.netGrossUp === 745500, `(${net15.gross})`);
+const net30 = pay({ payBasis: "net", baseSalary: 30000000, taxMode: "progressive", hasInsurance: true, insuranceSalary: 7100000 }, { workdays: 22 });
+// G - 745.500 - thuế = 30tr; thuế = 950.000 / 0,9 = 1.055.556 → G ≈ 31.801.056
+check("NET 30tr có thuế luỹ tiến: cầm về đúng 30.000.000", net30.net === 30000000, `(${net30.net})`);
+check("NET 30tr: gross ≈ 31.801.056 (bù BH + thuế)", Math.abs(net30.gross - 31801056) <= 2, `(${net30.gross})`);
+const net30half = pay({ payBasis: "net", baseSalary: 30000000, taxMode: "progressive", hasInsurance: true, insuranceSalary: 7100000 }, { workdays: 11 });
+check("NET nghỉ nửa tháng: cầm về 15tr (theo tỉ lệ công)", net30half.net === 15000000, `(${net30half.net})`);
+const netCtv = pay({ payBasis: "net", baseSalary: 9000000, contractType: "collaborator", taxMode: "flat10" }, { workdays: 22 });
+check("NET CTV khấu trừ 10%: gross = 10.000.000 để cầm về 9tr", netCtv.net === 9000000 && netCtv.gross === 10000000, `(${netCtv.gross} ${netCtv.net})`);
+const netAllow = pay({ payBasis: "net", baseSalary: 9000000, contractType: "collaborator", taxMode: "flat10" }, { workdays: 22, allowances: [aiSupport] });
+check("NET có hỗ trợ: hỗ trợ cũng là tiền cầm về (9,3tr)", netAllow.net === 9300000 && netAllow.targetNet === 9300000, `(${netAllow.net})`);
+
+console.log("\n== phép năm ==");
+const leaveConf = payConf.annualLeave;
+const lv = (startDate, month, leaveDates) => annualLeaveForMonth({ startDate, month, leaveDates, config: leaveConf });
+check("mỗi tháng cộng 1 ngày: vào làm tháng 9, nghỉ 1 ngày tháng 9 = có lương", lv("2026-09-01", "2026-09", ["2026-09-10"]).paidDays === 1);
+check("nghỉ 2 ngày trong tháng đầu: 1 có lương, 1 không lương",
+  lv("2026-09-01", "2026-09", ["2026-09-10", "2026-09-11"]).paidDays === 1 && lv("2026-09-01", "2026-09", ["2026-09-10", "2026-09-11"]).unpaidDays === 1);
+const saved = lv("2026-01-01", "2026-06", ["2026-06-01", "2026-06-02", "2026-06-03"]);
+check("không dùng thì cộng dồn: 6 tháng tích 6 ngày, nghỉ 3 còn 3", saved.paidDays === 3 && saved.balance === 3, `(${saved.paidDays}, ${saved.balance})`);
+check("phép cộng dồn tối đa 3 năm (36 ngày + năm hiện tại)", lv("2020-01-01", "2026-12", []).balance <= 36 + 13, `(${lv("2020-01-01", "2026-12", []).balance})`);
+const senior = lv("2020-01-01", "2025-12", []);
+check("đủ 5 năm được thêm ngày phép (tích luỹ năm thứ 6 = 13 ngày)", senior.accrued > 72, `(${senior.accrued})`);
+check("tháng trước ngày vào làm thì chưa có phép", lv("2026-09-15", "2026-08", []).balance === 0);
 
 console.log("\n== ký hiệu bảng chấm công cho kế toán ==");
 const cell = (status, codes, value, label = "") => ({ status, codes, workdayValue: value, label });

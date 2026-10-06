@@ -127,7 +127,7 @@ const SUMMARY_COLUMNS: {
   { label: "Tổng giờ", width: 10, strong: true, format: "0.0" },
 ];
 
-export async function buildAttendanceWorkbook(input: {
+type AttendanceSheetInput = {
   month: string;
   /// Mọi ngày trong tháng, dạng YYYY-MM-DD.
   dates: string[];
@@ -143,7 +143,14 @@ export async function buildAttendanceWorkbook(input: {
   standardWorkdays: number;
   /// Ngày xuất file, dạng YYYY-MM-DD theo giờ VN.
   exportedOn: string;
-}): Promise<Buffer> {
+};
+
+export async function buildAttendanceWorkbook(input: AttendanceSheetInput): Promise<Buffer> {
+  return await writeXlsxFile([attendanceSheet(input)]).toBuffer();
+}
+
+/// Sheet bảng chấm công cả công ty — dùng riêng hoặc gắn vào file bảng lương.
+export function attendanceSheet(input: AttendanceSheetInput) {
   const {
     month,
     dates,
@@ -401,24 +408,22 @@ export async function buildAttendanceWorkbook(input: {
     })),
   ];
 
-  return await writeXlsxFile(
-    [...title, headerTop, headerBottom, ...body, ...(rows.length > 0 ? [footer] : [])],
-    {
-      sheet: `Chấm công ${month.slice(5)}-${month.slice(0, 4)}`,
-      // Giữ khối tiêu đề và ba cột định danh khi cuộn qua 31 ngày.
-      stickyRowsCount: title.length + 2,
-      stickyColumnsCount: 3,
-      showGridLines: false,
-      orientation: "landscape",
-      columns: [
+  return {
+    data: [...title, headerTop, headerBottom, ...body, ...(rows.length > 0 ? [footer] : [])],
+    sheet: `Chấm công ${month.slice(5)}-${month.slice(0, 4)}`,
+    // Giữ khối tiêu đề và ba cột định danh khi cuộn qua 31 ngày.
+    stickyRowsCount: title.length + 2,
+    stickyColumnsCount: 3,
+    showGridLines: false,
+    orientation: "landscape" as const,
+    columns: [
         ...identityColumns.map((column) => ({ width: column.width })),
         ...dates.map(() => ({ width: 5.5 })),
         ...SUMMARY_COLUMNS.map((column) => ({ width: column.width })),
         ...OVERTIME_COLUMN_CODES.map(() => ({ width: 9 })),
         ...sessionCodes.map(() => ({ width: 6 })),
-      ],
-    }
-  ).toBuffer();
+    ],
+  };
 }
 
 /// Một dòng ngày trong file chi tiết của một nhân viên.
@@ -445,7 +450,7 @@ export function employeeAttendanceFileName(
 
 /// File chấm công chi tiết của một nhân viên trong tháng: mỗi ngày một dòng,
 /// có giờ vào / ra để đối chiếu khi kế toán hoặc nhân viên thắc mắc.
-export async function buildEmployeeAttendanceWorkbook(input: {
+type EmployeeSheetInput = {
   month: string;
   companyName: string;
   user: {
@@ -459,7 +464,16 @@ export async function buildEmployeeAttendanceWorkbook(input: {
   standardWorkdays: number;
   weeklyOffDays: number[];
   exportedOn: string;
-}): Promise<Buffer> {
+};
+
+export async function buildEmployeeAttendanceWorkbook(
+  input: EmployeeSheetInput
+): Promise<Buffer> {
+  return await writeXlsxFile([employeeAttendanceSheet(input)]).toBuffer();
+}
+
+/// Sheet chấm công chi tiết một nhân viên — dùng riêng hoặc gắn vào phiếu lương.
+export function employeeAttendanceSheet(input: EmployeeSheetInput) {
   const { month, companyName, user, days, workdays, standardWorkdays, exportedOn } =
     input;
   const offDays = new Set(input.weeklyOffDays);
@@ -584,10 +598,11 @@ export async function buildEmployeeAttendanceWorkbook(input: {
     null,
   ];
 
-  return await writeXlsxFile([...header, ...body, footer], {
+  return {
+    data: [...header, ...body, footer],
     sheet: `Chấm công ${month.slice(5)}-${month.slice(0, 4)}`,
     stickyRowsCount: header.length,
     showGridLines: false,
     columns: columns.map((column) => ({ width: column.width })),
-  }).toBuffer();
+  };
 }

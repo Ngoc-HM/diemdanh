@@ -4,6 +4,7 @@ import { ReactNode, useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
+  Wallet,
   Timer,
   AlarmClockOff,
   Building2,
@@ -41,6 +42,7 @@ const navItems: NavItem[] = [
   { href: "/admin/schedules", label: "Lịch làm việc", icon: <CalendarDays size={18} /> },
   { href: "/admin/shift-requests", label: "Duyệt đổi ca", icon: <ClipboardCheck size={18} /> },
   { href: "/admin/overtime", label: "Duyệt OT", icon: <Timer size={18} /> },
+  { href: "/admin/payroll", label: "Bảng lương", icon: <Wallet size={18} /> },
   { href: "/admin/users", label: "Nhân viên", icon: <Users size={18} /> },
   { href: "/admin/sessions", label: "Ca làm việc", icon: <Clock size={18} /> },
   { href: "/admin/locations", label: "Vị trí", icon: <MapPin size={18} /> },

@@ -45,6 +45,8 @@ const ADMIN_PAGES = [
   ["/admin/schedules", "Lịch làm việc"],
   ["/admin/shift-requests", "Duyệt đổi ca"],
   ["/admin/overtime", "Làm thêm giờ (OT)"],
+  ["/admin/payroll", "Bảng lương"],
+  ["/admin/payroll/settings", "Cài đặt lương"],
   ["/admin/work-reports", "Báo cáo công việc"],
   ["/admin/users", "Nhân viên"],
   ["/admin/sessions", "Ca làm việc"],
