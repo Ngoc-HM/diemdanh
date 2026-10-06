@@ -139,7 +139,8 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
 
       <div className="flex">
         {/* Cột trái bám sát mép màn hình, tự cuộn riêng khi menu dài hơn màn hình */}
-        <aside className="sticky top-16 hidden h-[calc(100vh-4rem)] w-56 shrink-0 overflow-y-auto border-r border-slate-200 bg-white lg:block">
+        {/* Header cao 64px + 1px viền dưới = 65px; lệch 1px là trang nào cũng có thanh cuộn dọc thừa. */}
+        <aside className="sticky top-[65px] hidden h-[calc(100vh-65px)] w-56 shrink-0 overflow-y-auto border-r border-slate-200 bg-white lg:block">
           <nav className="space-y-1 p-3">
             {navItems.map((item) => {
               const isActive =

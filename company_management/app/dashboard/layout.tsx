@@ -158,7 +158,8 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
       </header>
 
       <div className="flex">
-        <aside className="sticky top-16 hidden h-[calc(100vh-4rem)] w-60 shrink-0 flex-col border-r border-slate-200 bg-white lg:flex">
+        {/* Header cao 64px + 1px viền dưới = 65px; lệch 1px là trang nào cũng có thanh cuộn dọc thừa. */}
+        <aside className="sticky top-[65px] hidden h-[calc(100vh-65px)] w-60 shrink-0 flex-col border-r border-slate-200 bg-white lg:flex">
           {/* Thông tin người dùng nằm ngay dưới khối thương hiệu */}
           <div className="flex items-center gap-3 border-b border-slate-200 px-3 py-3">
             {user?.avatarUrl ? (
