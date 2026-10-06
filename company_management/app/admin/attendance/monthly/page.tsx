@@ -73,9 +73,12 @@ export default function MonthlyAttendancePage() {
   const [data, setData] = useState<Payload | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [editing, setEditing] = useState<{ userId: string; date: string } | null>(
-    null
-  );
+  /// Ô đang mở menu chấm lại, kèm phần tử nút để menu định vị theo.
+  const [editing, setEditing] = useState<{
+    userId: string;
+    date: string;
+    anchor: HTMLElement;
+  } | null>(null);
   const [saving, setSaving] = useState(false);
 
   const load = useCallback(async (target: string) => {
@@ -241,6 +244,26 @@ export default function MonthlyAttendancePage() {
         </div>
       )}
 
+      {!loading && data && data.summary.length > 0 && totals && (
+            <div className="mb-6 grid grid-cols-2 gap-4 sm:grid-cols-4">
+              <StatTile label="Nhân viên" value={String(data.summary.length)} />
+              <StatTile
+                label="Tổng ngày công"
+                value={formatWorkdays(totals.workdays)}
+                tone="text-emerald-700"
+              />
+              <StatTile
+                label="Lượt đi muộn"
+                value={String(totals.late)}
+                tone="text-amber-700"
+              />
+              <StatTile
+                label="Tổng giờ làm"
+                value={`${Math.round(totals.hours * 10) / 10}h`}
+              />
+            </div>
+          )}
+
       <div className="mb-4 flex flex-wrap gap-x-5 gap-y-2 text-xs">
         {LEGEND.map((item) => (
           <span key={item.status} className="flex items-center gap-1.5">
@@ -348,9 +371,11 @@ export default function MonthlyAttendancePage() {
                         >
                           <button
                             type="button"
-                            onClick={() =>
+                            onClick={(event) =>
                               setEditing(
-                                open ? null : { userId: row.user.id, date }
+                                open
+                                  ? null
+                                  : { userId: row.user.id, date, anchor: event.currentTarget }
                               )
                             }
                             aria-haspopup="menu"
@@ -373,8 +398,9 @@ export default function MonthlyAttendancePage() {
                           >
                             {cell?.label ?? ""}
                           </button>
-                          {open && (
+                          {open && editing && (
                             <DayMarkMenu
+                              anchor={editing.anchor}
                               sessions={data.sessions}
                               saving={saving}
                               onPick={(choice) =>
@@ -404,25 +430,6 @@ export default function MonthlyAttendancePage() {
             </table>
           </Card>
 
-          {totals && (
-            <div className="mt-6 grid grid-cols-2 gap-4 sm:grid-cols-4">
-              <StatTile label="Nhân viên" value={String(data.summary.length)} />
-              <StatTile
-                label="Tổng ngày công"
-                value={formatWorkdays(totals.workdays)}
-                tone="text-emerald-700"
-              />
-              <StatTile
-                label="Lượt đi muộn"
-                value={String(totals.late)}
-                tone="text-amber-700"
-              />
-              <StatTile
-                label="Tổng giờ làm"
-                value={`${Math.round(totals.hours * 10) / 10}h`}
-              />
-            </div>
-          )}
         </>
       )}
     </>
