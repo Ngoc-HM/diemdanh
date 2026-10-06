@@ -1,0 +1,22 @@
+# Reverse proxy HTTPS phía trước app (bật bằng COMPOSE_PROFILES=proxy trong .env).
+#
+# SITE_ADDRESS: tên miền thật (vd. cham-cong.congty.vn) thì Caddy tự xin chứng
+# chỉ Let's Encrypt, cần mở cổng 80 + 443 ra Internet. Chỉ có IP trong mạng
+# riêng (LAN / Tailscale) thì đặt TLS_MODE=internal: Caddy tự ký chứng chỉ,
+# trình duyệt cảnh báo lần đầu nhưng đường truyền vẫn là HTTPS và cookie phiên
+# vẫn `secure` như production.
+{
+	# Truy cập bằng IP thì trình duyệt không gửi SNI, Caddy dùng tên này để chọn
+	# chứng chỉ.
+	default_sni {$DEFAULT_SNI:localhost}
+}
+
+{$SITE_ADDRESS:localhost} {
+	tls {$TLS_MODE:internal}
+	encode gzip
+	# Upload ảnh tối đa 2MB, chừa khoảng cho phần bọc multipart.
+	request_body {
+		max_size 3MB
+	}
+	reverse_proxy app:3000
+}

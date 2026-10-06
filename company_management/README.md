@@ -62,15 +62,60 @@ tiết nhân viên (các dòng nhập tay được đánh dấu `isManual`).
 
 `/admin/attendance/monthly` → nút **Xuất Excel** tải file `.xlsx` của tháng đang
 xem: mỗi nhân viên một dòng (mã NV, họ tên, email, loại hợp đồng), mỗi ngày một
-ô ký hiệu, rồi các cột tổng **Ngày công · Đi muộn · Vắng · Nghỉ (N) · Ốm (O) ·
-Tổng giờ** và số ngày theo từng mã ca. Không có giờ vào/ra chi tiết — muốn xem
-thì vào trang chi tiết nhân viên.
+ô ký hiệu, rồi các cột tổng **Ngày công · Ngày công tháng · Đi muộn · Vắng ·
+Nghỉ (N) · Ốm (O) · Tổng giờ** và số ngày đã làm theo từng mã ca.
 
-Ô ngày tô màu theo trạng thái (xanh đủ công, vàng cần để ý, đỏ vắng, xám nghỉ),
-dòng tiêu đề và hai cột đầu được khoá để cuộn ngang qua 31 ngày vẫn đọc được.
-Ký hiệu trong ô lấy từ `dayCellLabel` (`lib/attendance-rules.ts`): mã ca (`S`,
-`C`, `CN`, ghép `S+C`), `*` đi muộn, `!` thiếu giờ, `N` nghỉ, `O` ốm, `V` vắng,
-`NL` làm ngoài lịch, `L` nghỉ lễ, `?` quên checkout, ô trống là không có lịch.
+Ký hiệu ô theo mẫu kế toán (`accountingCellLabel` trong `lib/attendance-export.ts`):
+full-time ghi **`x`** (một công) / **`x/2`** (nửa công); part-time và thực tập ghi
+mã ca đã làm (`S`, `C`, `CN`, ghép `S+C`). Ngày không có công giữ ký hiệu lưới:
+`L` nghỉ lễ, `N` nghỉ, `O` ốm, `V` vắng, `?` quên checkout, `CN!` thiếu giờ mà
+admin chọn không tính.
+
+Trang chi tiết nhân viên `/admin/attendance/user/[id]` có nút **Xuất Excel** riêng:
+mỗi ngày một dòng với ca, giờ vào, giờ ra, giờ làm, số công, trạng thái, ghi chú.
+
+### Ngày công
+
+- Mỗi ca có **số công** (trang Ca làm việc): mặc định `S` = 0,5, `C` = 0,5,
+  `CN` = 1, `T` (tăng ca) = 0. Ngày công của tháng = tổng số công các ngày.
+- **Ngày công tháng** (công chuẩn, mẫu số khi tính lương) = số ngày không phải
+  ngày nghỉ hằng tuần trong tháng, **tính cả ngày lễ** (`standardWorkdays` trong
+  `lib/schedule.ts`). Tháng 9/2026 nghỉ T7 + CN = 22.
+- **Nghỉ lễ được hưởng lương**: ngày lễ có lịch thì vẫn được số công của lịch đó.
+- **Thiếu giờ** vẫn tính đủ công nhưng đánh dấu *Chờ xem lại*. Admin bấm ✓ (tính)
+  hoặc ✗ (không tính) ở trang chi tiết nhân viên — bảng `DayReview`. Chưa xem thì
+  hết tháng vẫn tính đủ.
+- **Làm ngoài lịch** (quên đăng ký): đủ ngưỡng cả ngày (giờ tối thiểu của ca mặc
+  định full-time) là 1 công, ít hơn là 0,5. Riêng full-time đi làm **ngày nghỉ
+  hằng tuần hoặc ngày lễ** mà không có lịch thì **0 công** — phải làm phiếu OT.
+- Nghỉ `N` và ốm `O` là 0 công ở bảng chấm công; phép năm hưởng lương tính ở
+  bảng lương.
+- Ngày nghỉ hằng tuần đặt ở trang **Lịch làm việc**; trang **Ngày lễ** chỉ còn
+  ngày lễ.
+
+### Làm thêm giờ (OT)
+
+OT chỉ được trả khi có **phiếu OT được admin duyệt** — kể cả đi làm thứ 7, chủ
+nhật, ngày lễ (full-time làm ngày nghỉ mà không có phiếu thì 0 công).
+
+- Nhân viên làm phiếu ở `/dashboard/overtime`: ngày, giờ dự kiến (không qua nửa
+  đêm), nơi đi / nơi đến, nội dung. Mỗi ngày một phiếu còn hiệu lực; gửi lại khi
+  đang chờ là sửa phiếu; phiếu bị từ chối không chặn làm phiếu mới.
+- Ký hiệu và hệ số **tự gắn theo ngày**: `T` ngày thường **150%**, `T1` ngày nghỉ
+  hằng tuần **200%**, `T2` ngày lễ **300%** (lễ rơi vào CN vẫn là T2). Admin sửa
+  hệ số và số giờ chuẩn một ngày (mặc định 8) ở `/admin/overtime` — Settings
+  `overtime_config`.
+- **Số giờ OT** (`computeOvertimeMinutes` trong `lib/overtime.ts`), đã trừ nghỉ trưa:
+  ngày có ca chính (số công > 0) thì là phần làm **sau giờ hết ca chính**; ngày lễ
+  hoặc ngày không có ca chính thì là **toàn bộ giờ làm**. Không có đủ giờ vào và
+  giờ ra (đi công tác, quên checkout) thì lấy **giờ dự kiến** trên phiếu.
+- Admin duyệt ở `/admin/overtime`, có thể **chốt tay số giờ** (bỏ trống = theo
+  cách tính trên), sửa giờ hoặc từ chối cả sau khi đã duyệt.
+- Ngày không có ca mà có phiếu OT được duyệt là ngày OT: không cộng thêm công
+  "ngoài lịch", chỉ trả theo giờ OT.
+- Bảng công: ô ngày thêm ký hiệu (`x+T`, `T1`, `L+T2`); Excel cả công ty có thêm
+  ba cột **OT T / T1 / T2 (giờ)**; Excel từng nhân viên có cột OT.
+- Lương OT (tính ở bảng lương) = lương ngày ÷ số giờ chuẩn × số giờ × hệ số.
 
 ### Cách xếp loại một ngày
 
@@ -84,12 +129,12 @@ Ký hiệu trong ô lấy từ `dayCellLabel` (`lib/attendance-rules.ts`): mã c
 | Vắng | Có lịch nhưng không có lần bấm giờ nào — tô **đỏ** ở mọi bảng để phân biệt với nghỉ N đã xin |
 | Nghỉ | Nhân viên tự chọn `N` khi đăng ký lịch, hoặc admin đánh dấu `N` — không đòi giờ công, không tính là ngày công |
 | Ốm | Admin đánh dấu `O` — xử lý như ngày nghỉ |
-| Ngoài lịch | Quên đăng ký nhưng vẫn đi làm, có cả giờ vào lẫn giờ ra — **vẫn tính đủ một ngày công** theo giờ thực tế (không có ngưỡng để so), tô **vàng** để admin để ý; admin muốn có mã ca cho bảng lương thì bấm vào ô để gán ca |
-| Nghỉ lễ | Ngày nằm trong bảng `Holiday` — không bị tính vắng |
+| Ngoài lịch | Quên đăng ký nhưng vẫn đi làm, có cả giờ vào lẫn giờ ra — tính 1 hoặc 0,5 công theo giờ thực tế (xem "Ngày công"), tô **vàng** để admin để ý; admin muốn có mã ca thì bấm vào ô để gán ca |
+| Nghỉ lễ | Ngày nằm trong bảng `Holiday` — không bị tính vắng, có lịch thì vẫn được tính công |
 | Không có lịch | Không đăng ký ca nào và cũng không có lần bấm giờ nào |
 
-Mọi chỗ đếm "ngày công" dùng cờ `countsAsWorkDay` của `evaluateDay`, không so
-sánh trạng thái bằng tay.
+Mọi chỗ cộng "ngày công" dùng `workdayValue` của `evaluateDay`, không so sánh
+trạng thái bằng tay.
 
 Múi giờ chốt cứng ở `Asia/Ho_Chi_Minh` (`lib/datetime.ts`), không phụ thuộc giờ
 máy chủ — đây là lý do mọi khoá ngày đều đi qua `dateKeyVN()`.
@@ -137,6 +182,20 @@ tháng / nhân viên / ngày và xuất CSV; trang chi tiết nhân viên có n�
 dung công việc của từng ngày. Bảng `WorkReportEntry` (migration 010). Phần này
 **không** tham gia vào việc tính giờ công hay xếp loại ngày.
 
+### Đăng nhập chung
+
+Admin và nhân viên đăng nhập cùng một trang `/login`, một ô **"Email hoặc tên
+đăng nhập"**. `/api/auth/login` tìm trong bảng `Admin` trước (theo tên đăng
+nhập, không phân biệt hoa thường — có thể là `admin` hay một email): có thì vào
+khu quản trị (`/admin/...`), không thì tìm theo email trong bảng nhân viên và vào
+`/dashboard`. Sai gì cũng cùng một câu "Tài khoản hoặc mật khẩu không đúng",
+không lộ đó là tài khoản gì.
+
+Vì admin được tìm trước, một email không được vừa là tên đăng nhập admin vừa là
+email nhân viên: tạo nhân viên, admin sửa hồ sơ, nhân viên tự đổi email đều trả
+409 nếu trùng, và seed dừng nếu `AUTH_ADMIN_USERNAME` trùng email nhân viên.
+Đường dẫn cũ `/admin-login-app` chuyển về `/login`.
+
 ### Phiên đăng nhập và chặn dò mật khẩu
 
 Phiên là JWT ký bằng `AUTH_SECRET`, để trong cookie `httpOnly`, hạn **7 ngày**.
@@ -182,10 +241,15 @@ Tên và email nằm sẵn trong cookie phiên để header đọc nhanh, nên k
 API ký lại cookie ngay — không phải đợi JWT hết hạn. Mọi chỗ khác (bảng chấm
 công, file Excel, danh sách nhân viên) đọc thẳng từ database nên tự khớp.
 
-Ảnh đại diện lưu ở `public/uploads/avatar-<id>.<ext>` như logo công ty, đường
-dẫn có kèm dấu thời gian để trình duyệt không dùng lại ảnh cũ trong cache. Chỉ
-nhận PNG / JPG / WebP, tối đa 2MB — không nhận SVG vì file SVG phục vụ từ cùng
-tên miền có thể mang mã chạy được.
+Ảnh đại diện lưu ở `storage/uploads/avatar-<id>.<ext>` cùng chỗ với logo công
+ty, đường dẫn có kèm dấu thời gian để trình duyệt không dùng lại ảnh cũ trong
+cache. Chỉ nhận PNG / JPG / WebP, tối đa 2MB — không nhận SVG vì file SVG phục
+vụ từ cùng tên miền có thể mang mã chạy được.
+
+File upload **không** để trong `public/`: `next start` chỉ quét `public/` một
+lần lúc khởi động, ảnh upload sau đó sẽ 404 cho tới khi restart. Thư mục lưu là
+`UPLOAD_DIR` (mặc định `storage/uploads`), phục vụ qua `app/uploads/[file]/route.ts`
+nên đường dẫn ngoài trình duyệt vẫn là `/uploads/<tên file>`.
 
 ## Cài đặt
 
@@ -208,6 +272,18 @@ từ chối mọi lần thử.
 
 ### 2. Cài đặt và khởi tạo database
 
+Chạy local giống production bằng Docker (không cài Postgres native):
+
+```bash
+docker compose up -d --build   # build + next start trong container, cổng 3000
+```
+
+App đọc toàn bộ `.env`, kể cả `DATABASE_URL`; trong container `localhost` là chính
+container nên `DATABASE_URL` phải là IP / tên máy thật của database. Cần một
+Postgres trống để thử: `docker compose --profile local-db up -d db` (cổng 5433).
+
+Chạy dev có hot-reload thì vẫn dùng:
+
 ```bash
 npm install
 npm run dev
@@ -228,7 +304,7 @@ file cũ đã chạy.
 
 ### 3. Thiết lập lần đầu trong giao diện admin
 
-Đăng nhập `/admin-login-app` rồi làm theo thứ tự:
+Đăng nhập `/login` bằng tài khoản admin trong `.env` rồi làm theo thứ tự:
 
 1. **Vị trí** — thêm ít nhất một vị trí, nếu không nhân viên không chấm công được
 2. **Ca làm việc** — đặt giờ nghỉ trưa, chỉnh khung giờ từng ca, đặt số giờ tối
@@ -243,17 +319,20 @@ file cũ đã chạy.
 
 | Route | Ai dùng |
 |---|---|
-| `/login`, `/admin-login-app`, `/forgot-password`, `/desktop-only` | Công khai |
+| `/login` | Công khai — đăng nhập chung cho admin và nhân viên |
+| `/forgot-password`, `/desktop-only` | Công khai |
 | `/dashboard` | Nhân viên — check in / check out |
 | `/dashboard/schedule` | Nhân viên — đăng ký lịch tháng |
 | `/dashboard/history` | Nhân viên — lịch sử chấm công |
 | `/dashboard/work-reports` | Nhân viên — khai nội dung công việc theo khoảng thời gian |
 | `/dashboard/shift-requests` | Nhân viên — gửi yêu cầu đổi ca / xin nghỉ một ngày |
+| `/dashboard/overtime` | Nhân viên — làm phiếu OT |
 | `/dashboard/settings` | Nhân viên — đổi họ tên, email, ảnh đại diện, mật khẩu |
 | `/admin/attendance/monthly` | Admin — bảng chấm công tháng, xuất Excel |
 | `/admin/attendance/user/[userId]` | Admin — chi tiết theo ngày, sửa công tay |
 | `/admin/schedules` | Admin — lịch cả công ty, xếp lịch cho nhân viên |
 | `/admin/shift-requests` | Admin — duyệt / từ chối yêu cầu đổi ca |
+| `/admin/overtime` | Admin — duyệt phiếu OT, chốt giờ, đặt hệ số OT |
 | `/admin/work-reports` | Admin — xem nội dung công việc nhân viên khai, xuất CSV |
 | `/admin/users` | Admin — hồ sơ nhân viên |
 | `/admin/sessions` | Admin — danh mục ca |
@@ -341,28 +420,64 @@ nào là an toàn:
 |---|---|---|
 | `DATABASE_URL` | ✔ | Database chưa có thì `npm run db` tự tạo |
 | `AUTH_SECRET` | ✔ | **≥ 32 ký tự** ở production, nếu không app dừng ngay khi khởi động. Sinh bằng `node -e "console.log(require('crypto').randomBytes(48).toString('base64url'))"` |
-| `AUTH_ADMIN_USERNAME` | | Mặc định `admin` |
+| `AUTH_ADMIN_USERNAME` | | Tên đăng nhập admin, mặc định `admin`. Có thể là email nhưng không được trùng email nhân viên nào |
 | `AUTH_ADMIN_PASSWORD` | ✔ | Thiếu thì `npm run seed` dừng và trang đăng nhập quản trị từ chối mọi lần thử — **không có mật khẩu mặc định** |
+| `UPLOAD_DIR` | | Nơi lưu logo và ảnh đại diện. Mặc định `storage/uploads` trong thư mục app |
 
 Đổi `AUTH_SECRET` sẽ làm mọi người đang đăng nhập bị đăng xuất, và mật khẩu
 SMTP đã lưu phải nhập lại.
 
-### 2. Chạy
+### 2. Chạy bằng Docker (cách deploy chính)
+
+Server chỉ cần Docker, không cần sudo. `docker-compose.yml` chạy khép kín trên
+một máy: **app** (`next start`) + **db** (Postgres 18, dữ liệu ở volume
+`db-data`) + **proxy** (Caddy HTTPS, bật bằng `COMPOSE_PROFILES=proxy`). Trong
+thư mục `company_management/`:
 
 ```bash
-npm ci
+cp .env.example .env            # điền AUTH_SECRET, AUTH_ADMIN_PASSWORD, POSTGRES_PASSWORD, phần HTTPS
+mkdir -p storage/uploads        # logo + ảnh đại diện
+docker compose up -d --build
+docker compose ps               # app và db phải "healthy"
+```
+
+- App luôn nối vào container `db`; `DATABASE_URL` trong `.env` chỉ dành cho
+  `npm run dev`. Postgres chỉ mở `127.0.0.1:5433` trên chính máy đó.
+- HTTPS: có tên miền thì `SITE_ADDRESS=<tên miền>`, `TLS_MODE=<email>` (Caddy tự
+  xin Let's Encrypt, cần mở 80/443). Chỉ có IP nội bộ / Tailscale thì liệt kê IP
+  và `TLS_MODE=internal`: chứng chỉ tự ký, trình duyệt cảnh báo lần đầu nhưng
+  cookie vẫn `secure` như production. Cổng 443 chỉ mở IPv4.
+- Image làm `npm ci` → `npm run build`; mỗi lần start chạy `npm run db`
+  (migrate + seed) rồi `npm start`. Cập nhật code: đồng bộ code mới rồi
+  `docker compose up -d --build`. **Backup trước** nếu có migration:
+  `docker compose exec db pg_dump -U postgres company_mana > backup.sql`.
+- `restart: unless-stopped` cho cả ba service; log giới hạn 5 file × 10MB.
+- Backup: dữ liệu ở volume `db-data` và thư mục `storage/uploads`.
+- Chỉ chạy **một** container app cho mỗi database: bộ nhắc đăng ký lịch chạy
+  trong tiến trình, bật app khoảng 30 giây là kiểm tra lần đầu.
+
+Không dùng Docker thì chạy tay đúng các bước đó:
+
+```bash
+npm ci          # đừng đặt NODE_ENV=production lúc này: tsx, dotenv, tailwind là devDependencies
 npm run build
 npm run db      # migrate + seed, phải chạy trước mỗi lần start sau khi cập nhật
 npm start
 ```
 
-Backup database trước khi chạy migration trên dữ liệu thật.
-
 ### 3. Bắt buộc chạy sau HTTPS
 
 Cookie phiên bật `secure` khi `NODE_ENV=production`, nên qua HTTP thuần thì
 trình duyệt không lưu cookie và không ai đăng nhập được. Đặt sau reverse proxy
-có TLS (nginx/Caddy) và trỏ đúng `proxy_set_header Host`.
+có TLS (nginx/Caddy) và trỏ đúng `proxy_set_header Host`. Container chỉ mở
+`127.0.0.1:3000`, proxy trên cùng máy trỏ vào đó; đặt `client_max_body_size 3m`
+(nginx) để upload ảnh 2MB không bị chặn. Ví dụ Caddy:
+
+```
+cham-cong.congty.vn {
+    reverse_proxy 127.0.0.1:3000
+}
+```
 
 ### 4. Việc phải làm trong giao diện sau khi bật
 
@@ -372,12 +487,12 @@ có TLS (nginx/Caddy) và trỏ đúng `proxy_set_header Host`.
    khoảng 30 phút để ra sớm một chút vẫn đủ công.
 2. **`/admin/email`** — điền **Đường dẫn ứng dụng** (ví dụ `https://cham-cong.congty.vn`).
    Bỏ trống thì email nhắc đăng ký lịch không kèm được link (gửi từ bộ đếm nền,
-   không có request để suy ra tên miền), còn link đặt lại mật khẩu lấy theo host
-   của request nên sau reverse proxy dễ ra sai. Sau đó bấm **Gửi thử** và thử
-   luôn luồng quên mật khẩu bằng một hộp thư thật.
-3. **`/admin/company`** — upload lại logo. File logo nằm ở `public/uploads/`
-   (không commit), nên máy chủ mới sẽ không có; deploy dạng container cần gắn
-   volume cho thư mục này, nếu không logo mất sau mỗi lần deploy.
+   không có request để suy ra tên miền). Sau đó bấm **Gửi thử** và thử luôn luồng
+   quên mật khẩu (mã 8 số) bằng một hộp thư thật.
+3. **`/admin/company`** — upload lại logo. Logo và ảnh đại diện nằm ở
+   `UPLOAD_DIR` (không commit), nên máy chủ mới sẽ không có; deploy dạng
+   container cần gắn volume cho thư mục này, nếu không mất sau mỗi lần deploy.
+   Máy nào còn file ở `public/uploads/` (bản cũ) thì chuyển sang `UPLOAD_DIR`.
 4. **`/admin/locations`** — ít nhất một vị trí, nếu không nhân viên không chấm
    công được.
 
@@ -392,7 +507,8 @@ có TLS (nginx/Caddy) và trỏ đúng `proxy_set_header Host`.
   phiên bị xoá, không cần đợi JWT hết hạn.
 - Bộ nhắc đăng ký lịch chạy trong tiến trình server; chạy nhiều instance thì
   mỗi instance có một bộ đếm, có thể gửi trùng.
-- Không có rate-limit ở trang đăng nhập.
+- Đăng nhập sai 5 lần khoá tài khoản 15 phút (xem "Phiên đăng nhập và chặn dò
+  mật khẩu"); không có giới hạn theo IP.
 
 ## Chưa làm
 

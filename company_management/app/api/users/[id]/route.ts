@@ -3,6 +3,7 @@ import { badRequest, conflict, handle, notFound, requireAdmin } from "@/lib/auth
 import { isValidEmail } from "@/lib/utils";
 import { isEmploymentType } from "@/lib/schedule";
 import { EMPLOYEE_COLUMNS, EmployeeRow, UserRow } from "@/lib/types";
+import { assertEmailNotAdmin } from "@/lib/auth-login";
 
 export async function PUT(
   req: Request,
@@ -37,6 +38,7 @@ export async function PUT(
       [email]
     );
     if (duplicateEmail && duplicateEmail.id !== id) conflict("Email đã được dùng");
+    await assertEmailNotAdmin(email);
 
     if (employeeCode) {
       const duplicateCode = await queryOne<{ id: string }>(

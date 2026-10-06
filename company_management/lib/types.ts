@@ -35,6 +35,8 @@ export type WorkSessionRow = {
   workStart: string;
   workEnd: string;
   minHours: number;
+  /// Số công: 1 = một ngày, 0,5 = nửa ngày, 0 = không tính công (vd. tăng ca).
+  workdayValue: number;
   isDefaultFull: boolean;
   isActive: boolean;
   sortOrder: number;

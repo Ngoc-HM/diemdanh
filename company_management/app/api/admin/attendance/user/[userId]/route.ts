@@ -1,3 +1,4 @@
+import { NextResponse } from "next/server";
 import { query, queryOne, transaction } from "@/lib/db";
 import { badRequest, handle, notFound, requireAdmin } from "@/lib/auth-guard";
 import {
@@ -18,16 +19,30 @@ import {
 } from "@/lib/attendance-rules";
 import {
   applyDayMark,
+  fullDayMinutesOf,
   getActiveSessionRules,
   getDayMarks,
+  getDayReviews,
   getHolidayMap,
   getLunchBreak,
   getPendingShiftRequestDates,
+  getWeeklyOffDays,
   resolveUserMonthSchedule,
 } from "@/lib/attendance-service";
-import { EMPLOYMENT_TYPE_LABELS, EmploymentType } from "@/lib/schedule";
+import {
+  EMPLOYMENT_TYPE_LABELS,
+  EmploymentType,
+  isRestDayFor,
+  standardWorkdays,
+} from "@/lib/schedule";
 import { toEntryView, WORK_REPORT_COLUMNS } from "@/lib/work-reports";
 import { WorkReportEntryRow } from "@/lib/types";
+import { getApprovedOvertime } from "@/lib/overtime-service";
+import {
+  buildEmployeeAttendanceWorkbook,
+  employeeAttendanceFileName,
+  XLSX_CONTENT_TYPE,
+} from "@/lib/attendance-export";
 
 const TIME_PATTERN = /^([01]\d|2[0-3]):[0-5]\d$/;
 
@@ -74,7 +89,7 @@ export async function GET(
     if (!user) notFound("Không tìm thấy nhân viên");
 
     const { startDate, endDate } = getMonthRange(month);
-    const [rules, rows, holidays, lunchBreak, reportRows] = await Promise.all([
+    const [rules, rows, holidays, lunchBreak, reportRows, weeklyOffDays] = await Promise.all([
       getActiveSessionRules(),
       query<PunchRow>(
         `SELECT a."date", a."note", a."editedAt",
@@ -97,6 +112,7 @@ export async function GET(
           ORDER BY "date" ASC, "startAt" ASC`,
         [userId, startDate, endDate]
       ),
+      getWeeklyOffDays(),
     ]);
 
     const reportsByDate = new Map<string, WorkReportEntryRow[]>();
@@ -106,12 +122,15 @@ export async function GET(
       reportsByDate.set(row.date, list);
     }
 
-    const [schedule, marks, pendingRequests] = await Promise.all([
+    const [schedule, marks, pendingRequests, reviews, overtime] = await Promise.all([
       resolveUserMonthSchedule(user!, month, rules),
       getDayMarks([userId], startDate, endDate),
       getPendingShiftRequestDates([userId], startDate, endDate),
+      getDayReviews([userId], startDate, endDate),
+      getApprovedOvertime([userId], month),
     ]);
     const ruleById = new Map(rules.map((rule) => [rule.id, rule]));
+    const fullDayMinutes = fullDayMinutesOf(rules);
 
     const byDate = new Map<string, PunchRow[]>();
     for (const row of rows) {
@@ -126,6 +145,7 @@ export async function GET(
       const reports = (reportsByDate.get(date) ?? []).map(toEntryView);
       const mark = marks.get(`${userId}|${date}`);
       const scheduled = applyDayMark(schedule.get(date) ?? [], mark, ruleById);
+      const ot = overtime.get(`${userId}|${date}`);
 
       const evaluation = evaluateDay({
         scheduled,
@@ -138,6 +158,11 @@ export async function GET(
         isPast: date < today,
         leaveCode: mark?.leaveCode ?? null,
         lunchBreak,
+        isRestDay:
+          isRestDayFor(user!.employmentType, date, weeklyOffDays, holidays.has(date)) ||
+          (Boolean(ot) && scheduled.length === 0),
+        fullDayMinutes,
+        reviewDecision: reviews.get(`${userId}|${date}`) ?? null,
       });
 
       return {
@@ -156,6 +181,12 @@ export async function GET(
         })),
         status: evaluation.status,
         countsAsWorkDay: evaluation.countsAsWorkDay,
+        workdayValue: evaluation.workdayValue,
+        needsReview: evaluation.needsReview,
+        reviewDecision: evaluation.reviewDecision,
+        overtime: ot
+          ? { id: ot.id, code: ot.code, rate: ot.rate, minutes: ot.minutes, place: ot.place }
+          : null,
         statusLabel: DAY_STATUS_LABELS[evaluation.status],
         workedHours: minutesToHours(evaluation.workedMinutes),
         requiredHours: minutesToHours(evaluation.requiredMinutes),
@@ -180,18 +211,63 @@ export async function GET(
       };
     });
 
+    const employmentLabel =
+      EMPLOYMENT_TYPE_LABELS[user!.employmentType as EmploymentType] ??
+      user!.employmentType;
+    const workdays = days.reduce((sum, day) => sum + day.workdayValue, 0);
+    const monthStandardWorkdays = standardWorkdays(month, weeklyOffDays);
+
+    if (searchParams.get("export") === "xlsx") {
+      const companyName = await queryOne<{ value: string }>(
+        `SELECT "value" FROM "Settings" WHERE "key" = 'company_name'`
+      );
+      const file = await buildEmployeeAttendanceWorkbook({
+        month,
+        companyName: companyName?.value ?? "",
+        user: { ...user!, employmentLabel },
+        days: days.map((day) => ({
+          date: day.date,
+          holidayName: day.holidayName,
+          scheduledCodes: day.scheduled.map((rule) => rule.code),
+          firstIn: day.punches.find((punch) => punch.type === "in")?.time ?? null,
+          lastOut:
+            day.punches.filter((punch) => punch.type === "out").at(-1)?.time ?? null,
+          workedHours: day.workedHours,
+          workdayValue: day.workdayValue,
+          overtime: day.overtime,
+          statusLabel:
+            day.reviewDecision === "exclude"
+              ? `${day.statusLabel} — không tính công`
+              : day.statusLabel,
+          note: day.note,
+        })),
+        workdays,
+        standardWorkdays: monthStandardWorkdays,
+        weeklyOffDays,
+        exportedOn: today,
+      });
+      return new NextResponse(new Uint8Array(file), {
+        headers: {
+          "Content-Type": XLSX_CONTENT_TYPE,
+          "Content-Disposition": `attachment; filename="${employeeAttendanceFileName(
+            month,
+            user!.employeeCode,
+            userId
+          )}"`,
+        },
+      });
+    }
+
     return {
-      user: {
-        ...user,
-        employmentLabel:
-          EMPLOYMENT_TYPE_LABELS[user!.employmentType as EmploymentType] ??
-          user!.employmentType,
-      },
+      user: { ...user, employmentLabel },
       month,
       sessions: rules,
       days,
       totals: {
-        passedDays: days.filter((day) => day.countsAsWorkDay).length,
+        workdays,
+        standardWorkdays: monthStandardWorkdays,
+        overtimeMinutes: days.reduce((sum, day) => sum + (day.overtime?.minutes ?? 0), 0),
+        reviewDays: days.filter((day) => day.needsReview).length,
         lateDays: days.filter((day) => day.status === "late").length,
         absentDays: days.filter((day) => day.status === "absent").length,
         totalHours:

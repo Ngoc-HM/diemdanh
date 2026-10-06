@@ -4,6 +4,7 @@ import { ReactNode, useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
+  Timer,
   AlarmClockOff,
   Building2,
   CalendarCheck,
@@ -39,6 +40,7 @@ const navItems: NavItem[] = [
   { href: "/admin/work-reports", label: "Báo cáo công việc", icon: <NotebookText size={18} /> },
   { href: "/admin/schedules", label: "Lịch làm việc", icon: <CalendarDays size={18} /> },
   { href: "/admin/shift-requests", label: "Duyệt đổi ca", icon: <ClipboardCheck size={18} /> },
+  { href: "/admin/overtime", label: "Duyệt OT", icon: <Timer size={18} /> },
   { href: "/admin/users", label: "Nhân viên", icon: <Users size={18} /> },
   { href: "/admin/sessions", label: "Ca làm việc", icon: <Clock size={18} /> },
   { href: "/admin/locations", label: "Vị trí", icon: <MapPin size={18} /> },
@@ -94,7 +96,7 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
   async function handleLogout() {
 
     await fetch("/api/auth/logout", { method: "POST" });
-    window.location.href = "/admin-login-app";
+    window.location.href = "/login";
   }
 
   return (

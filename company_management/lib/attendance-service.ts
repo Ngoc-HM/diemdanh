@@ -2,6 +2,7 @@ import { query, queryOne } from "@/lib/db";
 import {
   LunchBreak,
   parseLunchBreak,
+  ReviewDecision,
   SessionRule,
 } from "@/lib/attendance-rules";
 import {
@@ -42,6 +43,31 @@ export async function getDayMarks(
   return new Map(rows.map((row) => [`${row.userId}|${row.date}`, row]));
 }
 
+/// Quyết định của admin cho các ngày thiếu giờ, khoá `userId|date`.
+export async function getDayReviews(
+  userIds: string[],
+  startDate: string,
+  endDate: string
+): Promise<Map<string, ReviewDecision>> {
+  if (userIds.length === 0) return new Map();
+  const rows = await query<{ userId: string; date: string; decision: ReviewDecision }>(
+    `SELECT "userId", "date", "decision" FROM "DayReview"
+      WHERE "userId" = ANY($1::text[]) AND "date" BETWEEN $2 AND $3`,
+    [userIds, startDate, endDate]
+  );
+  return new Map(rows.map((row) => [`${row.userId}|${row.date}`, row.decision]));
+}
+
+/// Ngưỡng một ngày công cho ngày làm ngoài lịch: số giờ tối thiểu của bộ ca
+/// mặc định full-time (thường là ca CN).
+export function fullDayMinutesOf(rules: SessionRule[]): number {
+  const minutes = pickFullTimeSessions(rules).reduce(
+    (total, rule) => total + rule.minHours * 60,
+    0
+  );
+  return minutes > 0 ? Math.round(minutes) : 7 * 60;
+}
+
 /// Ca thực tế của một ngày sau khi áp đánh dấu: admin đổi ca thì lấy ca mới,
 /// ngày nghỉ/ốm thì không còn ca nào.
 export function applyDayMark(
@@ -59,7 +85,7 @@ export function applyDayMark(
 
 const SESSION_COLUMNS = `
   "id", "code", "name", "workStart", "workEnd",
-  "minHours", "isDefaultFull", "isActive", "sortOrder"
+  "minHours", "workdayValue", "isDefaultFull", "isActive", "sortOrder"
 `;
 
 export async function getActiveSessionRules(): Promise<WorkSessionRow[]> {

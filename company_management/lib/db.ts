@@ -8,7 +8,14 @@ const globalForDb = globalThis as unknown as { pool?: Pool };
 function createPool() {
   const connectionString = process.env.DATABASE_URL;
   if (!connectionString) throw new Error("Thiếu DATABASE_URL");
-  return new Pool({ connectionString, max: 10, idleTimeoutMillis: 30_000 });
+  const pool = new Pool({ connectionString, max: 10, idleTimeoutMillis: 30_000 });
+  // Kết nối đang rảnh bị đứt (Postgres restart, mất mạng) thì pool phát sự kiện
+  // "error". Không ai nghe thì Node coi là lỗi chưa bắt và tắt cả tiến trình.
+  // Pool tự bỏ kết nối hỏng và mở cái mới ở lần query sau, chỉ cần ghi log.
+  pool.on("error", (error) => {
+    console.error("Postgres idle client error:", error.message);
+  });
+  return pool;
 }
 
 export const pool = globalForDb.pool ?? createPool();

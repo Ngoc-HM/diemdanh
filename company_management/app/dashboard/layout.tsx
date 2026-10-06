@@ -4,6 +4,7 @@ import { ReactNode, useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
+  Timer,
   CalendarCog,
   CalendarDays,
   Clock,
@@ -32,6 +33,7 @@ const navItems: NavItem[] = [
   { href: "/dashboard/history", label: "Lịch sử", icon: <History size={18} /> },
   { href: "/dashboard/work-reports", label: "Nội dung công việc", icon: <NotebookPen size={18} /> },
   { href: "/dashboard/shift-requests", label: "Chỉnh sửa ca", icon: <CalendarCog size={18} /> },
+  { href: "/dashboard/overtime", label: "Làm thêm giờ", icon: <Timer size={18} /> },
   { href: "/dashboard/settings", label: "Cài đặt", icon: <Settings size={18} /> },
   { href: "https://app.clickup.com", label: "ClickUp", icon: <ExternalLink size={18} />, external: true },
 ];

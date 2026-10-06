@@ -33,14 +33,15 @@ export async function POST(req: Request) {
         await execute(
           `INSERT INTO "WorkSession"
              ("code", "name", "workStart", "workEnd",
-              "minHours", "sortOrder", "isDefaultFull")
-           VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+              "minHours", "workdayValue", "sortOrder", "isDefaultFull")
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
           [
             preset.code,
             preset.name,
             preset.workStart,
             preset.workEnd,
             preset.minHours,
+            preset.workdayValue,
             preset.sortOrder,
             preset.isDefaultFull,
           ]
@@ -71,14 +72,15 @@ export async function POST(req: Request) {
       const result = await client.query<WorkSessionRow>(
         `INSERT INTO "WorkSession"
            ("code", "name", "workStart", "workEnd",
-            "minHours", "sortOrder", "isActive", "isDefaultFull")
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *`,
+            "minHours", "workdayValue", "sortOrder", "isActive", "isDefaultFull")
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *`,
         [
           session.code,
           session.name,
           session.workStart,
           session.workEnd,
           session.minHours,
+          session.workdayValue,
           session.sortOrder,
           session.isActive,
           session.isDefaultFull,

@@ -27,14 +27,15 @@ async function main() {
         await client.query(
           `INSERT INTO "WorkSession"
              ("code", "name", "workStart", "workEnd",
-              "minHours", "sortOrder", "isDefaultFull")
-           VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+              "minHours", "workdayValue", "sortOrder", "isDefaultFull")
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
           [
             preset.code,
             preset.name,
             preset.workStart,
             preset.workEnd,
             preset.minHours,
+            preset.workdayValue,
             preset.sortOrder,
             preset.isDefaultFull,
           ]
@@ -76,15 +77,29 @@ async function main() {
     // đã tự đổi trong giao diện.
     // Không có mật khẩu mặc định: một lần chạy seed thiếu .env là đủ để tạo
     // tài khoản quản trị yếu trên database thật.
-    const username = process.env.AUTH_ADMIN_USERNAME || "admin";
+    const username = (process.env.AUTH_ADMIN_USERNAME || "admin").trim();
     const password = process.env.AUTH_ADMIN_PASSWORD;
     if (!password) {
       throw new Error(
         "Thiếu AUTH_ADMIN_PASSWORD trong .env — không tạo được tài khoản quản trị."
       );
     }
+    // Admin và nhân viên đăng nhập chung ô "Email hoặc tên đăng nhập", trong đó
+    // tài khoản admin được tìm trước. Admin trùng email một nhân viên thì
+    // nhân viên đó không bao giờ đăng nhập được nữa.
+    const clash = await client.query(
+      `SELECT 1 FROM "User" WHERE lower("email") = lower($1)`,
+      [username]
+    );
+    if (clash.rowCount) {
+      throw new Error(
+        `AUTH_ADMIN_USERNAME "${username}" trùng email một nhân viên — chọn tên khác cho admin.`
+      );
+    }
     const admin = await client.query(
-      `INSERT INTO "Admin" ("username", "password") VALUES ($1, $2)
+      `INSERT INTO "Admin" ("username", "password")
+       SELECT $1, $2
+        WHERE NOT EXISTS (SELECT 1 FROM "Admin" WHERE lower("username") = lower($1))
        ON CONFLICT ("username") DO NOTHING RETURNING "username"`,
       [username, await bcrypt.hash(password, 10)]
     );

@@ -44,6 +44,7 @@ const ADMIN_PAGES = [
   ["/admin/attendance/monthly", "Bảng chấm công"],
   ["/admin/schedules", "Lịch làm việc"],
   ["/admin/shift-requests", "Duyệt đổi ca"],
+  ["/admin/overtime", "Làm thêm giờ (OT)"],
   ["/admin/work-reports", "Báo cáo công việc"],
   ["/admin/users", "Nhân viên"],
   ["/admin/sessions", "Ca làm việc"],
@@ -61,6 +62,7 @@ const EMPLOYEE_PAGES = [
   ["/dashboard/history", "Lịch sử chấm công"],
   ["/dashboard/work-reports", "Nội dung công việc hằng ngày"],
   ["/dashboard/shift-requests", "Chỉnh sửa ca"],
+  ["/dashboard/overtime", "Làm thêm giờ (OT)"],
   ["/dashboard/settings", "Cài đặt"],
 ];
 
@@ -71,7 +73,6 @@ async function main() {
   console.log("\n== trang công khai ==");
   for (const [path, marker] of [
     ["/login", "Chấm công nội bộ"],
-    ["/admin-login-app", "Quản trị viên"],
     ["/forgot-password", "Quên mật khẩu"],
     ["/desktop-only", "Chỉ hỗ trợ máy tính"],
   ]) {
@@ -81,6 +82,8 @@ async function main() {
   }
   let r = await visit(anon, "/");
   check("/ chuyển về /login", r.url === "/login", `(-> ${r.url})`);
+  r = await visit(anon, "/admin-login-app");
+  check("/admin-login-app (link cũ) về /login", r.url === "/login", `(-> ${r.url})`);
   r = await visit(anon, "/reset-password");
   check("/reset-password (link cũ) về /forgot-password", r.url === "/forgot-password", `(-> ${r.url})`);
 
@@ -94,7 +97,7 @@ async function main() {
   });
   const mobilePath = new URL(mobile.url).pathname;
   check("điện thoại bị đưa sang /desktop-only", mobilePath === "/desktop-only", `(-> ${mobilePath})`);
-  const android = await fetch(BASE + "/admin-login-app", {
+  const android = await fetch(BASE + "/forgot-password", {
     headers: { "User-Agent": "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Mobile Safari/537.36" },
     redirect: "follow",
   });
@@ -104,17 +107,17 @@ async function main() {
 
   console.log("\n== chặn khi chưa đăng nhập ==");
   r = await visit(anon, "/admin/attendance/monthly");
-  check("/admin/* đá về trang đăng nhập admin", r.url === "/admin-login-app", `(-> ${r.url})`);
+  check("/admin/* đá về /login", r.url === "/login", `(-> ${r.url})`);
   r = await visit(anon, "/dashboard");
   check("/dashboard đá về /login", r.url === "/login", `(-> ${r.url})`);
 
   console.log("\n== đăng nhập admin ==");
-  const login = await fetch(BASE + "/api/auth/admin-login", {
+  const login = await fetch(BASE + "/api/auth/login", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
-      username: process.env.AUTH_ADMIN_USERNAME || "admin",
-      password: process.env.AUTH_ADMIN_PASSWORD || "admin123",
+      identifier: process.env.AUTH_ADMIN_USERNAME,
+      password: process.env.AUTH_ADMIN_PASSWORD,
     }),
   });
   admin.absorb(login);

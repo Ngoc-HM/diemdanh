@@ -40,8 +40,8 @@ export async function PUT(req: Request) {
 
     // Chưa có bản ghi trong DB thì đối chiếu với mật khẩu trong .env,
     // tránh việc phiên đăng nhập cũ đặt lại mật khẩu mà không cần biết mật khẩu cũ.
-    const envPass = process.env.AUTH_ADMIN_PASSWORD || "admin123";
-    if (currentPassword !== envPass) {
+    const envPass = process.env.AUTH_ADMIN_PASSWORD;
+    if (!envPass || currentPassword !== envPass) {
       throw new HttpError(401, "Mật khẩu hiện tại không đúng");
     }
 

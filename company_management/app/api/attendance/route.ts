@@ -10,13 +10,18 @@ import {
 import { evaluateDay, minutesToHours } from "@/lib/attendance-rules";
 import {
   applyDayMark,
+  fullDayMinutesOf,
   getActiveSessionRules,
   getDayMarks,
+  getDayReviews,
   getHolidayMap,
   getLunchBreak,
   getPendingShiftRequestDates,
+  getWeeklyOffDays,
   resolveUserMonthSchedule,
 } from "@/lib/attendance-service";
+import { isRestDayFor, standardWorkdays } from "@/lib/schedule";
+import { getApprovedOvertime } from "@/lib/overtime-service";
 import { AttendancePunchRow } from "@/lib/types";
 
 type AttendanceWithPunch = {
@@ -51,7 +56,7 @@ export async function GET(req: Request) {
     ]);
     if (!user) badRequest("Không tìm thấy tài khoản");
 
-    const [rows, rules, holidays, lunchBreak, pending] = await Promise.all([
+    const [rows, rules, holidays, lunchBreak, pending, weeklyOffDays, reviews] = await Promise.all([
       query<AttendanceWithPunch>(
         `SELECT a."id" AS "attendanceId", a."date", a."note",
                 p."id", p."type", p."at", p."distance", p."isManual"
@@ -65,9 +70,15 @@ export async function GET(req: Request) {
       getHolidayMap(startDate, endDate),
       getLunchBreak(),
       getPendingShiftRequestDates([user!.id], startDate, endDate),
+      getWeeklyOffDays(),
+      getDayReviews([user!.id], startDate, endDate),
     ]);
+    const fullDayMinutes = fullDayMinutesOf(rules);
 
-    const schedule = await resolveUserMonthSchedule(user!, month, rules);
+    const [schedule, overtime] = await Promise.all([
+      resolveUserMonthSchedule(user!, month, rules),
+      getApprovedOvertime([user!.id], month),
+    ]);
     const marks = await getDayMarks([user!.id], startDate, endDate);
     const ruleById = new Map(rules.map((rule) => [rule.id, rule]));
 
@@ -93,8 +104,10 @@ export async function GET(req: Request) {
     const days = listMonthDates(month).map((date) => {
       const entry = byDate.get(date);
       const mark = marks.get(`${user!.id}|${date}`);
+      const scheduled = applyDayMark(schedule.get(date) ?? [], mark, ruleById);
+      const ot = overtime.get(`${user!.id}|${date}`);
       const evaluation = evaluateDay({
-        scheduled: applyDayMark(schedule.get(date) ?? [], mark, ruleById),
+        scheduled,
         punches: (entry?.punches ?? []).map((punch) => ({
           type: punch.type,
           at: punch.at,
@@ -104,6 +117,11 @@ export async function GET(req: Request) {
         isPast: date < today,
         leaveCode: mark?.leaveCode ?? null,
         lunchBreak,
+        isRestDay:
+          isRestDayFor(user!.employmentType, date, weeklyOffDays, holidays.has(date)) ||
+          (Boolean(ot) && scheduled.length === 0),
+        fullDayMinutes,
+        reviewDecision: reviews.get(`${user!.id}|${date}`) ?? null,
       });
 
       return {
@@ -116,6 +134,9 @@ export async function GET(req: Request) {
         note: entry?.note ?? null,
         status: evaluation.status,
         countsAsWorkDay: evaluation.countsAsWorkDay,
+        workdayValue: evaluation.workdayValue,
+        needsReview: evaluation.needsReview,
+        overtime: ot ? { code: ot.code, minutes: ot.minutes } : null,
         codes: evaluation.codes,
         workedHours: minutesToHours(evaluation.workedMinutes),
         requiredHours: minutesToHours(evaluation.requiredMinutes),
@@ -151,7 +172,9 @@ export async function GET(req: Request) {
       lastOutAt,
       days,
       summary: {
-        passedDays: days.filter((day) => day.countsAsWorkDay).length,
+        workdays: days.reduce((sum, day) => sum + day.workdayValue, 0),
+        standardWorkdays: standardWorkdays(month, weeklyOffDays),
+        overtimeMinutes: days.reduce((sum, day) => sum + (day.overtime?.minutes ?? 0), 0),
         workedHours:
           Math.round(days.reduce((sum, day) => sum + day.workedHours, 0) * 10) / 10,
         absentDays: days.filter((day) => day.status === "absent").length,

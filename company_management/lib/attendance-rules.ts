@@ -16,6 +16,8 @@ export type SessionRule = {
   workStart: string;
   workEnd: string;
   minHours: number;
+  /// Số công của ca: 1 = một ngày (x), 0,5 = nửa ngày (x/2), 0 = không tính.
+  workdayValue: number;
   sortOrder: number;
   isDefaultFull: boolean;
 };
@@ -98,11 +100,6 @@ export const DAY_STATUS_LABELS: Record<DayStatus, string> = {
   off: "Không có lịch",
 };
 
-/// Trạng thái luôn được tính là một ngày công hợp lệ. Ngoài ra, ngày "ngoài
-/// lịch" (quên đăng ký nhưng vẫn đi làm, có đủ giờ vào và giờ ra) cũng được
-/// tính đủ ngày công — xem `countsAsWorkDay` trong DayEvaluation.
-export const PASSING_STATUSES: DayStatus[] = ["passed", "late"];
-
 export type PairedPunches = {
   workedMinutes: number;
   /// Số phút nghỉ trưa đã trừ khỏi workedMinutes.
@@ -155,12 +152,19 @@ export function pairPunches(
   };
 }
 
+/// Quyết định của admin cho ngày làm thiếu giờ (bảng DayReview).
+export type ReviewDecision = "count" | "exclude";
+
 export type DayEvaluation = {
   status: DayStatus;
-  /// Ngày này được tính là một ngày công: đủ công, đi muộn, hoặc làm ngoài
-  /// lịch mà có đủ giờ vào lẫn giờ ra. Mọi chỗ đếm "ngày công" phải dùng cờ
-  /// này thay vì so sánh status.
+  /// Số công của ngày (1 = x, 0,5 = x/2). Mọi chỗ cộng "ngày công" phải cộng
+  /// số này thay vì đếm theo status.
+  workdayValue: number;
+  /// workdayValue > 0 — giữ cho những chỗ chỉ cần biết có công hay không.
   countsAsWorkDay: boolean;
+  /// Ngày thiếu giờ mà admin chưa xem lại: vẫn tính đủ công, chờ admin quyết.
+  needsReview: boolean;
+  reviewDecision: ReviewDecision | null;
   /// Mã các ca đã đăng ký cho ngày này.
   codes: string[];
   workedMinutes: number;
@@ -179,17 +183,17 @@ export type DayEvaluation = {
 
 export type LeaveCode = "N" | "O";
 
-/// Gắn cờ ngày công vào kết quả xếp loại. Ngoài lịch chỉ được tính khi có cả
-/// giờ vào lẫn giờ ra — chỉ có một lần ra mồ côi thì không phải đi làm.
-function withWorkDayFlag(
-  evaluation: Omit<DayEvaluation, "countsAsWorkDay">
-): DayEvaluation {
-  const countsAsWorkDay =
-    PASSING_STATUSES.includes(evaluation.status) ||
-    (evaluation.status === "unscheduled" &&
-      evaluation.firstIn !== null &&
-      evaluation.lastOut !== null);
-  return { ...evaluation, countsAsWorkDay };
+/// Ngoài lịch: có đủ giờ vào lẫn giờ ra mới là đi làm — chỉ một lần ra mồ
+/// côi thì không phải.
+function workedUnscheduled(evaluation: {
+  firstIn: Date | null;
+  lastOut: Date | null;
+}) {
+  return evaluation.firstIn !== null && evaluation.lastOut !== null;
+}
+
+function sumWorkdayValue(scheduled: SessionRule[]) {
+  return scheduled.reduce((total, rule) => total + (rule.workdayValue ?? 1), 0);
 }
 
 export function evaluateDay(input: {
@@ -204,6 +208,14 @@ export function evaluateDay(input: {
   leaveCode?: LeaveCode | null;
   /// Giờ nghỉ trưa của công ty; null = không trừ gì.
   lunchBreak?: LunchBreak | null;
+  /// Ngày nghỉ của người này (ngày nghỉ hằng tuần / ngày lễ với full-time).
+  /// Đi làm ngày nghỉ mà không có lịch thì không cộng công — muốn được trả
+  /// phải làm phiếu OT.
+  isRestDay?: boolean;
+  /// Ngưỡng một ngày công cho ngày làm ngoài lịch: đủ số phút này là 1 công,
+  /// ít hơn là 0,5. Mặc định 7 tiếng.
+  fullDayMinutes?: number;
+  reviewDecision?: ReviewDecision | null;
 }): DayEvaluation {
   const {
     scheduled,
@@ -212,6 +224,9 @@ export function evaluateDay(input: {
     isPast = false,
     leaveCode = null,
     lunchBreak = null,
+    isRestDay = false,
+    fullDayMinutes = 7 * 60,
+    reviewDecision = null,
   } = input;
   const paired = pairPunches(punches, lunchBreak);
   const outsideRadius = punches.some((punch) => !punch.withinRadius);
@@ -222,6 +237,48 @@ export function evaluateDay(input: {
   const codes = [...scheduled]
     .sort((a, b) => a.sortOrder - b.sortOrder)
     .map((rule) => rule.code);
+
+  const scheduledValue = sumWorkdayValue(scheduled);
+
+  /// Gắn số công vào kết quả xếp loại.
+  const finish = (
+    evaluation: Omit<
+      DayEvaluation,
+      "workdayValue" | "countsAsWorkDay" | "needsReview" | "reviewDecision"
+    >
+  ): DayEvaluation => {
+    let workdayValue = 0;
+    let needsReview = false;
+    switch (evaluation.status) {
+      case "passed":
+      case "late":
+        workdayValue = scheduledValue;
+        break;
+      case "insufficient":
+        // Thiếu giờ vẫn tính đủ công cho tới khi admin chọn không tính.
+        workdayValue = reviewDecision === "exclude" ? 0 : scheduledValue;
+        needsReview = reviewDecision === null;
+        break;
+      case "holiday":
+        // Nghỉ lễ vẫn hưởng lương: ngày lễ đã có lịch thì giữ nguyên công.
+        workdayValue = scheduledValue;
+        break;
+      case "unscheduled":
+        if (!isRestDay && workedUnscheduled(evaluation)) {
+          workdayValue = evaluation.workedMinutes >= fullDayMinutes ? 1 : 0.5;
+        }
+        break;
+      default:
+        workdayValue = 0;
+    }
+    return {
+      ...evaluation,
+      workdayValue,
+      countsAsWorkDay: workdayValue > 0,
+      needsReview,
+      reviewDecision: evaluation.status === "insufficient" ? reviewDecision : null,
+    };
+  };
 
   const base = {
     codes,
@@ -236,7 +293,7 @@ export function evaluateDay(input: {
 
   // Ngày đã đánh dấu nghỉ/ốm: không tính vắng, không đòi giờ công.
   if (leaveCode) {
-    return withWorkDayFlag({
+    return finish({
       ...base,
       requiredMinutes: 0,
       status: leaveCode === "O" ? "sick" : "leave",
@@ -247,7 +304,7 @@ export function evaluateDay(input: {
   }
 
   if (punches.length === 0) {
-    return withWorkDayFlag({
+    return finish({
       ...base,
       status: isHoliday ? "holiday" : scheduled.length > 0 ? "absent" : "off",
       missingMinutes: scheduled.length > 0 && !isHoliday ? requiredMinutes : 0,
@@ -259,7 +316,7 @@ export function evaluateDay(input: {
   // Đã vào ca mà không có lần ra nào. Hết ngày vẫn vậy thì là quên checkout:
   // không tính giờ công, chờ admin bổ sung giờ ra thủ công.
   if (paired.openSince !== null) {
-    return withWorkDayFlag({
+    return finish({
       ...base,
       status: isPast ? "missed_out" : "open",
       missingMinutes:
@@ -273,7 +330,7 @@ export function evaluateDay(input: {
   // đủ ngày công theo giờ thực tế, không có ngưỡng để so; lưới tô vàng để
   // admin biết mà gán ca nếu cần mã ca cho bảng lương.
   if (scheduled.length === 0) {
-    return withWorkDayFlag({
+    return finish({
       ...base,
       status: "unscheduled",
       missingMinutes: 0,
@@ -311,13 +368,18 @@ export function evaluateDay(input: {
     status = "passed";
   }
 
-  return withWorkDayFlag({
+  return finish({
     ...base,
     status,
     missingMinutes,
     lateMinutes,
     earlyLeaveMinutes,
   });
+}
+
+/// Số công để hiển thị: 21,5 · 22 · 0,5.
+export function formatWorkdays(value: number): string {
+  return value.toLocaleString("vi-VN", { maximumFractionDigits: 2 });
 }
 
 export function minutesToHours(minutes: number): number {

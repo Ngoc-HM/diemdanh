@@ -43,7 +43,7 @@ export async function middleware(req: NextRequest) {
     return redirectTo(req, DESKTOP_ONLY_PATH);
   }
 
-  // /admin-login-app không thuộc khu vực quản trị dù cùng tiền tố.
+  // Tiền tố "/admin" không đủ: "/admin-dashboard" chẳng hạn không phải khu quản trị.
   const isAdminArea = pathname === "/admin" || pathname.startsWith("/admin/");
   const isEmployeeArea =
     pathname === "/dashboard" || pathname.startsWith("/dashboard/");
@@ -53,7 +53,7 @@ export async function middleware(req: NextRequest) {
   const session = token ? await verifySession(token) : null;
 
   if (!session) {
-    return redirectTo(req, isAdminArea ? "/admin-login-app" : "/login");
+    return redirectTo(req, "/login");
   }
   if (isAdminArea && session.role !== "admin") {
     return accessDenied(req);
@@ -89,7 +89,6 @@ export const config = {
   matcher: [
     "/",
     "/login",
-    "/admin-login-app",
     "/forgot-password",
     "/reset-password",
     "/desktop-only",

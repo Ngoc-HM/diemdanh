@@ -4,7 +4,7 @@ import bcrypt from "bcryptjs";
 import { createHash } from "node:crypto";
 
 const BASE = process.env.BASE_URL || "http://localhost:3000";
-const ADMIN_USER = "__smoketest_admin";
+const ADMIN_USER = "__smoketest_admin@example.test";
 const ADMIN_PASS = "SmokeTest12345";
 const EMP_EMAIL = "__smoketest_employee@example.test";
 const EMP_PASS = "SmokeTest12345";
@@ -91,17 +91,26 @@ async function main() {
 
   try {
     console.log("\n== xác thực ==");
-    let r = await call(admin, "POST", "/api/auth/admin-login", {
-      username: ADMIN_USER,
+    // Admin và nhân viên đăng nhập chung /api/auth/login bằng email.
+    let r = await call(admin, "POST", "/api/auth/login", {
+      identifier: ADMIN_USER,
       password: "sai-mat-khau",
     });
     check("từ chối mật khẩu sai", r.status === 401, `(${r.status})`);
+    const wrongAdmin = r.json.error;
 
-    r = await call(admin, "POST", "/api/auth/admin-login", {
-      username: ADMIN_USER,
+    r = await call(makeJar(), "POST", "/api/auth/login", {
+      identifier: "__smoketest_khong_co@example.test",
+      password: "sai-mat-khau",
+    });
+    check("sai admin hay email lạ đều cùng một câu", r.json.error === wrongAdmin, `("${r.json.error}" / "${wrongAdmin}")`);
+
+    r = await call(admin, "POST", "/api/auth/login", {
+      identifier: ADMIN_USER.toUpperCase(),
       password: ADMIN_PASS,
     });
-    check("admin đăng nhập", r.status === 200 && r.json.success, `(${r.status})`);
+    check("admin đăng nhập (không phân biệt hoa thường)", r.status === 200 && r.json.success, `(${r.status})`);
+    check("admin được đưa vào khu quản trị", r.json.role === "admin" && r.json.redirect?.startsWith("/admin"), `(${r.json.role} ${r.json.redirect})`);
 
     r = await call(admin, "GET", "/api/auth/session");
     check("session trả về vai trò admin", r.json?.user?.role === "admin");
@@ -128,6 +137,12 @@ async function main() {
     const defaultFull = sessions.filter((s) => s.isDefaultFull);
     check("có nhiều nhất 1 ca mặc định full-time", defaultFull.length <= 1);
     check("không còn cột khung giờ check-in", !("checkInStart" in sessions[0]));
+    check("ca nào cũng có số công", sessions.every((s) => typeof s.workdayValue === "number"));
+    r = await call(admin, "POST", "/api/admin/work-sessions", {
+      code: "ZZ", name: "__smoketest ca lạ", workStart: "08:00", workEnd: "12:00",
+      minHours: 3, workdayValue: 1.5,
+    });
+    check("chặn số công ngoài 0–1", r.status === 400, `(${r.status})`);
 
     console.log("\n== giờ nghỉ trưa ==");
     previousLunch = {
@@ -186,6 +201,14 @@ async function main() {
       employmentType: "intern",
     });
     check("chặn email trùng", r.status === 409, `(${r.status})`);
+
+    r = await call(admin, "POST", "/api/users", {
+      name: "Trùng email admin",
+      email: ADMIN_USER,
+      password: EMP_PASS,
+      employmentType: "intern",
+    });
+    check("chặn tạo nhân viên trùng email admin", r.status === 409, `(${r.status})`);
 
     r = await call(admin, "POST", "/api/users", {
       name: "Sai loại hợp đồng",
@@ -307,6 +330,7 @@ async function main() {
       password: EMP_PASS,
     });
     check("nhân viên đăng nhập", r.status === 200, `(${r.status})`);
+    check("nhân viên được đưa vào /dashboard", r.json.role === "employee" && r.json.redirect === "/dashboard", `(${r.json.role} ${r.json.redirect})`);
 
     r = await call(emp, "GET", "/api/schedule?month=2026-09");
     check("nhân viên xem được lịch đã xếp", Object.keys(r.json.days ?? {}).length === 2);
@@ -402,6 +426,33 @@ async function main() {
     r = await call(admin, "GET", "/api/auth/profile");
     check("admin không dùng hồ sơ nhân viên", r.status === 403, `(${r.status})`);
 
+    // Ảnh upload lúc server đang chạy phải mở được ngay. Trước đây ảnh nằm ở
+    // public/, mà `next start` chỉ quét public/ lúc khởi động nên ảnh mới 404.
+    const PNG_1PX = Buffer.from(
+      "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
+      "base64"
+    );
+    const avatarForm = new FormData();
+    avatarForm.append("file", new Blob([PNG_1PX], { type: "image/png" }), "a.png");
+    const uploaded = await fetch(BASE + "/api/auth/profile", {
+      method: "POST",
+      headers: { Cookie: emp.header() },
+      body: avatarForm,
+    });
+    const avatarUrl = (await uploaded.json()).profile?.avatarUrl ?? "";
+    check("upload được ảnh đại diện", uploaded.status === 200 && avatarUrl.startsWith("/uploads/avatar-"), `(${uploaded.status} ${avatarUrl})`);
+    const served = await fetch(BASE + avatarUrl);
+    check(
+      "ảnh vừa upload mở được ngay",
+      served.status === 200 && served.headers.get("content-type") === "image/png",
+      `(${served.status} ${served.headers.get("content-type")})`
+    );
+    r = await call(emp, "DELETE", "/api/auth/profile");
+    const gone = await fetch(BASE + avatarUrl);
+    check("gỡ ảnh thì đường dẫn ảnh hết mở được", gone.status === 404, `(${gone.status})`);
+    const traversal = await fetch(BASE + "/uploads/..%2F..%2F.env");
+    check("không mò được file ngoài thư mục upload", traversal.status === 404, `(${traversal.status})`);
+
     r = await call(emp, "PUT", "/api/auth/profile", { name: "   ", email: EMP_EMAIL });
     check("chặn tên rỗng", r.status === 400, `(${r.status})`);
     r = await call(emp, "PUT", "/api/auth/profile", { name: "Tên Mới", email: "khong-phai-email" });
@@ -432,6 +483,8 @@ async function main() {
     );
     r = await call(emp, "PUT", "/api/auth/profile", { name: "Nhân Viên Đổi Tên", email: otherEmail });
     check("chặn email đã có người dùng", r.status === 409, `(${r.status})`);
+    r = await call(emp, "PUT", "/api/auth/profile", { name: "Nhân Viên Đổi Tên", email: ADMIN_USER });
+    check("chặn đổi email sang email admin", r.status === 409, `(${r.status})`);
     await client.query(`DELETE FROM "User" WHERE "email" = $1`, [otherEmail]);
 
     // Trả lại email cũ để các bước sau vẫn đăng nhập được như cũ.
@@ -481,6 +534,24 @@ async function main() {
     check("sai 5 lần thì huỷ mã", (r.json.error ?? "").includes("huỷ"), `("${r.json.error}")`);
     r = await call(makeJar(), "POST", "/api/auth/reset-password", { email: EMP_EMAIL, code: otp, password: RESET_PASS });
     check("mã đã huỷ thì không dùng được nữa", r.status === 400, `(${r.status})`);
+
+    // Bắn nhiều lần đoán cùng lúc cũng chỉ được tối đa 5 lượt thử, không phải
+    // mỗi request một lượt như khi đọc attempts ra rồi mới ghi lại.
+    await client.query(`DELETE FROM "PasswordReset" WHERE "userId" = $1`, [employeeId]);
+    await client.query(
+      `INSERT INTO "PasswordReset" ("userId", "tokenHash", "expiresAt")
+       VALUES ($1, $2, now() + interval '15 minutes')`,
+      [employeeId, otpHash]
+    );
+    const burst = await Promise.all(
+      Array.from({ length: 20 }, () =>
+        call(makeJar(), "POST", "/api/auth/reset-password", { email: EMP_EMAIL, code: wrong, password: RESET_PASS })
+      )
+    );
+    const judged = burst.filter((item) => /còn \d+ lần thử/.test(item.json.error ?? "")).length;
+    check("20 lần đoán song song chỉ được chấm tối đa 4 lượt sai", judged <= 4, `(${judged} lượt)`);
+    r = await call(makeJar(), "POST", "/api/auth/reset-password", { email: EMP_EMAIL, code: otp, password: RESET_PASS });
+    check("sau loạt đoán song song thì mã đã bị huỷ", r.status === 400, `(${r.status})`);
 
     // Trả mật khẩu về như cũ cho các bước sau.
     await client.query(`DELETE FROM "PasswordReset" WHERE "userId" = $1`, [employeeId]);
@@ -546,8 +617,8 @@ async function main() {
       `INSERT INTO "Admin" ("username", "password") VALUES ('__smoketest_ghost', $1)`,
       [await bcrypt.hash(ADMIN_PASS, 10)]
     );
-    r = await call(ghost, "POST", "/api/auth/admin-login", { username: "__smoketest_ghost", password: ADMIN_PASS });
-    check("admin tạm đăng nhập được", r.status === 200, `(${r.status})`);
+    r = await call(ghost, "POST", "/api/auth/login", { identifier: "__smoketest_ghost", password: ADMIN_PASS });
+    check("admin tạm đăng nhập bằng tên đăng nhập (không phải email)", r.status === 200 && r.json.role === "admin", `(${r.status})`);
     await client.query(`DELETE FROM "Admin" WHERE "username" = '__smoketest_ghost'`);
     r = await call(ghost, "GET", "/api/users");
     check("admin đã bị xoá thì cookie cũ hết tác dụng", r.status === 401, `(${r.status})`);
@@ -691,11 +762,12 @@ async function main() {
     r = await call(admin, "GET", "/api/admin/attendance/monthly?month=2026-09");
     const summary = r.json.summary?.find((s) => s.user.id === employeeId);
     check("bảng tháng có nhân viên", Boolean(summary));
-    // Ngày quên đăng ký mà có cả giờ vào lẫn giờ ra vẫn được tính là ngày công
-    // (`countsAsWorkDay`). Khối chấm công ở trên bấm vào/ra đúng hôm nay, ngày
-    // không có lịch, nên hôm nay thuộc tháng 9/2026 thì cộng thêm 1 ngày công.
-    const expectedPassed = 1 + (TODAY_VN.startsWith("2026-09") ? 1 : 0);
-    check(`đếm đúng ${expectedPassed} ngày công`, summary?.passedDays === expectedPassed, `(${summary?.passedDays})`);
+    // 01/09 làm đủ S + C = 0,5 + 0,5 = 1 công. Khối chấm công ở trên bấm vào/ra
+    // hôm nay, ngày không có lịch và chỉ vài phút, nên nếu hôm nay thuộc tháng
+    // 9/2026 thì cộng thêm nửa công (ngoài lịch, chưa đủ ngưỡng cả ngày).
+    const expectedWorkdays = 1 + (TODAY_VN.startsWith("2026-09") ? 0.5 : 0);
+    check(`đếm đúng ${expectedWorkdays} ngày công`, summary?.workdays === expectedWorkdays, `(${summary?.workdays})`);
+    check("ngày công tháng 9/2026 = 22", r.json.standardWorkdays === 22, `(${r.json.standardWorkdays})`);
     check("đếm đúng 1 ngày vắng", summary?.absentDays === 1, `(${summary?.absentDays})`);
     check("tổng giờ = 8h (đã trừ nghỉ trưa)", summary?.totalHours === 8, `(${summary?.totalHours})`);
 
@@ -731,6 +803,133 @@ async function main() {
 
     r = await call(admin, "GET", "/api/admin/attendance/monthly?month=2026-13");
     check("chặn tháng không hợp lệ", r.status === 400, `(${r.status})`);
+
+    const empXlsx = await fetch(
+      BASE + `/api/admin/attendance/user/${employeeId}?month=2026-09&export=xlsx`,
+      { headers: { Cookie: admin.header() } }
+    );
+    const empXlsxBuffer = Buffer.from(await empXlsx.arrayBuffer());
+    check(
+      "xuất Excel chấm công từng nhân viên",
+      empXlsx.status === 200 &&
+        (empXlsx.headers.get("content-type") ?? "").includes("spreadsheetml") &&
+        empXlsxBuffer.subarray(0, 2).toString() === "PK",
+      `(${empXlsx.status} ${empXlsxBuffer.length} byte)`
+    );
+    check(
+      "tên file theo tháng + mã NV (không có mã thì lấy ID)",
+      /cham-cong-2026-09-[\w-]+\.xlsx/.test(empXlsx.headers.get("content-disposition") ?? ""),
+      `(${empXlsx.headers.get("content-disposition")})`
+    );
+    r = await call(emp, "GET", `/api/admin/attendance/user/${employeeId}?month=2026-09&export=xlsx`);
+    check("nhân viên không tải được file chi tiết của admin", r.status === 401 || r.status === 403, `(${r.status})`);
+
+    console.log("\n== xem lại ngày thiếu giờ ==");
+    // Ngày ABSENT_DATE có lịch ca sáng; chấm tay 08:00–09:00 cho thành thiếu giờ.
+    r = await call(admin, "PUT", `/api/admin/attendance/user/${employeeId}`, {
+      date: ABSENT_DATE,
+      punches: [{ type: "in", time: "08:00" }, { type: "out", time: "09:00" }],
+      note: "__smoketest thiếu giờ",
+    });
+    check("tạo ngày thiếu giờ", r.status === 200, `(${r.status})`);
+    const shortDayOf = async () => {
+      const detail = await call(admin, "GET", `/api/admin/attendance/user/${employeeId}?month=2026-09`);
+      return { day: detail.json.days?.find((d) => d.date === ABSENT_DATE), totals: detail.json.totals };
+    };
+    let short = await shortDayOf();
+    check("thiếu giờ vẫn tính đủ nửa công ca sáng", short.day?.status === "insufficient" && short.day?.workdayValue === 0.5, `(${short.day?.status} ${short.day?.workdayValue})`);
+    check("thiếu giờ chờ admin xem lại", short.day?.needsReview === true && short.totals?.reviewDays >= 1);
+    check("chi tiết có ngày công tháng", short.totals?.standardWorkdays === 22, `(${short.totals?.standardWorkdays})`);
+    r = await call(admin, "PUT", "/api/admin/attendance/day-review", { userId: employeeId, date: ABSENT_DATE, decision: "exclude" });
+    check("admin chọn không tính công", r.status === 200 && r.json.decision === "exclude", `(${r.status})`);
+    short = await shortDayOf();
+    check("không tính thì về 0 công, hết chờ xem", short.day?.workdayValue === 0 && short.day?.needsReview === false, `(${short.day?.workdayValue})`);
+    r = await call(admin, "PUT", "/api/admin/attendance/day-review", { userId: employeeId, date: ABSENT_DATE, decision: "count" });
+    short = await shortDayOf();
+    check("đổi sang tính công thì lại có nửa công", short.day?.workdayValue === 0.5 && short.day?.reviewDecision === "count");
+    r = await call(admin, "PUT", "/api/admin/attendance/day-review", { userId: employeeId, date: ABSENT_DATE, decision: null });
+    short = await shortDayOf();
+    check("bỏ quyết định thì quay về chờ xem lại", short.day?.needsReview === true && short.day?.reviewDecision === null);
+    r = await call(admin, "PUT", "/api/admin/attendance/day-review", { userId: employeeId, date: ABSENT_DATE, decision: "bừa" });
+    check("chặn quyết định lạ", r.status === 400, `(${r.status})`);
+    r = await call(admin, "PUT", "/api/admin/attendance/day-review", { userId: employeeId, date: "2026-02-31", decision: "count" });
+    check("chặn ngày không hợp lệ", r.status === 400, `(${r.status})`);
+    r = await call(emp, "PUT", "/api/admin/attendance/day-review", { userId: employeeId, date: ABSENT_DATE, decision: "count" });
+    check("nhân viên không tự duyệt được", r.status === 401 || r.status === 403, `(${r.status})`);
+    // Trả ngày về như cũ (vắng) cho các bước sau.
+    r = await call(admin, "PUT", `/api/admin/attendance/user/${employeeId}`, { date: ABSENT_DATE, punches: [], note: "" });
+    short = await shortDayOf();
+    check("khôi phục ngày vắng", short.day?.status === "absent", `(${short.day?.status})`);
+
+    console.log("\n== phiếu làm thêm giờ (OT) ==");
+    r = await call(admin, "GET", "/api/settings/overtime");
+    check("đọc hệ số OT mặc định 150/200/300",
+      r.json.config?.weekdayRate === 150 && r.json.config?.weeklyOffRate === 200 && r.json.config?.holidayRate === 300,
+      JSON.stringify(r.json.config));
+    r = await call(emp, "GET", "/api/settings/overtime");
+    check("nhân viên không xem cấu hình OT", r.status === 401 || r.status === 403, `(${r.status})`);
+    r = await call(admin, "PUT", "/api/settings/overtime", { weekdayRate: 50, weeklyOffRate: 200, holidayRate: 300, hoursPerDay: 8 });
+    check("chặn hệ số dưới 100%", r.status === 400, `(${r.status})`);
+
+    r = await call(emp, "POST", "/api/overtime", { date: "2026-09-01", plannedStart: "21:00", plannedEnd: "18:00", content: "Làm báo cáo" });
+    check("chặn giờ kết thúc trước giờ bắt đầu", r.status === 400, `(${r.status})`);
+    r = await call(emp, "POST", "/api/overtime", { date: "2026-09-01", plannedStart: "18:00", plannedEnd: "21:00", content: "ok" });
+    check("chặn nội dung quá ngắn", r.status === 400, `(${r.status})`);
+    r = await call(admin, "POST", "/api/overtime", { date: "2026-09-01", plannedStart: "18:00", plannedEnd: "21:00", content: "Làm báo cáo" });
+    check("admin không làm phiếu OT thay nhân viên ở API nhân viên", r.status === 401 || r.status === 403, `(${r.status})`);
+
+    r = await call(emp, "POST", "/api/overtime", { date: "2026-09-01", plannedStart: "17:30", plannedEnd: "20:00", content: "Hoàn thiện báo cáo tháng" });
+    const weekdayOt = r.json.request;
+    check("gửi phiếu OT ngày thường", r.status === 200 && weekdayOt?.status === "pending", `(${r.status})`);
+    check("ngày thường tự gắn T, hệ số 150%", weekdayOt?.code === "T" && weekdayOt?.rate === 150, `(${weekdayOt?.code} ${weekdayOt?.rate})`);
+    check("ra đúng 17:00 (trước giờ hết ca) thì chấm công ra 0 giờ OT",
+      weekdayOt?.computedSource === "punches" && weekdayOt?.computedMinutes === 0, `(${weekdayOt?.computedSource} ${weekdayOt?.computedMinutes})`);
+    r = await call(emp, "POST", "/api/overtime", { date: "2026-09-01", plannedStart: "17:30", plannedEnd: "21:00", content: "Sửa lại giờ dự kiến" });
+    check("gửi lại cùng ngày thì sửa phiếu đang chờ", r.status === 200 && r.json.request?.id === weekdayOt?.id && r.json.request?.plannedEnd === "21:00");
+
+    r = await call(emp, "POST", "/api/overtime", {
+      date: "2026-09-05", plannedStart: "08:00", plannedEnd: "12:00",
+      place: "Văn phòng → khách hàng", content: "Đi lắp đặt cho khách",
+    });
+    const weekendOt = r.json.request;
+    check("thứ 7 tự gắn T1, hệ số 200%", weekendOt?.code === "T1" && weekendOt?.rate === 200, `(${weekendOt?.code} ${weekendOt?.rate})`);
+    check("không chấm công thì lấy giờ dự kiến 4h", weekendOt?.computedSource === "planned" && weekendOt?.minutes === 240, `(${weekendOt?.computedSource} ${weekendOt?.minutes})`);
+
+    r = await call(admin, "GET", "/api/admin/overtime?month=2026-09&status=pending");
+    check("admin thấy phiếu đang chờ", r.json.requests?.some((item) => item.id === weekendOt?.id) && r.json.pendingTotal >= 2, `(${r.json.pendingTotal})`);
+    r = await call(admin, "PATCH", `/api/admin/overtime/${weekendOt?.id}`, { action: "approve", approvedHours: 30 });
+    check("chặn số giờ chốt quá 24", r.status === 400, `(${r.status})`);
+    r = await call(admin, "PATCH", `/api/admin/overtime/${weekendOt?.id}`, { action: "bừa" });
+    check("chặn thao tác lạ", r.status === 400, `(${r.status})`);
+    r = await call(admin, "PATCH", "/api/admin/overtime/khong-co", { action: "approve" });
+    check("phiếu không tồn tại = 404", r.status === 404, `(${r.status})`);
+    r = await call(admin, "PATCH", `/api/admin/overtime/${weekendOt?.id}`, { action: "approve", approvedHours: 3.5, adminNote: "Chốt 3,5h" });
+    check("admin duyệt và chốt 3,5 giờ", r.status === 200 && r.json.request?.status === "approved" && r.json.request?.minutes === 210, `(${r.status} ${r.json.request?.minutes})`);
+
+    r = await call(emp, "POST", "/api/overtime", { date: "2026-09-05", plannedStart: "08:00", plannedEnd: "17:00", content: "Muốn sửa phiếu đã duyệt" });
+    check("ngày đã có phiếu duyệt thì không làm phiếu mới", r.status === 409, `(${r.status})`);
+    r = await call(emp, "DELETE", `/api/overtime/${weekendOt?.id}`);
+    check("không huỷ được phiếu đã duyệt", r.status === 409, `(${r.status})`);
+    r = await call(emp, "DELETE", `/api/overtime/${weekdayOt?.id}`);
+    check("huỷ được phiếu đang chờ", r.status === 200, `(${r.status})`);
+
+    r = await call(admin, "GET", "/api/admin/attendance/monthly?month=2026-09");
+    let otSummary = r.json.summary?.find((item) => item.user.id === employeeId);
+    check("bảng công cộng 3,5h OT loại T1", otSummary?.overtimeMinutes?.T1 === 210, JSON.stringify(otSummary?.overtimeMinutes));
+    check("ô ngày 05/09 hiện ký hiệu T1", otSummary?.days?.["2026-09-05"]?.label === "T1", `(${otSummary?.days?.["2026-09-05"]?.label})`);
+    r = await call(admin, "GET", `/api/admin/attendance/user/${employeeId}?month=2026-09`);
+    check("chi tiết nhân viên có tổng OT", r.json.totals?.overtimeMinutes === 210, `(${r.json.totals?.overtimeMinutes})`);
+
+    r = await call(admin, "PATCH", `/api/admin/overtime/${weekendOt?.id}`, { action: "update", approvedHours: null });
+    check("bỏ số giờ chốt thì quay về giờ tính được (4h)", r.json.request?.minutes === 240 && r.json.request?.approvedMinutes === null, `(${r.json.request?.minutes})`);
+    r = await call(admin, "PATCH", `/api/admin/overtime/${weekendOt?.id}`, { action: "reject", adminNote: "Không cần đi" });
+    check("admin từ chối phiếu", r.json.request?.status === "rejected", `(${r.json.request?.status})`);
+    r = await call(admin, "GET", "/api/admin/attendance/monthly?month=2026-09");
+    otSummary = r.json.summary?.find((item) => item.user.id === employeeId);
+    check("phiếu bị từ chối không còn tính giờ OT", (otSummary?.overtimeMinutes?.T1 ?? 0) === 0, JSON.stringify(otSummary?.overtimeMinutes));
+    r = await call(emp, "POST", "/api/overtime", { date: "2026-09-05", plannedStart: "08:00", plannedEnd: "12:00", content: "Làm lại phiếu sau khi bị từ chối" });
+    check("bị từ chối thì làm phiếu mới được", r.status === 200 && r.json.request?.status === "pending", `(${r.status})`);
+    await client.query(`DELETE FROM "OvertimeRequest" WHERE "userId" = $1`, [employeeId]);
 
     // Đặt sau các kiểm tra "ngày đủ công" / "tổng giờ" ở trên: duyệt đổi ca sẽ
     // ghi DayMark cho ngày 01/09 và làm đổi lịch của ngày đó.

@@ -3,14 +3,17 @@
 import { Suspense, useCallback, useEffect, useState } from "react";
 import { useParams, useSearchParams } from "next/navigation";
 import {
+  Check,
   ChevronLeft,
   ChevronRight,
+  Download,
   LogIn,
   LogOut,
   NotebookText,
   Pencil,
   Plus,
   Trash2,
+  X,
 } from "lucide-react";
 import PageHeader from "../../../_components/page-header";
 import {
@@ -26,7 +29,7 @@ import {
 } from "@/app/_components/ui";
 import { addMonths, formatMonthLabel, monthKeyVN } from "@/lib/datetime";
 import { formatDuration } from "@/lib/work-reports";
-import type { DayStatus } from "@/lib/attendance-rules";
+import { formatWorkdays, type DayStatus } from "@/lib/attendance-rules";
 import { DAY_STATUS_TONE, ROW_HIGHLIGHT } from "@/app/_components/status-styles";
 
 type Punch = {
@@ -54,8 +57,14 @@ type Day = {
   holidayName: string | null;
   scheduled: { code: string; name: string; workStart: string; workEnd: string }[];
   status: DayStatus;
-  /// Ngày được tính là một ngày công (kể cả "ngoài lịch" có đủ giờ vào/ra).
+  /// Ngày được tính công (kể cả "ngoài lịch" có đủ giờ vào/ra).
   countsAsWorkDay: boolean;
+  /// Số công của ngày: 1 = x, 0,5 = x/2.
+  workdayValue: number;
+  /// Thiếu giờ, admin chưa xem lại (vẫn đang tính đủ công).
+  needsReview: boolean;
+  /// Quyết định admin đã chọn cho ngày thiếu giờ.
+  reviewDecision: "count" | "exclude" | null;
   /// Admin đã chấm lại ô này (DayMark isAdminEdit).
   adminEdited: boolean;
   /// Đang có yêu cầu đổi ca chờ duyệt cho ngày này.
@@ -87,7 +96,9 @@ type Payload = {
   month: string;
   days: Day[];
   totals: {
-    passedDays: number;
+    workdays: number;
+    standardWorkdays: number;
+    reviewDays: number;
     lateDays: number;
     absentDays: number;
     totalHours: number;
@@ -107,6 +118,7 @@ function rowHighlight(day: Day): { className: string; title: string | undefined 
     };
   }
   const notes: string[] = [];
+  if (day.needsReview) notes.push("Thiếu giờ, chờ admin xem lại (đang tính đủ công)");
   if (day.adminEdited) notes.push("Admin đã sửa ngày này");
   if (day.pendingRequest) notes.push("Đang chờ duyệt đổi ca");
   if (day.status === "unscheduled") {
@@ -186,6 +198,27 @@ function UserAttendanceDetail() {
     setNote(day.note ?? "");
   }
 
+  /// Quyết định cho ngày thiếu giờ; bấm lại nút đang chọn là bỏ quyết định.
+  async function reviewDay(day: Day, decision: "count" | "exclude") {
+    const next = day.reviewDecision === decision ? null : decision;
+    setMessage(null);
+    try {
+      const response = await fetch("/api/admin/attendance/day-review", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId, date: day.date, decision: next }),
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || "Không thể lưu");
+      load(month);
+    } catch (error) {
+      setMessage({
+        type: "error",
+        text: error instanceof Error ? error.message : "Không thể lưu",
+      });
+    }
+  }
+
   async function saveDay(event: React.FormEvent) {
     event.preventDefault();
     if (!editingDay) return;
@@ -232,6 +265,21 @@ function UserAttendanceDetail() {
                 .join(" · ")
             : undefined
         }
+        actions={
+          <Button
+            variant="secondary"
+            onClick={() =>
+              window.open(
+                `/api/admin/attendance/user/${userId}?month=${month}&export=xlsx`,
+                "_blank"
+              )
+            }
+            disabled={!data}
+          >
+            <Download size={16} aria-hidden="true" />
+            Xuất Excel
+          </Button>
+        }
       />
 
       <div className="mb-6 flex items-center justify-center gap-3">
@@ -264,13 +312,28 @@ function UserAttendanceDetail() {
         </div>
       )}
 
+      {data && data.totals.reviewDays > 0 && (
+        <div className="mb-4">
+          <Message type="info">
+            {data.totals.reviewDays} ngày làm thiếu giờ đang chờ xem lại. Chưa
+            quyết định thì hết tháng vẫn tính đủ công; bấm “Không tính” ở dòng
+            đó nếu không trả công ngày ấy.
+          </Message>
+        </div>
+      )}
+
       {data && (
         <div className="mb-6 grid grid-cols-2 gap-4 sm:grid-cols-4">
           <Card className="p-4">
             <div className="text-2xl font-semibold text-emerald-700">
-              {data.totals.passedDays}
+              {formatWorkdays(data.totals.workdays)}
+              <span className="text-base font-normal text-slate-500">
+                {" "}/ {data.totals.standardWorkdays}
+              </span>
             </div>
-            <div className="mt-0.5 text-sm text-slate-600">Ngày công đạt</div>
+            <div className="mt-0.5 text-sm text-slate-600">
+              Ngày công / ngày công tháng
+            </div>
           </Card>
           <Card className="p-4">
             <div className="text-2xl font-semibold text-amber-700">
@@ -307,10 +370,13 @@ function UserAttendanceDetail() {
                     Giờ vào / ra
                   </th>
                   <th className="px-4 py-3 font-semibold text-slate-900">Giờ làm</th>
+                  <th className="px-4 py-3 text-center font-semibold text-slate-900">
+                    Công
+                  </th>
                   <th className="px-4 py-3 font-semibold text-slate-900">
                     Trạng thái
                   </th>
-                  <th className="w-28 px-4 py-3" />
+                  <th className="w-40 px-4 py-3" />
                 </tr>
               </thead>
               <tbody>
@@ -389,6 +455,13 @@ function UserAttendanceDetail() {
                           <span className="text-slate-400"> / {day.requiredHours}h</span>
                         )}
                       </td>
+                      <td className="px-4 py-3 text-center font-medium tabular-nums text-slate-900">
+                        {day.workdayValue > 0 ? (
+                          formatWorkdays(day.workdayValue)
+                        ) : (
+                          <span className="text-slate-400">—</span>
+                        )}
+                      </td>
                       <td className="px-4 py-3">
                         <div className="flex flex-wrap gap-1.5">
                           <Badge tone={DAY_STATUS_TONE[day.status]}>
@@ -407,6 +480,15 @@ function UserAttendanceDetail() {
                           {day.pendingRequest && (
                             <Badge tone="warning">Chờ duyệt đổi ca</Badge>
                           )}
+                          {day.needsReview && (
+                            <Badge tone="warning">Chờ xem lại</Badge>
+                          )}
+                          {day.reviewDecision === "count" && (
+                            <Badge tone="success">Đã duyệt tính công</Badge>
+                          )}
+                          {day.reviewDecision === "exclude" && (
+                            <Badge tone="danger">Không tính công</Badge>
+                          )}
                         </div>
                         {day.note && (
                           <div className="mt-1 text-xs text-slate-500">{day.note}</div>
@@ -414,6 +496,34 @@ function UserAttendanceDetail() {
                       </td>
                       <td className="px-4 py-3 text-right">
                         <div className="flex justify-end gap-1.5">
+                          {day.status === "insufficient" && (
+                            <>
+                              <Button
+                                variant={
+                                  day.reviewDecision === "count" ? "primary" : "secondary"
+                                }
+                                size="sm"
+                                onClick={() => reviewDay(day, "count")}
+                                title="Vẫn tính đủ công (bấm lại để bỏ chọn)"
+                                aria-label={`Tính công ngày ${day.date}`}
+                                aria-pressed={day.reviewDecision === "count"}
+                              >
+                                <Check size={14} aria-hidden="true" />
+                              </Button>
+                              <Button
+                                variant={
+                                  day.reviewDecision === "exclude" ? "danger" : "secondary"
+                                }
+                                size="sm"
+                                onClick={() => reviewDay(day, "exclude")}
+                                title="Không tính công ngày này (bấm lại để bỏ chọn)"
+                                aria-label={`Không tính công ngày ${day.date}`}
+                                aria-pressed={day.reviewDecision === "exclude"}
+                              >
+                                <X size={14} aria-hidden="true" />
+                              </Button>
+                            </>
+                          )}
                           {day.reports.length > 0 && (
                             <Button
                               variant="secondary"

@@ -17,8 +17,10 @@ import {
 } from "@/lib/attendance-rules";
 import {
   applyDayMark,
+  fullDayMinutesOf,
   getActiveSessionRules,
   getDayMarks,
+  getDayReviews,
   getHolidayMap,
   getLunchBreak,
   getPendingShiftRequestDates,
@@ -26,7 +28,14 @@ import {
   resolveMonthSchedules,
   type ScheduleMap,
 } from "@/lib/attendance-service";
-import { EMPLOYMENT_TYPE_LABELS, EmploymentType } from "@/lib/schedule";
+import {
+  EMPLOYMENT_TYPE_LABELS,
+  EmploymentType,
+  isRestDayFor,
+  standardWorkdays,
+} from "@/lib/schedule";
+import { getApprovedOvertime } from "@/lib/overtime-service";
+import { OVERTIME_CODES } from "@/lib/overtime";
 import {
   attendanceFileName,
   buildAttendanceWorkbook,
@@ -56,7 +65,7 @@ export async function GET(req: Request) {
     const { startDate, endDate, daysInMonth } = getMonthRange(month);
     const dates = listMonthDates(month);
 
-    const [users, rules, punchRows, holidays, lunchBreak] = await Promise.all([
+    const [users, rules, punchRows, holidays, lunchBreak, weeklyOffDays] = await Promise.all([
       query<EmployeeRow>(
         `SELECT "id", "name", "email", "employeeCode", "employmentType", "department"
            FROM "User"
@@ -80,15 +89,20 @@ export async function GET(req: Request) {
       ),
       getHolidayMap(startDate, endDate),
       getLunchBreak(),
+      getWeeklyOffDays(),
     ]);
 
     const userIds = users.map((user) => user.id);
-    const [schedules, marks, pendingRequests] = await Promise.all([
+    const [schedules, marks, pendingRequests, reviews, overtime] = await Promise.all([
       resolveMonthSchedules(users, month, rules),
       getDayMarks(userIds, startDate, endDate),
       getPendingShiftRequestDates(userIds, startDate, endDate),
+      getDayReviews(userIds, startDate, endDate),
+      getApprovedOvertime(userIds, month),
     ]);
     const ruleById = new Map(rules.map((rule) => [rule.id, rule]));
+    const fullDayMinutes = fullDayMinutesOf(rules);
+    const monthStandardWorkdays = standardWorkdays(month, weeklyOffDays);
 
     // Gom punch theo userId -> date.
     const punchesByUser = new Map<string, Map<string, PunchInput[]>>();
@@ -116,10 +130,20 @@ export async function GET(req: Request) {
           adminEdited: boolean;
           /// Đang có yêu cầu đổi ca chờ duyệt cho ngày này.
           pendingRequest: boolean;
+          /// Số công của ngày (1 = x, 0,5 = x/2).
+          workdayValue: number;
+          /// Thiếu giờ, admin chưa xem lại.
+          needsReview: boolean;
+          /// Phiếu OT đã duyệt của ngày này.
+          overtime: { code: string; minutes: number } | null;
         }
       > = {};
+      const overtimeMinutes: Record<string, number> = Object.fromEntries(
+        Object.values(OVERTIME_CODES).map((code) => [code, 0])
+      );
 
-      let passedDays = 0;
+      let workdays = 0;
+      let reviewDays = 0;
       let lateDays = 0;
       let missedCheckoutDays = 0;
       let absentDays = 0;
@@ -140,13 +164,22 @@ export async function GET(req: Request) {
 
         scheduledShifts += scheduled.length;
 
+        const isHoliday = holidays.has(date);
+        const ot = overtime.get(`${user.id}|${date}`);
         const evaluation = evaluateDay({
           scheduled,
           punches,
-          isHoliday: holidays.has(date),
+          isHoliday,
           isPast: date < today,
           leaveCode: mark?.leaveCode ?? null,
           lunchBreak,
+          // Ngày không có ca mà có phiếu OT đã duyệt là ngày làm thêm: trả
+          // theo giờ OT, không cộng thêm công "ngoài lịch".
+          isRestDay:
+            isRestDayFor(user.employmentType, date, weeklyOffDays, isHoliday) ||
+            (Boolean(ot) && scheduled.length === 0),
+          fullDayMinutes,
+          reviewDecision: reviews.get(`${user.id}|${date}`) ?? null,
         });
 
         // Ngày trống vẫn phải có ô nếu đang chờ duyệt đổi ca, để lưới tô vàng được.
@@ -154,26 +187,43 @@ export async function GET(req: Request) {
           evaluation.status === "off" &&
           punches.length === 0 &&
           !mark &&
-          !pendingRequest
+          !pendingRequest &&
+          !ot
         ) {
           continue;
         }
+
+        const baseLabel = dayCellLabel(evaluation);
+        if (ot) overtimeMinutes[ot.code] = (overtimeMinutes[ot.code] ?? 0) + ot.minutes;
 
         days[date] = {
           status: evaluation.status,
           adminEdited: mark?.isAdminEdit ?? false,
           pendingRequest,
-          label: dayCellLabel(evaluation),
+          // Ngày có OT: thêm ký hiệu OT; ngày chỉ có OT (không có công) thì
+          // chỉ hiện ký hiệu OT.
+          label: ot
+            ? evaluation.workdayValue > 0
+              ? `${baseLabel}+${ot.code}`
+              : ot.code
+            : baseLabel,
           codes: evaluation.codes,
           workedHours: minutesToHours(evaluation.workedMinutes),
           lateMinutes: evaluation.lateMinutes,
           outsideRadius: evaluation.outsideRadius,
+          workdayValue: evaluation.workdayValue,
+          needsReview: evaluation.needsReview,
+          overtime: ot ? { code: ot.code, minutes: ot.minutes } : null,
         };
 
         totalMinutes += evaluation.workedMinutes;
         if (punches.length > 0) attendanceDays++;
+        if (evaluation.needsReview) reviewDays++;
         if (evaluation.countsAsWorkDay) {
-          passedDays++;
+          workdays += evaluation.workdayValue;
+        }
+        // Cột đếm ca chỉ tính ca thực sự đi làm, không tính ngày lễ được hưởng công.
+        if (evaluation.countsAsWorkDay && evaluation.status !== "holiday") {
           for (const code of evaluation.codes) {
             sessionCounts[code] = (sessionCounts[code] || 0) + 1;
           }
@@ -193,7 +243,10 @@ export async function GET(req: Request) {
             user.employmentType,
         },
         days,
-        passedDays,
+        workdays,
+        reviewDays,
+        /// Số phút OT đã duyệt theo ký hiệu T / T1 / T2.
+        overtimeMinutes,
         lateDays,
         absentDays,
         leaveDays,
@@ -207,14 +260,10 @@ export async function GET(req: Request) {
     });
 
     if (wantsExcel) {
-      // Tên công ty và ngày nghỉ hằng tuần chỉ cần khi xuất file, nên tra ở đây
-      // thay vì bắt mọi lần mở trang phải chịu thêm hai câu truy vấn.
-      const [companyName, weeklyOffDays] = await Promise.all([
-        queryOne<{ value: string }>(
-          `SELECT "value" FROM "Settings" WHERE "key" = 'company_name'`
-        ),
-        getWeeklyOffDays(),
-      ]);
+      // Tên công ty chỉ cần khi xuất file, nên tra ở đây.
+      const companyName = await queryOne<{ value: string }>(
+        `SELECT "value" FROM "Settings" WHERE "key" = 'company_name'`
+      );
 
       const file = await buildAttendanceWorkbook({
         month,
@@ -224,6 +273,7 @@ export async function GET(req: Request) {
         companyName: companyName?.value ?? "",
         holidays: Object.fromEntries(holidays),
         weeklyOffDays,
+        standardWorkdays: monthStandardWorkdays,
         exportedOn: today,
       });
 
@@ -242,6 +292,7 @@ export async function GET(req: Request) {
       sessions: rules,
       holidays: Object.fromEntries(holidays),
       statusLabels: DAY_STATUS_LABELS,
+      standardWorkdays: monthStandardWorkdays,
       summary,
     };
   }, "Monthly attendance error");

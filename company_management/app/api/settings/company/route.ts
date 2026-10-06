@@ -2,6 +2,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { queryOne } from "@/lib/db";
 import { badRequest, handle, requireAdmin } from "@/lib/auth-guard";
+import { IMAGE_MIME_TO_EXT, MAX_UPLOAD_BYTES, uploadDir } from "@/lib/uploads";
 
 const DEFAULT_COMPANY_NAME = "Công ty của bạn";
 
@@ -41,17 +42,8 @@ export async function PUT(req: Request) {
   }, "Company settings write error");
 }
 
-const MAX_LOGO_BYTES = 2 * 1024 * 1024; // 2MB
-/// Không nhận SVG: file SVG phục vụ từ cùng tên miền có thể mang mã chạy
-/// được trong trình duyệt khi ai đó mở thẳng đường dẫn ảnh.
-const LOGO_MIME: Record<string, string> = {
-  "image/png": ".png",
-  "image/jpeg": ".jpg",
-  "image/webp": ".webp",
-};
-
 /// Upload logo công ty (multipart/form-data, field "file").
-/// Lưu file vào public/uploads/logo.<ext> và ghi đường dẫn vào Settings.
+/// Lưu file vào UPLOAD_DIR/logo.<ext> và ghi đường dẫn vào Settings.
 export async function POST(req: Request) {
   return handle(async () => {
     await requireAdmin();
@@ -60,12 +52,12 @@ export async function POST(req: Request) {
     const file = form?.get("file");
     if (!file || !(file instanceof File)) badRequest("Vui lòng chọn file logo");
 
-    const ext = LOGO_MIME[file.type];
+    const ext = IMAGE_MIME_TO_EXT[file.type];
     if (!ext) badRequest("Chỉ nhận file PNG, JPG hoặc WebP");
-    if (file.size > MAX_LOGO_BYTES) badRequest("Logo tối đa 2MB");
+    if (file.size > MAX_UPLOAD_BYTES) badRequest("Logo tối đa 2MB");
 
     const buffer = Buffer.from(await file.arrayBuffer());
-    const dir = join(process.cwd(), "public", "uploads");
+    const dir = uploadDir();
     await mkdir(dir, { recursive: true });
     const path = `/uploads/logo${ext}`;
     await writeFile(join(dir, `logo${ext}`), buffer);

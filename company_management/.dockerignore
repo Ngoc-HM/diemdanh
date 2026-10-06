@@ -1,0 +1,10 @@
+node_modules
+.next
+.env
+.env.*
+!.env.example
+storage
+public/uploads
+tsconfig.tsbuildinfo
+.DS_Store
+.windsurf

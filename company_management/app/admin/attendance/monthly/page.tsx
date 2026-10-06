@@ -18,7 +18,7 @@ import {
   TableSkeleton,
 } from "@/app/_components/ui";
 import { addMonths, formatMonthLabel, monthKeyVN, weekdayLabel } from "@/lib/datetime";
-import type { DayStatus } from "@/lib/attendance-rules";
+import { formatWorkdays, type DayStatus } from "@/lib/attendance-rules";
 import { DAY_STATUS_CELL, LEGEND } from "@/app/_components/status-styles";
 import DayMarkMenu, { type MarkChoice } from "./day-mark-menu";
 
@@ -32,6 +32,10 @@ type DayCell = {
   outsideRadius: boolean;
   /// Đang có yêu cầu đổi ca chờ duyệt: ô tô vàng dù ngày còn trống.
   pendingRequest: boolean;
+  /// Số công của ô (1 = x, 0,5 = x/2).
+  workdayValue: number;
+  /// Thiếu giờ, admin chưa xem lại.
+  needsReview: boolean;
 };
 
 type Row = {
@@ -44,7 +48,9 @@ type Row = {
     department: string | null;
   };
   days: Record<string, DayCell>;
-  passedDays: number;
+  /// Tổng số công, có thể lẻ nửa ngày.
+  workdays: number;
+  reviewDays: number;
   lateDays: number;
   absentDays: number;
   missedCheckoutDays: number;
@@ -57,6 +63,8 @@ type Payload = {
   dates: string[];
   sessions: { id: string; code: string; name: string }[];
   holidays: Record<string, string>;
+  /// Ngày công tháng (công chuẩn), dùng chung cho mọi người.
+  standardWorkdays: number;
   summary: Row[];
 };
 
@@ -121,13 +129,14 @@ export default function MonthlyAttendancePage() {
 
   const totals = data?.summary.reduce(
     (acc, row) => ({
-      passed: acc.passed + row.passedDays,
+      workdays: acc.workdays + row.workdays,
+      review: acc.review + row.reviewDays,
       late: acc.late + row.lateDays,
       absent: acc.absent + row.absentDays,
       missedCheckout: acc.missedCheckout + row.missedCheckoutDays,
       hours: acc.hours + row.totalHours,
     }),
-    { passed: 0, late: 0, absent: 0, missedCheckout: 0, hours: 0 }
+    { workdays: 0, review: 0, late: 0, absent: 0, missedCheckout: 0, hours: 0 }
   );
 
   /// Số ô đang chờ duyệt đổi ca trong tháng, để nhắc admin sang trang duyệt.
@@ -175,6 +184,17 @@ export default function MonthlyAttendancePage() {
           </span>
           <span className="font-medium">Xem danh sách</span>
         </Link>
+      )}
+
+      {totals && totals.review > 0 && (
+        <div className="mb-4 flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+          <AlarmClockOff size={16} aria-hidden="true" />
+          <span>
+            <span className="font-semibold">{totals.review}</span> ngày làm thiếu
+            giờ chờ xem lại (ô có dấu !). Chưa quyết định thì vẫn tính đủ công; mở
+            chi tiết nhân viên để chọn không tính.
+          </span>
+        </div>
       )}
 
       {pendingRequests > 0 && (
@@ -273,8 +293,14 @@ export default function MonthlyAttendancePage() {
                       </th>
                     );
                   })}
-                  <th className="px-2 py-2 text-center font-semibold text-slate-900">
+                  <th
+                    className="px-2 py-2 text-center font-semibold text-slate-900"
+                    title="Ngày công / ngày công tháng"
+                  >
                     Công
+                    <div className="text-xs font-normal text-slate-500">
+                      / {data.standardWorkdays}
+                    </div>
                   </th>
                   <th className="px-2 py-2 text-center font-semibold text-slate-900">
                     Muộn
@@ -337,6 +363,7 @@ export default function MonthlyAttendancePage() {
                                       : ""
                                   }${cell.outsideRadius ? " · ngoài bán kính" : ""}`
                                 : date) +
+                              (cell?.needsReview ? " · thiếu giờ, chờ xem lại" : "") +
                               (edited ? " · admin đã sửa" : "") +
                               (pending ? " · chờ duyệt đổi ca" : "")
                             }
@@ -360,7 +387,7 @@ export default function MonthlyAttendancePage() {
                       );
                     })}
                     <td className="px-2 py-2 text-center font-semibold text-emerald-700">
-                      {row.passedDays}
+                      {formatWorkdays(row.workdays)}
                     </td>
                     <td className="px-2 py-2 text-center text-amber-700">
                       {row.lateDays}
@@ -381,8 +408,8 @@ export default function MonthlyAttendancePage() {
             <div className="mt-6 grid grid-cols-2 gap-4 sm:grid-cols-4">
               <StatTile label="Nhân viên" value={String(data.summary.length)} />
               <StatTile
-                label="Ngày công đạt"
-                value={String(totals.passed)}
+                label="Tổng ngày công"
+                value={formatWorkdays(totals.workdays)}
                 tone="text-emerald-700"
               />
               <StatTile

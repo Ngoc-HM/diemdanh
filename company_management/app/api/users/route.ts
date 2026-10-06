@@ -3,6 +3,7 @@ import { badRequest, conflict, handle, requireAdmin } from "@/lib/auth-guard";
 import { hashPassword, isValidEmail } from "@/lib/utils";
 import { EMPLOYMENT_TYPES, isEmploymentType } from "@/lib/schedule";
 import { EMPLOYEE_COLUMNS, EmployeeRow } from "@/lib/types";
+import { assertEmailNotAdmin } from "@/lib/auth-login";
 
 export async function GET(req: Request) {
   return handle(async () => {
@@ -45,6 +46,7 @@ export async function POST(req: Request) {
       [email]
     );
     if (existingEmail) conflict("Email đã được dùng");
+    await assertEmailNotAdmin(email);
 
     if (employeeCode) {
       const existingCode = await queryOne(

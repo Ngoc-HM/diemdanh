@@ -1,0 +1,76 @@
+# Chạy trọn bộ bằng Docker, ở máy local hay trên server đều như nhau: app build
+# rồi `next start` (NODE_ENV=production) + Postgres riêng trong cùng compose.
+#
+#   docker compose up -d --build     # lần đầu hoặc sau mỗi lần cập nhật code
+#   docker compose logs -f app       # xem log
+#
+# Biến lấy từ .env (xem .env.example). App luôn nối vào container db ở đây —
+# DATABASE_URL trong .env không dùng cho container (nó dành cho `npm run dev`).
+# Bắt buộc có POSTGRES_PASSWORD trong .env.
+#
+# Cổng: app chỉ mở cho chính máy (APP_BIND mặc định 127.0.0.1, APP_PORT mặc
+# định 3000) vì production bắt buộc HTTPS — người dùng vào qua service proxy
+# (Caddy, cổng 443) hoặc reverse proxy có sẵn trên máy. Postgres chỉ mở cho chính
+# máy ở cổng DB_PORT (mặc định 5433).
+services:
+  app:
+    build: .
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD:?Thiếu POSTGRES_PASSWORD trong .env}@db:5432/company_mana
+    ports:
+      - "${APP_BIND:-127.0.0.1}:${APP_PORT:-3000}:3000"
+    volumes:
+      # Logo và ảnh đại diện nằm ngoài image: build lại / deploy lại không mất.
+      - ./storage/uploads:/app/storage/uploads
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+    logging: &logging
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+
+  db:
+    image: postgres:18-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Thiếu POSTGRES_PASSWORD trong .env}
+      POSTGRES_DB: company_mana
+    ports:
+      - "127.0.0.1:${DB_PORT:-5433}:5432"
+    volumes:
+      # Postgres 18 lưu dữ liệu ở /var/lib/postgresql/18/docker, nên gắn cả
+      # /var/lib/postgresql chứ không phải .../data như bản cũ.
+      - db-data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d company_mana"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+    restart: unless-stopped
+    logging: *logging
+
+  # HTTPS phía trước app, xem Caddyfile. Bật bằng COMPOSE_PROFILES=proxy trong
+  # .env. Chỉ mở IPv4 (LAN / Tailscale), không mở ra IPv6 công khai.
+  proxy:
+    profiles: ["proxy"]
+    image: caddy:2-alpine
+    env_file: .env
+    ports:
+      - "0.0.0.0:${HTTPS_PORT:-443}:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      - app
+    restart: unless-stopped
+    logging: *logging
+
+volumes:
+  db-data:
+  caddy-data:
+  caddy-config:

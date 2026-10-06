@@ -35,6 +35,13 @@ const nextConfig: NextConfig = {
     // Khu vực quản trị nay nằm ở /admin. Giữ lại luật này để link cũ và tab
     // đang mở ở /admin-dashboard không bị 404.
     return [
+      // Admin và nhân viên nay đăng nhập chung ở /login (vai trò nào vào khu
+      // vực đó). Giữ đường dẫn cũ cho bookmark của admin.
+      {
+        source: "/admin-login-app",
+        destination: "/login",
+        permanent: false,
+      },
       {
         source: "/admin-dashboard",
         destination: "/admin/attendance/monthly",

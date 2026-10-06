@@ -10,10 +10,12 @@ import {
   EmptyState,
   Field,
   Input,
+  Select,
   Message,
   Modal,
   TableSkeleton,
 } from "@/app/_components/ui";
+import { formatWorkdays } from "@/lib/attendance-rules";
 
 type WorkSession = {
   id: string;
@@ -22,6 +24,8 @@ type WorkSession = {
   workStart: string;
   workEnd: string;
   minHours: number;
+  /// Số công: 1 = một ngày (x), 0,5 = nửa ngày (x/2), 0 = không tính công.
+  workdayValue: number;
   sortOrder: number;
   isActive: boolean;
   isDefaultFull: boolean;
@@ -33,6 +37,7 @@ const EMPTY_FORM = {
   workStart: "08:30",
   workEnd: "17:30",
   minHours: "7",
+  workdayValue: "1",
   sortOrder: "1",
   isActive: true,
   isDefaultFull: false,
@@ -153,6 +158,7 @@ export default function SessionsPage() {
       workStart: session.workStart,
       workEnd: session.workEnd,
       minHours: String(session.minHours),
+      workdayValue: String(session.workdayValue),
       sortOrder: String(session.sortOrder),
       isActive: session.isActive,
       isDefaultFull: session.isDefaultFull,
@@ -303,6 +309,7 @@ export default function SessionsPage() {
                 <th className="px-4 py-3 font-semibold text-slate-900">Tên ca</th>
                 <th className="px-4 py-3 font-semibold text-slate-900">Giờ làm</th>
                 <th className="px-4 py-3 font-semibold text-slate-900">Tối thiểu</th>
+                <th className="px-4 py-3 font-semibold text-slate-900">Số công</th>
                 <th className="px-4 py-3 font-semibold text-slate-900">Trạng thái</th>
                 <th className="w-32 px-4 py-3" />
               </tr>
@@ -320,6 +327,13 @@ export default function SessionsPage() {
                     {session.workStart}–{session.workEnd}
                   </td>
                   <td className="px-4 py-3 text-slate-700">{session.minHours}h</td>
+                  <td className="px-4 py-3 tabular-nums text-slate-700">
+                    {session.workdayValue > 0 ? (
+                      formatWorkdays(session.workdayValue)
+                    ) : (
+                      <span className="text-slate-400">Không tính</span>
+                    )}
+                  </td>
                   <td className="px-4 py-3">
                     <div className="flex flex-wrap gap-1.5">
                       {session.isActive ? (
@@ -439,6 +453,21 @@ export default function SessionsPage() {
               onChange={(event) => setForm({ ...form, minHours: event.target.value })}
               required
             />
+          </Field>
+
+          <Field
+            label="Số công của ca"
+            required
+            hint="Làm đủ ca này được tính bao nhiêu ngày công: 1 = một ngày (x), 0,5 = nửa ngày (x/2), 0 = không cộng ngày công (vd. tăng ca, trả riêng theo giờ)."
+          >
+            <Select
+              value={form.workdayValue}
+              onChange={(event) => setForm({ ...form, workdayValue: event.target.value })}
+            >
+              <option value="1">1 — một ngày công</option>
+              <option value="0.5">0,5 — nửa ngày công</option>
+              <option value="0">0 — không tính công</option>
+            </Select>
           </Field>
 
           <div className="space-y-2">

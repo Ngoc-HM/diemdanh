@@ -4,11 +4,23 @@ import {
   registrationWindow,
   fullTimeWorkingDates,
   isSelfScheduled,
+  standardWorkdays,
+  isRestDayFor,
   DEFAULT_REGISTRATION_WINDOW,
   parseRegistrationWindow,
   validateRegistrationWindow,
 } from "../lib/schedule.ts";
 import { evaluateDay, pairPunches, parseLunchBreak } from "../lib/attendance-rules.ts";
+import { accountingCellLabel } from "../lib/attendance-export.ts";
+import {
+  computeOvertimeMinutes,
+  overtimeDayType,
+  overtimeRate,
+  parseOvertimeConfig,
+  validateOvertimeConfig,
+  validatePlannedTimes,
+  DEFAULT_OVERTIME_CONFIG,
+} from "../lib/overtime.ts";
 import { vnDateTimeToUtc, weekdayLabel, daysInMonth, addMonths, parseTimeToMinutes } from "../lib/datetime.ts";
 import {
   formatDuration,
@@ -124,7 +136,7 @@ check("tự sắp xếp theo thời gian = 9h", unsorted.workedMinutes === 540, 
 
 console.log("\n== xếp loại ngày công ==");
 const ca = { id: "s1", code: "HC", name: "Hành chính", workStart: "08:00",
-  workEnd: "17:00", minHours: 8, sortOrder: 1, isDefaultFull: true };
+  workEnd: "17:00", minHours: 8, workdayValue: 1, sortOrder: 1, isDefaultFull: true };
 const day = (punches, extra = {}) =>
   evaluateDay({ scheduled: [ca], punches, ...extra });
 
@@ -178,15 +190,16 @@ check("ngoài lịch mà chỉ có giờ ra mồ côi thì không tính công",
 check("đủ công là ngày công", day([{ type: "in", at: at("2026-09-01", "08:00"), withinRadius: true },
        { type: "out", at: at("2026-09-01", "17:00"), withinRadius: true }]).countsAsWorkDay === true);
 check("đi muộn vẫn là ngày công", late.countsAsWorkDay === true);
-check("thiếu giờ không phải ngày công", short.countsAsWorkDay === false);
+check("thiếu giờ vẫn tính đủ công khi admin chưa xem", short.workdayValue === 1 && short.countsAsWorkDay === true, `(${short.workdayValue})`);
+check("thiếu giờ được đánh dấu chờ xem lại", short.needsReview === true);
 check("vắng không phải ngày công", day([]).countsAsWorkDay === false);
 check("nghỉ N không phải ngày công", day([], { leaveCode: "N" }).countsAsWorkDay === false);
 check("phát hiện bấm giờ ngoài bán kính",
   day([{ type: "in", at: at("2026-09-01", "08:00"), withinRadius: false },
        { type: "out", at: at("2026-09-01", "17:00"), withinRadius: true }]).outsideRadius === true);
 
-const sang = { ...ca, id: "s2", code: "S", workStart: "08:00", workEnd: "12:00", minHours: 4, sortOrder: 1 };
-const chieu = { ...ca, id: "s3", code: "C", workStart: "13:00", workEnd: "17:00", minHours: 4, sortOrder: 2 };
+const sang = { ...ca, id: "s2", code: "S", workStart: "08:00", workEnd: "12:00", minHours: 4, workdayValue: 0.5, sortOrder: 1 };
+const chieu = { ...ca, id: "s3", code: "C", workStart: "13:00", workEnd: "17:00", minHours: 4, workdayValue: 0.5, sortOrder: 2 };
 const both = evaluateDay({ scheduled: [sang, chieu], punches: [
   { type: "in", at: at("2026-09-01", "08:00"), withinRadius: true },
   { type: "out", at: at("2026-09-01", "12:00"), withinRadius: true },
@@ -197,6 +210,96 @@ const onlyMorning = evaluateDay({ scheduled: [sang, chieu], punches: [
   { type: "in", at: at("2026-09-01", "08:00"), withinRadius: true },
   { type: "out", at: at("2026-09-01", "12:00"), withinRadius: true }] });
 check("đăng ký 2 ca chỉ làm 1 = thiếu giờ", onlyMorning.status === "insufficient", `(${onlyMorning.status})`);
+
+console.log("\n== số công (x / x/2) ==");
+const punchDay = (from, to, date = "2026-09-01") => [
+  { type: "in", at: at(date, from), withinRadius: true },
+  { type: "out", at: at(date, to), withinRadius: true }];
+check("ca CN đủ giờ = 1 công", day(punchDay("08:00", "17:00")).workdayValue === 1);
+check("S + C đủ giờ = 0,5 + 0,5 = 1 công", both.workdayValue === 1, `(${both.workdayValue})`);
+const morningOnly = evaluateDay({ scheduled: [sang], punches: punchDay("08:00", "12:00") });
+check("chỉ ca S đủ giờ = 0,5 công (x/2)", morningOnly.workdayValue === 0.5, `(${morningOnly.workdayValue})`);
+const tangCa = { ...ca, id: "s5", code: "T", workStart: "18:00", workEnd: "21:00", minHours: 2.5, workdayValue: 0 };
+check("ca tăng ca (số công 0) không cộng ngày công",
+  evaluateDay({ scheduled: [tangCa], punches: punchDay("18:00", "21:00") }).workdayValue === 0);
+check("đi muộn vẫn đủ số công của ca", late.workdayValue === 1);
+const shortCounted = day(punchDay("08:00", "15:00"), { reviewDecision: "count" });
+check("admin duyệt tính công: 1 công, hết chờ xem", shortCounted.workdayValue === 1 && shortCounted.needsReview === false);
+const shortExcluded = day(punchDay("08:00", "15:00"), { reviewDecision: "exclude" });
+check("admin chọn không tính: 0 công", shortExcluded.workdayValue === 0 && shortExcluded.countsAsWorkDay === false && shortExcluded.needsReview === false);
+check("quyết định xem lại không áp cho ngày đủ giờ",
+  day(punchDay("08:00", "17:00"), { reviewDecision: "exclude" }).workdayValue === 1);
+check("vắng = 0 công", day([]).workdayValue === 0);
+check("nghỉ N = 0 công (phép năm tính riêng ở bảng lương)", day([], { leaveCode: "N" }).workdayValue === 0);
+check("ốm O = 0 công", day([], { leaveCode: "O" }).workdayValue === 0);
+check("nghỉ lễ có lịch vẫn được tính công", day([], { isHoliday: true }).workdayValue === 1);
+check("nghỉ lễ không có lịch thì không có công",
+  evaluateDay({ scheduled: [], punches: [], isHoliday: true }).workdayValue === 0);
+check("quên checkout = 0 công", missed.workdayValue === 0);
+const unscheduledFull = evaluateDay({ scheduled: [], punches: punchDay("08:00", "17:00"), fullDayMinutes: 420 });
+check("ngoài lịch đủ ngưỡng cả ngày = 1 công", unscheduledFull.workdayValue === 1, `(${unscheduledFull.workdayValue})`);
+const unscheduledHalf = evaluateDay({ scheduled: [], punches: punchDay("08:00", "12:00"), fullDayMinutes: 420 });
+check("ngoài lịch nửa buổi = 0,5 công", unscheduledHalf.workdayValue === 0.5, `(${unscheduledHalf.workdayValue})`);
+check("full-time đi làm ngày nghỉ không có lịch = 0 công (phải làm phiếu OT)",
+  evaluateDay({ scheduled: [], punches: punchDay("08:00", "17:00"), isRestDay: true }).workdayValue === 0);
+
+console.log("\n== ngày công tháng ==");
+check("tháng 9/2026 nghỉ T7+CN = 22 ngày công tháng", standardWorkdays("2026-09", [0, 6]) === 22, `(${standardWorkdays("2026-09", [0, 6])})`);
+check("tháng 2/2026 nghỉ T7+CN = 20", standardWorkdays("2026-02", [0, 6]) === 20, `(${standardWorkdays("2026-02", [0, 6])})`);
+check("chỉ nghỉ CN thì tháng 9/2026 = 26", standardWorkdays("2026-09", [0]) === 26, `(${standardWorkdays("2026-09", [0])})`);
+check("full-time: thứ 7 là ngày nghỉ", isRestDayFor("full_time", "2026-09-05", [0, 6], false) === true);
+check("full-time: ngày lễ là ngày nghỉ", isRestDayFor("full_time", "2026-09-02", [0, 6], true) === true);
+check("full-time: thứ 3 thường là ngày làm", isRestDayFor("full_time", "2026-09-01", [0, 6], false) === false);
+check("part-time tự đăng ký nên thứ 7 không phải ngày nghỉ", isRestDayFor("part_time", "2026-09-05", [0, 6], false) === false);
+
+console.log("\n== làm thêm giờ (OT) ==");
+check("thứ 3 thường = T (weekday)", overtimeDayType(2, [0, 6], false) === "weekday");
+check("thứ 7 = T1 (ngày nghỉ tuần)", overtimeDayType(6, [0, 6], false) === "weekly_off");
+check("lễ rơi vào CN vẫn là T2", overtimeDayType(0, [0, 6], true) === "holiday");
+check("hệ số mặc định 150 / 200 / 300",
+  overtimeRate(DEFAULT_OVERTIME_CONFIG, "weekday") === 150 &&
+  overtimeRate(DEFAULT_OVERTIME_CONFIG, "weekly_off") === 200 &&
+  overtimeRate(DEFAULT_OVERTIME_CONFIG, "holiday") === 300);
+check("cấu hình hỏng thì về mặc định", parseOvertimeConfig("{bừa").weekdayRate === 150);
+check("cấu hình đọc được giá trị admin đặt", parseOvertimeConfig('{"weekdayRate":175,"weeklyOffRate":200,"holidayRate":300,"hoursPerDay":8}').weekdayRate === 175);
+check("chặn hệ số dưới 100%", validateOvertimeConfig({ ...DEFAULT_OVERTIME_CONFIG, weekdayRate: 90 }) !== null);
+check("chặn giờ chuẩn 0", validateOvertimeConfig({ ...DEFAULT_OVERTIME_CONFIG, hoursPerDay: 0 }) !== null);
+check("giờ dự kiến hợp lệ", validatePlannedTimes("18:00", "21:00") === null);
+check("chặn giờ kết thúc trước bắt đầu", validatePlannedTimes("21:00", "18:00") !== null);
+check("chặn giờ sai dạng", validatePlannedTimes("6h", "21:00") !== null);
+const caCN = { ...ca, code: "CN", workStart: "08:30", workEnd: "17:30", minHours: 7, workdayValue: 1 };
+const otLunch = parseLunchBreak("12:00-13:30");
+const ot = (dayType, scheduled, punches, extra = {}) => computeOvertimeMinutes({
+  dayType, scheduled, punches, lunchBreak: otLunch, plannedStart: "18:00", plannedEnd: "21:00", ...extra });
+const otAfter = ot("weekday", [caCN], punchDay("08:30", "20:30"));
+check("ngày thường: OT là phần sau giờ hết ca 17:30 → 20:30 = 3h", otAfter.minutes === 180 && otAfter.source === "punches", `(${otAfter.minutes}p ${otAfter.source})`);
+check("ngày thường ra đúng giờ hết ca thì 0 phút OT", ot("weekday", [caCN], punchDay("08:30", "17:30")).minutes === 0);
+const otWeekend = ot("weekly_off", [], punchDay("08:30", "17:30", "2026-09-05"));
+check("thứ 7 không có ca: OT cả ngày, trừ nghỉ trưa = 7,5h", otWeekend.minutes === 450, `(${otWeekend.minutes}p)`);
+const otHoliday = ot("holiday", [caCN], punchDay("08:30", "12:00", "2026-09-02"));
+check("ngày lễ: OT toàn bộ giờ làm dù có lịch = 3,5h", otHoliday.minutes === 210, `(${otHoliday.minutes}p)`);
+const otTrip = ot("weekday", [caCN], []);
+check("đi công tác không chấm công: lấy giờ dự kiến 18–21 = 3h", otTrip.minutes === 180 && otTrip.source === "planned");
+const otOpen = ot("weekday", [caCN], [{ type: "in", at: at("2026-09-01", "08:30"), withinRadius: true }]);
+check("quên checkout: lấy giờ dự kiến", otOpen.source === "planned");
+check("ca tăng ca (số công 0) không phải ca chính: OT cả giờ làm",
+  ot("weekday", [tangCa], punchDay("18:00", "21:00")).minutes === 180);
+
+console.log("\n== ký hiệu bảng chấm công cho kế toán ==");
+const cell = (status, codes, value, label = "") => ({ status, codes, workdayValue: value, label });
+check("full-time một công = x", accountingCellLabel(cell("passed", ["CN"], 1), "full_time") === "x");
+check("full-time nửa công = x/2", accountingCellLabel(cell("passed", ["S"], 0.5), "full_time") === "x/2");
+check("part-time ghi mã ca", accountingCellLabel(cell("passed", ["S"], 0.5), "part_time") === "S");
+check("part-time hai ca ghi S+C", accountingCellLabel(cell("passed", ["S", "C"], 1), "intern") === "S+C");
+check("ngày lễ = L", accountingCellLabel(cell("holiday", ["CN"], 1, "L"), "full_time") === "L");
+check("vắng giữ ký hiệu V", accountingCellLabel(cell("absent", ["CN"], 0, "V"), "full_time") === "V");
+check("thiếu giờ admin không tính giữ ký hiệu lưới", accountingCellLabel(cell("insufficient", ["CN"], 0, "CN!"), "full_time") === "CN!");
+check("full-time có OT ngày thường = x+T",
+  accountingCellLabel({ ...cell("passed", ["CN"], 1), overtime: { code: "T", minutes: 120 } }, "full_time") === "x+T");
+check("full-time chỉ làm OT thứ 7 = T1",
+  accountingCellLabel({ ...cell("unscheduled", [], 0, "NL"), overtime: { code: "T1", minutes: 450 } }, "full_time") === "T1");
+check("ngày lễ có OT = L+T2",
+  accountingCellLabel({ ...cell("holiday", ["CN"], 1, "L"), overtime: { code: "T2", minutes: 60 } }, "full_time") === "L+T2");
 
 console.log("\n== giờ nghỉ trưa ==");
 const lunch = parseLunchBreak("12:00-13:30");

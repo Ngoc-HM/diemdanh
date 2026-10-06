@@ -43,5 +43,6 @@ next-env.d.ts
 
 /app/generated/prisma
 
-# Logo công ty upload từ trang admin
+# Logo công ty và ảnh đại diện upload lúc chạy (xem lib/uploads.ts)
+/storage/
 public/uploads/

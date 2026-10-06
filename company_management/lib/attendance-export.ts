@@ -1,5 +1,7 @@
 /// Dựng file Excel của bảng chấm công tháng, để admin gửi kế toán.
-/// Chỉ có mã ca theo từng ngày, không có giờ vào/ra chi tiết.
+/// Ký hiệu theo mẫu kế toán đang dùng: full-time ghi x (một công) / x/2 (nửa
+/// công), part-time và thực tập ghi mã ca đã làm (S / C / CN). Không có giờ
+/// vào/ra chi tiết.
 import writeXlsxFile from "write-excel-file/node";
 import type { DayStatus } from "@/lib/attendance-rules";
 import { formatMonthLabel, weekdayLabel } from "@/lib/datetime";
@@ -52,10 +54,14 @@ export type AttendanceExportRow = {
     employeeCode: string | null;
     name: string;
     email: string;
+    employmentType: string;
     employmentLabel: string;
   };
-  days: Record<string, { label: string; status: string }>;
-  passedDays: number;
+  days: Record<string, AccountingDay>;
+  /// Tổng số công trong tháng (có thể lẻ nửa ngày).
+  workdays: number;
+  /// Phút OT đã duyệt theo ký hiệu T / T1 / T2.
+  overtimeMinutes: Record<string, number>;
   lateDays: number;
   absentDays: number;
   leaveDays: number;
@@ -71,14 +77,54 @@ export function attendanceFileName(month: string): string {
 export const XLSX_CONTENT_TYPE =
   "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
 
-/// Nhãn của các cột tổng, kèm cờ in đậm cho hai cột kế toán nhìn nhiều nhất.
-const SUMMARY_COLUMNS: { label: string; width: number; strong?: boolean }[] = [
-  { label: "Ngày công", width: 10, strong: true },
-  { label: "Đi muộn", width: 9 },
-  { label: "Vắng", width: 8 },
-  { label: "Nghỉ (N)", width: 9 },
-  { label: "Ốm (O)", width: 8 },
-  { label: "Tổng giờ", width: 10, strong: true },
+/// Ký hiệu một ô ngày cho kế toán. Ngày có công: full-time ghi x / x/2,
+/// người tự đăng ký ca ghi mã ca. Các trạng thái khác giữ ký hiệu của lưới
+/// (N nghỉ, O ốm, V vắng, L lễ, ? quên checkout...).
+export type AccountingDay = {
+  label: string;
+  status: string;
+  codes: string[];
+  workdayValue: number;
+  /// Phiếu OT đã duyệt của ngày (ký hiệu T / T1 / T2).
+  overtime?: { code: string; minutes: number } | null;
+};
+
+export function accountingCellLabel(day: AccountingDay, employmentType: string): string {
+  const otCode = day.overtime?.code;
+  let base: string;
+  if (day.status === "holiday") {
+    base = "L";
+  } else if (day.workdayValue <= 0) {
+    // Ngày chỉ có OT (vd full-time làm thứ 7): chỉ ghi ký hiệu OT.
+    if (otCode) return otCode;
+    base = day.label;
+  } else {
+    const mark = day.workdayValue >= 1 ? "x" : "x/2";
+    base = employmentType === "full_time" ? mark : day.codes.join("+") || mark;
+  }
+  return otCode ? `${base}+${otCode}` : base;
+}
+
+/// Ba cột giờ OT ở cuối bảng, theo thứ tự hệ số tăng dần.
+const OVERTIME_COLUMN_CODES = ["T", "T1", "T2"];
+
+/// Ngày công lẻ nửa ngày thì hiện 1 chữ số thập phân, chẵn thì số nguyên.
+const WORKDAY_FORMAT = "0.##";
+
+/// Nhãn của các cột tổng, kèm cờ in đậm cho các cột kế toán nhìn nhiều nhất.
+const SUMMARY_COLUMNS: {
+  label: string;
+  width: number;
+  strong?: boolean;
+  format: string;
+}[] = [
+  { label: "Ngày công", width: 10, strong: true, format: WORKDAY_FORMAT },
+  { label: "Ngày công tháng", width: 10, strong: true, format: "0" },
+  { label: "Đi muộn", width: 9, format: "0" },
+  { label: "Vắng", width: 8, format: "0" },
+  { label: "Nghỉ (N)", width: 9, format: "0" },
+  { label: "Ốm (O)", width: 8, format: "0" },
+  { label: "Tổng giờ", width: 10, strong: true, format: "0.0" },
 ];
 
 export async function buildAttendanceWorkbook(input: {
@@ -93,6 +139,8 @@ export async function buildAttendanceWorkbook(input: {
   holidays: Record<string, string>;
   /// Ngày nghỉ hằng tuần (0 = CN ... 6 = T7).
   weeklyOffDays: number[];
+  /// Ngày công tháng (công chuẩn), giống nhau cho mọi người.
+  standardWorkdays: number;
   /// Ngày xuất file, dạng YYYY-MM-DD theo giờ VN.
   exportedOn: string;
 }): Promise<Buffer> {
@@ -104,6 +152,7 @@ export async function buildAttendanceWorkbook(input: {
     companyName,
     holidays,
     weeklyOffDays,
+    standardWorkdays,
     exportedOn,
   } = input;
 
@@ -122,6 +171,7 @@ export async function buildAttendanceWorkbook(input: {
     identityColumns.length +
     dates.length +
     SUMMARY_COLUMNS.length +
+    OVERTIME_COLUMN_CODES.length +
     sessionCodes.length;
 
   /// Ô tiêu đề trên cùng. Chỉ trải qua khối bên trái (hồ sơ + mươi ngày đầu):
@@ -188,6 +238,13 @@ export async function buildAttendanceWorkbook(input: {
       ...HEAD_CELL,
       backgroundColor: TOTAL_HEAD,
     })),
+    ...OVERTIME_COLUMN_CODES.map((code) => ({
+      value: `OT ${code} (giờ)`,
+      type: String,
+      rowSpan: 2,
+      ...HEAD_CELL,
+      backgroundColor: TOTAL_HEAD,
+    })),
     ...sessionCodes.map((code) => ({
       value: code,
       type: String,
@@ -209,6 +266,7 @@ export async function buildAttendanceWorkbook(input: {
       textColor: "#0C4A6E",
     })),
     ...SUMMARY_COLUMNS.map(() => null),
+    ...OVERTIME_COLUMN_CODES.map(() => null),
     ...sessionCodes.map(() => null),
   ];
 
@@ -233,15 +291,16 @@ export async function buildAttendanceWorkbook(input: {
       ...dates.map((date) => {
         const day = row.days[date];
         const status = day ? STATUS_STYLE[day.status as DayStatus] : undefined;
+        const label = day ? accountingCellLabel(day, row.user.employmentType) : "";
         return {
-          value: day?.label ?? "",
+          value: label,
           type: String,
           ...CELL_BORDER,
           height: 18,
           align: "center" as const,
           alignVertical: "center" as const,
           fontSize: 10,
-          fontWeight: day?.label ? ("bold" as const) : undefined,
+          fontWeight: label ? ("bold" as const) : undefined,
           backgroundColor:
             status?.backgroundColor ??
             (holidays[date] ? HOLIDAY : isOffDay(date) ? WEEKEND : stripe),
@@ -250,7 +309,8 @@ export async function buildAttendanceWorkbook(input: {
       }),
       ...SUMMARY_COLUMNS.map((column, position) => ({
         value: [
-          row.passedDays,
+          row.workdays,
+          standardWorkdays,
           row.lateDays,
           row.absentDays,
           row.leaveDays,
@@ -258,11 +318,20 @@ export async function buildAttendanceWorkbook(input: {
           row.totalHours,
         ][position],
         type: Number,
-        format: column.label === "Tổng giờ" ? "0.0" : "0",
+        format: column.format,
         ...CELL_BORDER,
         align: "center" as const,
         alignVertical: "center" as const,
         fontWeight: column.strong ? ("bold" as const) : undefined,
+        backgroundColor: stripe ?? "#FFFFFF",
+      })),
+      ...OVERTIME_COLUMN_CODES.map((code) => ({
+        value: Math.round(((row.overtimeMinutes[code] ?? 0) / 60) * 100) / 100,
+        type: Number,
+        format: "0.##",
+        ...CELL_BORDER,
+        align: "center" as const,
+        alignVertical: "center" as const,
         backgroundColor: stripe ?? "#FFFFFF",
       })),
       ...sessionCodes.map((code) => ({
@@ -298,16 +367,28 @@ export async function buildAttendanceWorkbook(input: {
     ...Array.from({ length: identityColumns.length - 1 }, () => null),
     ...dates.map(() => ({ value: "", type: String, ...footerStyle })),
     ...[
-      sum((row) => row.passedDays),
+      sum((row) => row.workdays),
+      null,
       sum((row) => row.lateDays),
       sum((row) => row.absentDays),
       sum((row) => row.leaveDays),
       sum((row) => row.sickDays),
       Math.round(sum((row) => row.totalHours) * 10) / 10,
-    ].map((value, position) => ({
-      value,
+    ].map((value, position) =>
+      value === null
+        ? { value: "", type: String, ...footerStyle, backgroundColor: "#E2E8F0" }
+        : {
+            value,
+            type: Number,
+            format: SUMMARY_COLUMNS[position].format,
+            ...footerStyle,
+            backgroundColor: "#E2E8F0",
+          }
+    ),
+    ...OVERTIME_COLUMN_CODES.map((code) => ({
+      value: Math.round((sum((row) => row.overtimeMinutes[code] ?? 0) / 60) * 100) / 100,
       type: Number,
-      format: position === 5 ? "0.0" : "0",
+      format: "0.##",
       ...footerStyle,
       backgroundColor: "#E2E8F0",
     })),
@@ -333,8 +414,180 @@ export async function buildAttendanceWorkbook(input: {
         ...identityColumns.map((column) => ({ width: column.width })),
         ...dates.map(() => ({ width: 5.5 })),
         ...SUMMARY_COLUMNS.map((column) => ({ width: column.width })),
+        ...OVERTIME_COLUMN_CODES.map(() => ({ width: 9 })),
         ...sessionCodes.map(() => ({ width: 6 })),
       ],
     }
   ).toBuffer();
+}
+
+/// Một dòng ngày trong file chi tiết của một nhân viên.
+export type EmployeeExportDay = {
+  date: string;
+  holidayName: string | null;
+  scheduledCodes: string[];
+  firstIn: string | null;
+  lastOut: string | null;
+  workedHours: number;
+  workdayValue: number;
+  overtime: { code: string; minutes: number; place: string | null } | null;
+  statusLabel: string;
+  note: string | null;
+};
+
+export function employeeAttendanceFileName(
+  month: string,
+  employeeCode: string | null,
+  userId: string
+): string {
+  return `cham-cong-${month}-${employeeCode || userId.slice(0, 8)}.xlsx`;
+}
+
+/// File chấm công chi tiết của một nhân viên trong tháng: mỗi ngày một dòng,
+/// có giờ vào / ra để đối chiếu khi kế toán hoặc nhân viên thắc mắc.
+export async function buildEmployeeAttendanceWorkbook(input: {
+  month: string;
+  companyName: string;
+  user: {
+    name: string;
+    employeeCode: string | null;
+    employmentLabel: string;
+    department: string | null;
+  };
+  days: EmployeeExportDay[];
+  workdays: number;
+  standardWorkdays: number;
+  weeklyOffDays: number[];
+  exportedOn: string;
+}): Promise<Buffer> {
+  const { month, companyName, user, days, workdays, standardWorkdays, exportedOn } =
+    input;
+  const offDays = new Set(input.weeklyOffDays);
+
+  const columns = [
+    { label: "Ngày", width: 11 },
+    { label: "Thứ", width: 6 },
+    { label: "Ca", width: 10 },
+    { label: "Giờ vào", width: 9 },
+    { label: "Giờ ra", width: 9 },
+    { label: "Giờ làm", width: 9 },
+    { label: "Công", width: 7 },
+    { label: "OT", width: 11 },
+    { label: "Trạng thái", width: 16 },
+    { label: "Ghi chú", width: 34 },
+  ];
+  const span = columns.length;
+  const line = (value: string, style: Record<string, unknown> = {}) => [
+    { value, type: String, columnSpan: span, ...style },
+    ...Array.from({ length: span - 1 }, () => null),
+  ];
+
+  const header = [
+    line(companyName, { fontWeight: "bold", fontSize: 12 }),
+    line(`BẢNG CHẤM CÔNG CHI TIẾT ${formatMonthLabel(month).toUpperCase()}`, {
+      fontWeight: "bold",
+      fontSize: 15,
+      textColor: BRAND_DARK,
+      align: "center",
+      height: 26,
+    }),
+    line(
+      [
+        `Họ tên: ${user.name}`,
+        user.employeeCode ? `Mã NV: ${user.employeeCode}` : null,
+        user.employmentLabel,
+        user.department,
+      ]
+        .filter(Boolean)
+        .join("   ·   "),
+      { fontSize: 10 }
+    ),
+    line(
+      `Xuất ngày ${exportedOn.slice(8, 10)}/${exportedOn.slice(5, 7)}/${exportedOn.slice(0, 4)}`,
+      { fontStyle: "italic", fontSize: 9, textColor: "#64748B", align: "right" }
+    ),
+    columns.map((column) => ({ value: column.label, type: String, ...HEAD_CELL, height: 22 })),
+  ];
+
+  const body = days.map((day) => {
+    const isOff = offDays.has(new Date(`${day.date}T00:00:00Z`).getUTCDay());
+    const background = day.holidayName ? HOLIDAY : isOff ? WEEKEND : undefined;
+    const cell = (
+      value: string | number,
+      extra: Record<string, unknown> = {}
+    ) => ({
+      value,
+      type: typeof value === "number" ? Number : String,
+      ...CELL_BORDER,
+      fontSize: 10,
+      alignVertical: "center" as const,
+      backgroundColor: background,
+      ...extra,
+    });
+    return [
+      cell(`${day.date.slice(8, 10)}/${day.date.slice(5, 7)}/${day.date.slice(0, 4)}`, {
+        align: "center",
+      }),
+      cell(weekdayLabel(day.date), { align: "center" }),
+      cell(day.scheduledCodes.join("+"), { align: "center" }),
+      cell(day.firstIn ?? "", { align: "center" }),
+      cell(day.lastOut ?? "", { align: "center" }),
+      day.workedHours > 0
+        ? cell(day.workedHours, { format: "0.0", align: "center" })
+        : cell(""),
+      day.workdayValue > 0
+        ? cell(day.workdayValue, { format: WORKDAY_FORMAT, align: "center", fontWeight: "bold" })
+        : cell(""),
+      cell(
+        day.overtime
+          ? `${day.overtime.code} · ${Math.round((day.overtime.minutes / 60) * 100) / 100}h`
+          : "",
+        { align: "center" }
+      ),
+      cell(day.holidayName ? `Lễ: ${day.holidayName}` : day.statusLabel),
+      cell(
+        [day.note, day.overtime?.place ? `OT: ${day.overtime.place}` : null]
+          .filter(Boolean)
+          .join(" · "),
+        { wrap: true }
+      ),
+    ];
+  });
+
+  const totalHours =
+    Math.round(days.reduce((sum, day) => sum + day.workedHours, 0) * 10) / 10;
+  const overtimeHours =
+    Math.round(
+      (days.reduce((sum, day) => sum + (day.overtime?.minutes ?? 0), 0) / 60) * 100
+    ) / 100;
+  const footStyle = {
+    ...CELL_BORDER,
+    backgroundColor: "#E2E8F0",
+    fontWeight: "bold" as const,
+    alignVertical: "center" as const,
+  };
+  const footer = [
+    { value: "TỔNG", type: String, columnSpan: 5, ...footStyle, align: "center" as const },
+    null,
+    null,
+    null,
+    null,
+    { value: totalHours, type: Number, format: "0.0", ...footStyle, align: "center" as const },
+    { value: workdays, type: Number, format: WORKDAY_FORMAT, ...footStyle, align: "center" as const },
+    { value: `${overtimeHours}h`, type: String, ...footStyle, align: "center" as const },
+    {
+      value: `Ngày công tháng: ${standardWorkdays}`,
+      type: String,
+      columnSpan: 2,
+      ...footStyle,
+    },
+    null,
+  ];
+
+  return await writeXlsxFile([...header, ...body, footer], {
+    sheet: `Chấm công ${month.slice(5)}-${month.slice(0, 4)}`,
+    stickyRowsCount: header.length,
+    showGridLines: false,
+    columns: columns.map((column) => ({ width: column.width })),
+  }).toBuffer();
 }

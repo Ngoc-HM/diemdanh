@@ -10,7 +10,7 @@ import {
 
 export default function LoginPage() {
   const { name: companyName, logo } = useCompanyBranding();
-  const [email, setEmail] = useState("");
+  const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -24,13 +24,14 @@ export default function LoginPage() {
       const response = await fetch("/api/auth/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify({ identifier, password }),
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "Đăng nhập thất bại");
-      // Điều hướng cả trang để middleware đọc cookie mới; bị đẩy ngược về đây
-      // thì form dựng lại, không kẹt ở "Đang đăng nhập...".
-      window.location.assign("/dashboard");
+      // Admin hay nhân viên đều đăng nhập ở đây; server trả trang đích theo
+      // vai trò. Điều hướng cả trang để middleware đọc cookie mới; bị đẩy
+      // ngược về đây thì form dựng lại, không kẹt ở "Đang đăng nhập...".
+      window.location.assign(data.redirect || "/dashboard");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Đăng nhập thất bại");
       setLoading(false);
@@ -50,11 +51,10 @@ export default function LoginPage() {
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-4">
-            <Field label="Email" required>
+            <Field label="Email hoặc tên đăng nhập" required>
               <Input
-                type="email"
-                value={email}
-                onChange={(event) => setEmail(event.target.value)}
+                value={identifier}
+                onChange={(event) => setIdentifier(event.target.value)}
                 placeholder="nhanvien@congty.vn"
                 autoComplete="username"
                 required

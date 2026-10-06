@@ -134,6 +134,28 @@ export function fullTimeWorkingDates(
   return listMonthDates(month).filter((date) => !off.has(weekdayOfDateKey(date)));
 }
 
+/// Ngày công tháng (công chuẩn) dùng làm mẫu số khi tính lương: số ngày
+/// không phải ngày nghỉ hằng tuần trong tháng. Ngày lễ vẫn nằm trong đó vì
+/// nghỉ lễ được hưởng lương. Vd tháng 9/2026, nghỉ T7 + CN: 22.
+export function standardWorkdays(
+  month: string,
+  weeklyOffDays: readonly number[] = DEFAULT_WEEKLY_OFF_DAYS
+): number {
+  return fullTimeWorkingDates(month, weeklyOffDays).length;
+}
+
+/// Ngày nghỉ của một người: với full-time là ngày nghỉ hằng tuần và ngày lễ.
+/// Part-time / thực tập tự đăng ký ca nên ngày nào cũng có thể là ngày làm.
+export function isRestDayFor(
+  employmentType: string,
+  date: string,
+  weeklyOffDays: readonly number[],
+  isHoliday: boolean
+): boolean {
+  if (isSelfScheduled(employmentType)) return false;
+  return isHoliday || weeklyOffDays.includes(weekdayOfDateKey(date));
+}
+
 
 export type ScheduleWindowState = {
   /// Tháng đang mở đăng ký (null nếu ngoài cửa sổ)

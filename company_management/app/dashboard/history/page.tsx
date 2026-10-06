@@ -3,7 +3,11 @@
 import { useCallback, useEffect, useState } from "react";
 import { Badge, Card, EmptyState, Message } from "@/app/_components/ui";
 import { monthKeyVN, weekdayLabel } from "@/lib/datetime";
-import { DAY_STATUS_LABELS, type DayStatus } from "@/lib/attendance-rules";
+import {
+  DAY_STATUS_LABELS,
+  formatWorkdays,
+  type DayStatus,
+} from "@/lib/attendance-rules";
 import { DAY_STATUS_TONE, ROW_HIGHLIGHT } from "@/app/_components/status-styles";
 import DashboardPageHeader from "@/app/dashboard/_components/page-header";
 import MonthNav from "@/app/dashboard/_components/month-nav";
@@ -28,7 +32,9 @@ type Payload = {
   month: string;
   days: Day[];
   summary: {
-    passedDays: number;
+    /// Tổng số công, có thể lẻ nửa ngày (ca S / C = 0,5).
+    workdays: number;
+    standardWorkdays: number;
     workedHours: number;
     absentDays: number;
     lateDays: number;
@@ -36,12 +42,12 @@ type Payload = {
 };
 
 const SUMMARY_ITEMS: {
-  key: keyof Payload["summary"];
+  key: Exclude<keyof Payload["summary"], "standardWorkdays">;
   label: string;
   tone: string;
   suffix?: string;
 }[] = [
-  { key: "passedDays", label: "Ngày công", tone: "text-emerald-700" },
+  { key: "workdays", label: "Ngày công", tone: "text-emerald-700" },
   { key: "workedHours", label: "Tổng giờ", tone: "text-slate-900", suffix: "h" },
   { key: "lateDays", label: "Đi muộn", tone: "text-amber-700" },
   { key: "absentDays", label: "Vắng", tone: "text-rose-700" },
@@ -117,8 +123,15 @@ export default function HistoryPage() {
           {SUMMARY_ITEMS.map((item) => (
             <Card key={item.key} className="px-4 py-3">
               <div className={`text-2xl font-semibold tabular-nums ${item.tone}`}>
-                {data.summary[item.key]}
+                {item.key === "workdays"
+                  ? formatWorkdays(data.summary.workdays)
+                  : data.summary[item.key]}
                 {item.suffix}
+                {item.key === "workdays" && (
+                  <span className="text-base font-normal text-slate-500">
+                    {" "}/ {data.summary.standardWorkdays}
+                  </span>
+                )}
               </div>
               <div className="text-sm text-slate-600">{item.label}</div>
             </Card>

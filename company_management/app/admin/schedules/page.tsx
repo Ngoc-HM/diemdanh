@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { CalendarClock, ChevronLeft, ChevronRight, Pencil } from "lucide-react";
 import PageHeader from "../_components/page-header";
+import WeeklyOffCard from "../_components/weekly-off-card";
 import {
   Badge,
   Button,
@@ -324,6 +325,8 @@ export default function AdminSchedulesPage() {
           </Button>
         </form>
       </Card>
+
+      <WeeklyOffCard onSaved={() => load(month)} />
 
       <div className="mb-6 flex items-center justify-center gap-3">
         <Button

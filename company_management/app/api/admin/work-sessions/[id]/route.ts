@@ -33,7 +33,8 @@ export async function PUT(
         `UPDATE "WorkSession" SET
            "code" = $2, "name" = $3,
            "workStart" = $4, "workEnd" = $5, "minHours" = $6, "sortOrder" = $7,
-           "isActive" = $8, "isDefaultFull" = $9, "updatedAt" = now()
+           "isActive" = $8, "isDefaultFull" = $9, "workdayValue" = $10,
+           "updatedAt" = now()
          WHERE "id" = $1 RETURNING *`,
         [
           id,
@@ -45,6 +46,7 @@ export async function PUT(
           session.sortOrder,
           session.isActive,
           session.isDefaultFull,
+          session.workdayValue,
         ]
       );
       return result.rows[0] ?? null;

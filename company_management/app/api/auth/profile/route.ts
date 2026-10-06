@@ -10,6 +10,13 @@ import {
 } from "@/lib/auth-guard";
 import { setSessionCookie, signSession } from "@/lib/session";
 import { isValidEmail } from "@/lib/utils";
+import { assertEmailNotAdmin } from "@/lib/auth-login";
+import {
+  IMAGE_EXTENSIONS,
+  IMAGE_MIME_TO_EXT,
+  MAX_UPLOAD_BYTES,
+  uploadDir,
+} from "@/lib/uploads";
 
 type Profile = {
   id: string;
@@ -20,16 +27,6 @@ type Profile = {
 };
 
 const PROFILE_COLUMNS = `"id", "name", "email", "avatarUrl", "employeeCode"`;
-
-/// Ảnh đại diện: chỉ nhận ảnh bitmap. Không nhận SVG vì file SVG phục vụ từ
-/// cùng tên miền có thể mang mã chạy được trong trình duyệt.
-const MAX_AVATAR_BYTES = 2 * 1024 * 1024;
-const AVATAR_MIME: Record<string, string> = {
-  "image/png": ".png",
-  "image/jpeg": ".jpg",
-  "image/webp": ".webp",
-};
-const AVATAR_EXTENSIONS = [".png", ".jpg", ".webp"];
 
 async function loadProfile(userId: string): Promise<Profile> {
   const profile = await queryOne<Profile>(
@@ -71,6 +68,7 @@ export async function PUT(req: Request) {
     if (!name) badRequest("Vui lòng nhập họ tên");
     if (name.length > 100) badRequest("Họ tên tối đa 100 ký tự");
     if (!isValidEmail(email)) badRequest("Email không hợp lệ");
+    await assertEmailNotAdmin(email);
 
     let profile: Profile;
     try {
@@ -100,11 +98,11 @@ export async function POST(req: Request) {
     const file = form?.get("file");
     if (!file || !(file instanceof File)) badRequest("Vui lòng chọn ảnh");
 
-    const ext = AVATAR_MIME[file.type];
+    const ext = IMAGE_MIME_TO_EXT[file.type];
     if (!ext) badRequest("Chỉ nhận ảnh PNG, JPG hoặc WebP");
-    if (file.size > MAX_AVATAR_BYTES) badRequest("Ảnh tối đa 2MB");
+    if (file.size > MAX_UPLOAD_BYTES) badRequest("Ảnh tối đa 2MB");
 
-    const directory = join(process.cwd(), "public", "uploads");
+    const directory = uploadDir();
     await mkdir(directory, { recursive: true });
     const fileName = `avatar-${session.userId}${ext}`;
     await writeFile(
@@ -113,7 +111,7 @@ export async function POST(req: Request) {
     );
 
     // Đổi từ .png sang .jpg thì file cũ không còn ai trỏ tới, dọn luôn.
-    for (const other of AVATAR_EXTENSIONS.filter((item) => item !== ext)) {
+    for (const other of IMAGE_EXTENSIONS.filter((item) => item !== ext)) {
       await unlink(join(directory, `avatar-${session.userId}${other}`)).catch(
         () => undefined
       );
@@ -133,8 +131,8 @@ export async function POST(req: Request) {
 export async function DELETE() {
   return handle(async () => {
     const session = await requireEmployee();
-    const directory = join(process.cwd(), "public", "uploads");
-    for (const ext of AVATAR_EXTENSIONS) {
+    const directory = uploadDir();
+    for (const ext of IMAGE_EXTENSIONS) {
       await unlink(join(directory, `avatar-${session.userId}${ext}`)).catch(
         () => undefined
       );

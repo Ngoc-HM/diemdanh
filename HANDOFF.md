@@ -109,8 +109,70 @@ Còn phải làm bằng tay khi lên production (không làm hộ được):
 
 1. Điền **Đường dẫn ứng dụng** ở `/admin/email` bằng tên miền thật, rồi bấm
    "Gửi thử" và thử luồng quên mật khẩu.
-2. Upload lại logo ở `/admin/company` (file nằm ở `public/uploads/`, không commit).
+2. Upload lại logo ở `/admin/company` (file nằm ở `UPLOAD_DIR`, mặc định
+   `storage/uploads/`, không commit).
 3. Chạy sau HTTPS, và backup database trước khi migrate.
+
+## Đợt 29/09/2026 — Rà soát trước triển khai (lần 2)
+
+- Logo và ảnh đại diện chuyển từ `public/uploads/` sang `UPLOAD_DIR` (mặc định
+  `storage/uploads/`), phục vụ qua `app/uploads/[file]/route.ts`. Lý do: `next
+  start` chỉ quét `public/` lúc khởi động, ảnh upload sau đó 404 tới khi restart.
+- `/api/auth/reset-password` giữ lượt thử bằng một câu UPDATE trước khi so mã;
+  trước đây bắn song song thì mỗi request được một lượt, vượt ngưỡng 5.
+- `lib/db.ts` nghe `pool.on("error")` để Postgres rớt kết nối không làm sập Node.
+- Test: `test:logic` 113/113, `test:api` 212/212, `test:routes` 67/67, chạy trên
+  bản `next start` với `TZ=UTC` và Postgres chạy trong Docker.
+- **Gộp đăng nhập**: admin và nhân viên dùng chung `/login`, một ô "Email hoặc
+  tên đăng nhập"; `/api/auth/login` (logic ở `lib/auth-login.ts`) tìm tên đăng
+  nhập trong bảng `Admin` trước (admin cũ `admin` vẫn dùng được), không có thì
+  tìm email nhân viên; trả `redirect` theo vai trò. Bỏ trang `/admin-login-app`
+  (chuyển hướng về `/login`) và API `/api/auth/admin-login`. Email nhân viên
+  không được trùng tên đăng nhập admin (409).
+- **Deploy bằng Docker, khép kín trên một máy**: `docker-compose.yml` gồm app
+  (`Dockerfile`: build, mỗi lần start `npm run db && npm start`), db (Postgres
+  18, volume `db-data`, chỉ mở 127.0.0.1:5433) và proxy (Caddy HTTPS, profile
+  `proxy`, `Caddyfile`). App luôn dùng container db; cần `POSTGRES_PASSWORD`.
+  Cookie phiên vẫn `secure` — không có HTTPS thật thì dùng Caddy `tls internal`.
+- **Đã deploy 29/09/2026** lên VPS `dev_teams@100.116.216.43` (Ubuntu 24.04, vào
+  bằng SSH key, không có sudo), thư mục `~/company_management`, `.env` riêng trên
+  VPS (khoá sinh ngẫu nhiên, chmod 600). Truy cập https://100.116.216.43 (Tailscale)
+  hoặc https://192.168.1.28 (LAN), chứng chỉ tự ký. Database mới trống, chưa cấu
+  hình SMTP nên chưa gửi email. VPS còn chạy bộ `cer-*` (cổng 3030) — không đụng.
+  Cập nhật: rsync code (bỏ node_modules, .next, .env, storage) rồi
+  `docker compose up -d --build` trên VPS.
+
+## Đợt 05/10/2026 — Chuẩn hoá ngày công (bước A của phân hệ lương)
+
+Chủ dự án gửi file bảng lương kế toán (T9.2026, có dữ liệu cá nhân — không đưa
+vào repo). Đã chốt và làm xong phần chấm công, chi tiết luật ở README → "Ngày
+công":
+- Ca có `workdayValue` (migration 016): S/C = 0,5, CN = 1, T = 0. Ngày công cộng
+  theo số này; ngày công tháng = ngày không phải nghỉ hằng tuần, tính cả lễ.
+- Nghỉ lễ có lịch vẫn được công. Thiếu giờ vẫn đủ công, admin xem lại ✓/✗ (bảng
+  `DayReview`, API `/api/admin/attendance/day-review`). Full-time làm ngày nghỉ
+  không lịch = 0 công (phải có phiếu OT).
+- Excel cả công ty theo ký hiệu kế toán (`x`, `x/2`, mã ca) + cột Ngày công tháng;
+  thêm Excel từng nhân viên. Ngày nghỉ hằng tuần chuyển sang trang Lịch làm việc.
+- Test: `test:logic` 145/145, `test:api` 235/235, `test:routes` 66/66.
+
+**Còn làm (đã chốt với chủ dự án):**
+- ~~B. Phiếu OT~~ **xong** (xem dưới).
+- **C. Lương**: hồ sơ lương từng người (theo tháng / theo ngày, lương cơ bản,
+  thử việc 85%, người phụ thuộc, STK, giới tính, loại HĐ CTV/Thử việc/Chính thức,
+  thuế khấu trừ 10% / lũy tiến / không, có/không BHXH 8% BHYT 1,5% BHTN 1%);
+  khoản hỗ trợ admin tự tạo, gắn từng người (cố định tháng hoặc theo ngày công,
+  chịu thuế hay không); phép năm 12 ngày/năm cộng 1 ngày/tháng, cộng dồn tối đa 3
+  năm, +1 ngày mỗi 5 năm, chỉ người có HĐLĐ, nghỉ phép có lương tính như công;
+  xuất Excel đúng mẫu "Bảng chi tiết lương" và "Bảng làm thêm giờ".
+- **Đã deploy bước A + B lên VPS 06/10/2026** (migration 016, 017 chạy xong). Backup trước khi deploy: `~/backups/company_mana-20261006-030508.sql` trên VPS. Lệnh rsync dùng `--include .env.example --exclude ".env*"` để không xoá `.env` và `.env.bak-*` trên VPS.
+
+**Bước B — Phiếu OT (xong 05/10/2026):** bảng `OvertimeRequest` + Settings
+`overtime_config` (migration 017), `lib/overtime.ts` (thuần, có test) và
+`lib/overtime-service.ts`. Trang `/dashboard/overtime`, `/admin/overtime`. Luật ở
+README → "Làm thêm giờ (OT)". Ca `T` (Tăng ca) cũ vẫn còn trong danh mục ca với
+số công 0 — nên tắt để khỏi lẫn với ký hiệu OT `T` (chưa tắt, chờ chủ dự án).
+Test: `test:logic` 166/166, `test:api` 262/262, `test:routes` 70/70.
 
 ## Việc còn lại
 

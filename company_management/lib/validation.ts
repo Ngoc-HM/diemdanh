@@ -10,10 +10,10 @@ export const DEFAULT_LUNCH_BREAK = "12:00-13:30";
 /// Bộ ca mặc định. `minHours` tính theo giờ làm thực (đã trừ nghỉ trưa) và nới
 /// 30 phút so với độ dài ca, để ra sớm một chút vẫn đủ công.
 export const DEFAULT_WORK_SESSIONS = [
-  { code: "S", name: "Ca sáng", workStart: "08:30", workEnd: "12:00", minHours: 3, sortOrder: 1, isDefaultFull: false },
-  { code: "C", name: "Ca chiều", workStart: "13:30", workEnd: "17:30", minHours: 3.5, sortOrder: 2, isDefaultFull: false },
-  { code: "CN", name: "Cả ngày", workStart: "08:30", workEnd: "17:30", minHours: 7, sortOrder: 3, isDefaultFull: true },
-  { code: "T", name: "Tăng ca", workStart: "18:00", workEnd: "21:00", minHours: 2.5, sortOrder: 4, isDefaultFull: false },
+  { code: "S", name: "Ca sáng", workStart: "08:30", workEnd: "12:00", minHours: 3, workdayValue: 0.5, sortOrder: 1, isDefaultFull: false },
+  { code: "C", name: "Ca chiều", workStart: "13:30", workEnd: "17:30", minHours: 3.5, workdayValue: 0.5, sortOrder: 2, isDefaultFull: false },
+  { code: "CN", name: "Cả ngày", workStart: "08:30", workEnd: "17:30", minHours: 7, workdayValue: 1, sortOrder: 3, isDefaultFull: true },
+  { code: "T", name: "Tăng ca", workStart: "18:00", workEnd: "21:00", minHours: 2.5, workdayValue: 0, sortOrder: 4, isDefaultFull: false },
 ];
 
 export type NormalizedSession = {
@@ -22,6 +22,8 @@ export type NormalizedSession = {
   workStart: string;
   workEnd: string;
   minHours: number;
+  /// Số công của ca: 1 = một ngày (x), 0,5 = nửa ngày (x/2), 0 = không tính công.
+  workdayValue: number;
   sortOrder: number;
   isActive: boolean;
   isDefaultFull: boolean;
@@ -34,6 +36,10 @@ export function normalizeSession(body: Record<string, unknown>): NormalizedSessi
     workStart: String(body.workStart || ""),
     workEnd: String(body.workEnd || ""),
     minHours: Number(body.minHours),
+    workdayValue:
+      body.workdayValue === undefined || body.workdayValue === ""
+        ? 1
+        : Number(body.workdayValue),
     sortOrder: Number.isFinite(Number(body.sortOrder)) ? Number(body.sortOrder) : 99,
     isActive: body.isActive === undefined ? true : Boolean(body.isActive),
     isDefaultFull: Boolean(body.isDefaultFull),
@@ -57,6 +63,13 @@ export function validateSession(session: NormalizedSession): string | null {
     session.minHours > 24
   ) {
     return "Số giờ tối thiểu phải trong khoảng 0–24";
+  }
+  if (
+    !Number.isFinite(session.workdayValue) ||
+    session.workdayValue < 0 ||
+    session.workdayValue > 1
+  ) {
+    return "Số công của ca phải trong khoảng 0–1";
   }
   return null;
 }
