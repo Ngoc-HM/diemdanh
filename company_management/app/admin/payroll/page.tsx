@@ -435,6 +435,7 @@ export default function PayrollPage() {
                       <Button
                         variant="secondary"
                         size="sm"
+                        className="whitespace-nowrap"
                         onClick={() => openProfile(row)}
                         aria-label={`Hồ sơ lương của ${row.user.name}`}
                       >
@@ -479,79 +480,185 @@ export default function PayrollPage() {
         open={editing !== null}
         title={`Hồ sơ lương — ${editing?.user.name ?? ""}`}
         onClose={() => setEditing(null)}
+        size="large"
+        footer={
+          <>
+            <Button type="button" variant="secondary" onClick={() => setEditing(null)}>
+              Huỷ
+            </Button>
+            <Button type="submit" form="pay-profile-form" disabled={saving || !form}>
+              {saving ? "Đang lưu..." : "Lưu hồ sơ"}
+            </Button>
+          </>
+        }
       >
         {!form ? (
           <TableSkeleton rows={4} />
         ) : (
-          <form onSubmit={saveProfile} className="space-y-4">
+          <form id="pay-profile-form" onSubmit={saveProfile} className="space-y-6">
             {data?.closed && (
               <Message type="info">
                 Tháng này đã chốt: thay đổi hồ sơ chỉ áp từ tháng chưa chốt.
               </Message>
             )}
-            <div className="grid gap-4 sm:grid-cols-2">
-              <Field
-                label="Hình thức lương"
-                required
-                hint={
-                  form.payBasis === "net"
-                    ? "Số thoả thuận là số cầm về; công ty chịu thuế và BH, hệ thống quy ngược ra gross."
-                    : "Số thoả thuận là trước thuế và BH; người lao động tự chịu khoản trừ."
-                }
-              >
-                <Select
-                  value={form.payBasis}
-                  onChange={(event) => set("payBasis", event.target.value as PayBasis)}
-                >
-                  <option value="gross">GROSS — trước thuế, bảo hiểm</option>
-                  <option value="net">NET — số cầm về</option>
-                </Select>
-              </Field>
-              <Field label="Kiểu lương" required>
-                <Select
-                  value={form.salaryType}
-                  onChange={(event) => set("salaryType", event.target.value as PayProfile["salaryType"])}
-                >
-                  <option value="monthly">Lương tháng (chia theo ngày công)</option>
-                  <option value="daily">Đơn giá theo ngày công</option>
-                </Select>
-              </Field>
-              <Field
-                label={`${form.salaryType === "daily" ? "Đơn giá một ngày công" : "Lương cơ bản / tháng"} (${PAY_BASIS_LABELS[form.payBasis]}, đ)`}
-                required
-              >
-                <Input
-                  type="number"
-                  min="0"
-                  step="1000"
-                  value={form.baseSalary}
-                  onChange={(event) => set("baseSalary", event.target.value)}
+
+            <section>
+              <h4 className="mb-3 text-base font-semibold text-slate-900">Lương</h4>
+              <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+                <Field
+                  label="Hình thức lương"
                   required
-                />
-              </Field>
-              <Field label="Loại hợp đồng" required>
-                <Select
-                  value={form.contractType}
-                  onChange={(event) => set("contractType", event.target.value as ContractType)}
+                  hint={
+                    form.payBasis === "net"
+                      ? "Số thoả thuận là số cầm về; công ty chịu thuế và BH, hệ thống quy ngược ra gross."
+                      : "Số thoả thuận là trước thuế và BH; người lao động tự chịu khoản trừ."
+                  }
                 >
-                  {(Object.keys(CONTRACT_LABELS) as ContractType[]).map((key) => (
-                    <option key={key} value={key}>
-                      {CONTRACT_LABELS[key]}
-                    </option>
-                  ))}
-                </Select>
-              </Field>
-              {form.contractType === "probation" ? (
-                <Field label="Lương thử việc (% lương cơ bản)" hint="Luật: tối thiểu 85%">
+                  <Select
+                    value={form.payBasis}
+                    onChange={(event) => set("payBasis", event.target.value as PayBasis)}
+                  >
+                    <option value="gross">GROSS — trước thuế, bảo hiểm</option>
+                    <option value="net">NET — số cầm về</option>
+                  </Select>
+                </Field>
+                <Field label="Kiểu lương" required>
+                  <Select
+                    value={form.salaryType}
+                    onChange={(event) =>
+                      set("salaryType", event.target.value as PayProfile["salaryType"])
+                    }
+                  >
+                    <option value="monthly">Lương tháng (chia theo ngày công)</option>
+                    <option value="daily">Đơn giá theo ngày công</option>
+                  </Select>
+                </Field>
+                <Field
+                  label={`${form.salaryType === "daily" ? "Đơn giá một ngày công" : "Lương cơ bản / tháng"} (${PAY_BASIS_LABELS[form.payBasis]}, đ)`}
+                  required
+                >
                   <Input
                     type="number"
-                    min="1"
-                    max="100"
-                    value={form.probationPercent}
-                    onChange={(event) => set("probationPercent", event.target.value)}
+                    min="0"
+                    step="1000"
+                    value={form.baseSalary}
+                    onChange={(event) => set("baseSalary", event.target.value)}
+                    placeholder="Vd: 15000000"
+                    required
                   />
                 </Field>
-              ) : (
+                <Field label="Loại hợp đồng" required>
+                  <Select
+                    value={form.contractType}
+                    onChange={(event) => set("contractType", event.target.value as ContractType)}
+                  >
+                    {(Object.keys(CONTRACT_LABELS) as ContractType[]).map((key) => (
+                      <option key={key} value={key}>
+                        {CONTRACT_LABELS[key]}
+                      </option>
+                    ))}
+                  </Select>
+                </Field>
+                {form.contractType === "probation" && (
+                  <Field label="Lương thử việc (% lương cơ bản)" hint="Luật: tối thiểu 85%">
+                    <Input
+                      type="number"
+                      min="1"
+                      max="100"
+                      value={form.probationPercent}
+                      onChange={(event) => set("probationPercent", event.target.value)}
+                    />
+                  </Field>
+                )}
+              </div>
+            </section>
+
+            <section className="border-t border-slate-200 pt-5">
+              <h4 className="mb-3 text-base font-semibold text-slate-900">Thuế và bảo hiểm</h4>
+              <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+                <Field label="Thuế TNCN" required>
+                  <Select
+                    value={form.taxMode}
+                    onChange={(event) => set("taxMode", event.target.value as TaxMode)}
+                  >
+                    {(Object.keys(TAX_MODE_LABELS) as TaxMode[]).map((key) => (
+                      <option key={key} value={key}>
+                        {TAX_MODE_LABELS[key]}
+                      </option>
+                    ))}
+                  </Select>
+                </Field>
+                <Field label="Số người phụ thuộc" hint="Chỉ dùng khi tính thuế luỹ tiến">
+                  <Input
+                    type="number"
+                    min="0"
+                    max="20"
+                    value={form.dependents}
+                    onChange={(event) => set("dependents", event.target.value)}
+                  />
+                </Field>
+                <div className="space-y-3">
+                  <label className="flex items-center gap-2 pt-7 text-sm text-slate-700">
+                    <input
+                      type="checkbox"
+                      checked={form.hasInsurance}
+                      onChange={(event) => set("hasInsurance", event.target.checked)}
+                    />
+                    Đóng bảo hiểm (BHXH, BHYT, BHTN)
+                  </label>
+                </div>
+                {form.hasInsurance && (
+                  <Field
+                    label="Lương đóng bảo hiểm (đ)"
+                    required={form.payBasis === "net"}
+                    hint={
+                      form.payBasis === "net"
+                        ? "Bắt buộc với lương NET"
+                        : "Bỏ trống = theo lương cơ bản"
+                    }
+                  >
+                    <Input
+                      type="number"
+                      min="0"
+                      step="1000"
+                      value={form.insuranceSalary}
+                      onChange={(event) => set("insuranceSalary", event.target.value)}
+                      placeholder="Vd: 7100000"
+                    />
+                  </Field>
+                )}
+              </div>
+            </section>
+
+            <section className="border-t border-slate-200 pt-5">
+              <h4 className="mb-3 text-base font-semibold text-slate-900">
+                Phép năm và thanh toán
+              </h4>
+              <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+                {form.contractType !== "collaborator" ? (
+                  <label className="flex items-center gap-2 pt-7 text-sm text-slate-700">
+                    <input
+                      type="checkbox"
+                      checked={form.annualLeave}
+                      onChange={(event) => set("annualLeave", event.target.checked)}
+                    />
+                    Hưởng phép năm (mỗi tháng cộng 1 ngày, nghỉ N trừ vào phép)
+                  </label>
+                ) : (
+                  <p className="pt-7 text-sm text-slate-500">CTV không có phép năm.</p>
+                )}
+                {form.annualLeave && form.contractType !== "collaborator" && (
+                  <Field
+                    label="Tính phép từ ngày"
+                    hint={`Bỏ trống = ngày vào làm${startDate ? ` (${startDate})` : " (chưa nhập ngày vào làm)"}`}
+                  >
+                    <Input
+                      type="date"
+                      value={form.leaveStartDate ?? ""}
+                      onChange={(event) => set("leaveStartDate", event.target.value || null)}
+                    />
+                  </Field>
+                )}
                 <Field label="Giới tính">
                   <Select
                     value={form.gender ?? ""}
@@ -564,98 +671,26 @@ export default function PayrollPage() {
                     <option value="female">Nữ</option>
                   </Select>
                 </Field>
-              )}
-              <Field label="Thuế TNCN" required>
-                <Select
-                  value={form.taxMode}
-                  onChange={(event) => set("taxMode", event.target.value as TaxMode)}
-                >
-                  {(Object.keys(TAX_MODE_LABELS) as TaxMode[]).map((key) => (
-                    <option key={key} value={key}>
-                      {TAX_MODE_LABELS[key]}
-                    </option>
-                  ))}
-                </Select>
-              </Field>
-              <Field label="Số người phụ thuộc" hint="Chỉ dùng khi tính thuế luỹ tiến">
-                <Input
-                  type="number"
-                  min="0"
-                  max="20"
-                  value={form.dependents}
-                  onChange={(event) => set("dependents", event.target.value)}
-                />
-              </Field>
-              <Field label="Số tài khoản">
-                <Input
-                  value={form.bankAccount ?? ""}
-                  onChange={(event) => set("bankAccount", event.target.value)}
-                />
-              </Field>
-              <Field label="Ngân hàng">
-                <Input
-                  value={form.bankName ?? ""}
-                  onChange={(event) => set("bankName", event.target.value)}
-                />
-              </Field>
-            </div>
-
-            <div className="space-y-3 rounded-lg border border-slate-200 p-3">
-              <label className="flex items-center gap-2 text-sm text-slate-700">
-                <input
-                  type="checkbox"
-                  checked={form.hasInsurance}
-                  onChange={(event) => set("hasInsurance", event.target.checked)}
-                />
-                Đóng bảo hiểm (BHXH, BHYT, BHTN)
-              </label>
-              {form.hasInsurance && (
-                <Field
-                  label="Lương đóng bảo hiểm (đ)"
-                  required={form.payBasis === "net"}
-                  hint={
-                    form.payBasis === "net"
-                      ? "Bắt buộc với lương NET"
-                      : "Bỏ trống = theo lương cơ bản"
-                  }
-                >
+                <Field label="Số tài khoản">
                   <Input
-                    type="number"
-                    min="0"
-                    step="1000"
-                    value={form.insuranceSalary}
-                    onChange={(event) => set("insuranceSalary", event.target.value)}
+                    value={form.bankAccount ?? ""}
+                    onChange={(event) => set("bankAccount", event.target.value)}
                   />
                 </Field>
-              )}
-              {form.contractType !== "collaborator" && (
-                <label className="flex items-center gap-2 text-sm text-slate-700">
-                  <input
-                    type="checkbox"
-                    checked={form.annualLeave}
-                    onChange={(event) => set("annualLeave", event.target.checked)}
-                  />
-                  Hưởng phép năm (mỗi tháng cộng 1 ngày, nghỉ N trừ vào phép)
-                </label>
-              )}
-              {form.annualLeave && form.contractType !== "collaborator" && (
-                <Field
-                  label="Tính phép từ ngày"
-                  hint={`Bỏ trống = ngày vào làm${startDate ? ` (${startDate})` : " (chưa nhập ngày vào làm)"}`}
-                >
+                <Field label="Ngân hàng">
                   <Input
-                    type="date"
-                    value={form.leaveStartDate ?? ""}
-                    onChange={(event) => set("leaveStartDate", event.target.value || null)}
+                    value={form.bankName ?? ""}
+                    onChange={(event) => set("bankName", event.target.value)}
+                    placeholder="Vd: Vietcombank"
                   />
                 </Field>
-              )}
-            </div>
+              </div>
+            </section>
 
-            <div>
-              <span className="mb-1.5 block text-sm font-medium text-slate-700">
+            <section className="border-t border-slate-200 pt-5">
+              <h4 className="mb-3 text-base font-semibold text-slate-900">
                 Khoản hỗ trợ được hưởng
-              </span>
+              </h4>
               {allowances.length === 0 ? (
                 <p className="text-sm text-slate-500">
                   Chưa có khoản hỗ trợ nào. Tạo ở{" "}
@@ -667,8 +702,8 @@ export default function PayrollPage() {
               ) : (
                 <ul className="divide-y divide-slate-100 rounded-lg border border-slate-200">
                   {allowances.map((item) => (
-                    <li key={item.id} className="flex flex-wrap items-center gap-3 px-3 py-2">
-                      <label className="flex min-w-48 flex-1 items-center gap-2 text-sm text-slate-800">
+                    <li key={item.id} className="flex flex-wrap items-center gap-3 px-4 py-3">
+                      <label className="flex min-w-64 flex-1 items-center gap-2 text-sm text-slate-800">
                         <input
                           type="checkbox"
                           checked={item.assigned}
@@ -682,7 +717,7 @@ export default function PayrollPage() {
                           }
                         />
                         <span>
-                          {item.name}
+                          <span className="font-medium">{item.name}</span>
                           <span className="ml-1 text-xs text-slate-500">
                             · {vnd(item.amount)}đ · {ALLOWANCE_MODE_LABELS[item.mode]}
                             {!item.isActive && " · đã tắt"}
@@ -694,8 +729,8 @@ export default function PayrollPage() {
                           type="number"
                           min="0"
                           step="1000"
-                          className="w-36"
-                          placeholder="Mức riêng"
+                          className="w-44"
+                          placeholder="Mức riêng (bỏ trống = mặc định)"
                           aria-label={`Mức riêng cho ${item.name}`}
                           value={item.customAmount ?? ""}
                           onChange={(event) =>
@@ -717,16 +752,7 @@ export default function PayrollPage() {
                   ))}
                 </ul>
               )}
-            </div>
-
-            <div className="flex justify-end gap-3">
-              <Button type="button" variant="secondary" onClick={() => setEditing(null)}>
-                Huỷ
-              </Button>
-              <Button type="submit" disabled={saving}>
-                {saving ? "Đang lưu..." : "Lưu hồ sơ"}
-              </Button>
-            </div>
+            </section>
           </form>
         )}
       </Modal>

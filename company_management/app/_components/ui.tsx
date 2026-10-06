@@ -182,12 +182,16 @@ export function Modal({
   onClose,
   children,
   footer,
+  size = "default",
 }: {
   open: boolean;
   title: string;
   onClose: () => void;
   children: ReactNode;
   footer?: ReactNode;
+  /// "large" = 80% chiều rộng × 80% chiều cao màn hình, cho form nhiều trường:
+  /// đầu và chân cố định, chỉ phần giữa cuộn.
+  size?: "default" | "large";
 }) {
   useEffect(() => {
     if (!open) return;
@@ -206,9 +210,13 @@ export function Modal({
         role="dialog"
         aria-modal="true"
         aria-label={title}
-        className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-xl bg-white shadow-md"
+        className={
+          size === "large"
+            ? "flex h-[90vh] w-full flex-col rounded-xl bg-white shadow-md sm:h-[80vh] sm:w-[80vw]"
+            : "max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-xl bg-white shadow-md"
+        }
       >
-        <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
+        <div className="flex shrink-0 items-center justify-between border-b border-slate-200 px-5 py-4">
           <h3 className="text-xl font-semibold text-slate-900">{title}</h3>
           <button
             onClick={onClose}
@@ -218,9 +226,11 @@ export function Modal({
             <X size={18} aria-hidden="true" />
           </button>
         </div>
-        <div className="px-5 py-4">{children}</div>
+        <div className={size === "large" ? "min-h-0 flex-1 overflow-y-auto px-6 py-5" : "px-5 py-4"}>
+          {children}
+        </div>
         {footer && (
-          <div className="flex justify-end gap-3 border-t border-slate-200 px-5 py-4">
+          <div className="flex shrink-0 justify-end gap-3 border-t border-slate-200 px-5 py-4">
             {footer}
           </div>
         )}

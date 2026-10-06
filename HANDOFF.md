@@ -158,7 +158,7 @@ công":
 
 **Còn làm (đã chốt với chủ dự án):**
 - ~~B. Phiếu OT~~ **xong** (xem dưới).
-- ~~C. Lương~~ **xong 06/10/2026, chưa deploy** — xem dưới.
+- ~~C. Lương~~ **xong, đã deploy 06/10/2026** — xem dưới.
 - **Đã deploy bước A + B lên VPS 06/10/2026** (migration 016, 017 chạy xong). Backup trước khi deploy: `~/backups/company_mana-20261006-030508.sql` trên VPS. Lệnh rsync dùng `--include .env.example --exclude ".env*"` để không xoá `.env` và `.env.bak-*` trên VPS.
 
 **Bước B — Phiếu OT (xong 05/10/2026):** bảng `OvertimeRequest` + Settings
@@ -168,7 +168,7 @@ README → "Làm thêm giờ (OT)". Ca `T` (Tăng ca) cũ vẫn còn trong danh 
 số công 0 — nên tắt để khỏi lẫn với ký hiệu OT `T` (chưa tắt, chờ chủ dự án).
 Test: `test:logic` 166/166, `test:api` 262/262, `test:routes` 70/70.
 
-**Bước C — Bảng lương (xong 06/10/2026, chưa deploy):** migration 018
+**Bước C — Bảng lương (xong và đã deploy 06/10/2026):** migration 018
 (`PayProfile`, `Allowance`, `EmployeeAllowance`, `PayrollClosing`, Settings
 `payroll_config`). `lib/payroll.ts` (thuần, test đối chiếu file kế toán T9 khớp
 từng đồng), `lib/payroll-service.ts`, `lib/payroll-export.ts`; phần tính bảng công
@@ -181,6 +181,25 @@ chịu thuế và BH phần người lao động. Test sau khi thêm: `test:logi
 Cần kế toán xác nhận: giảm trừ 15,5tr / 6,2tr, biểu thuế 5 bậc 5–35%, ngưỡng
 khấu trừ 10% (đang để 0 cho khớp file, luật là 2tr), BH tính trên lương cơ bản
 không chặn trần.
+
+## Deploy (từ 06/10/2026)
+
+VPS `dev_teams@100.116.216.43` (LAN 192.168.1.28), vào bằng SSH key. Code lấy từ
+GitHub `Ngoc-HM/diemdanh` (clone HTTPS, không cần key) ở `~/diemdanh`; chạy trong
+`~/diemdanh/company_management` với project compose `company_management` (giữ
+nguyên volume db / caddy cũ). `.env` và `storage/` nằm sẵn ở đó, git bỏ qua.
+
+```bash
+ssh dev_teams@100.116.216.43
+cd ~/diemdanh/company_management
+docker compose -p company_management exec -T db pg_dump -U postgres company_mana > ~/backups/company_mana-$(date +%Y%m%d-%H%M%S).sql
+git -C ~/diemdanh pull
+docker compose -p company_management up -d --build
+```
+
+Đã deploy A + B + C (commit `e92f452`) ngày 06/10/2026, migration 018–019 chạy
+xong; backup trước đó `~/backups/company_mana-20261006-062628.sql`. Thư mục rsync
+cũ đổi tên thành `~/company_management.old-rsync-20261006` (xoá được khi yên tâm).
 
 ## Việc còn lại
 
