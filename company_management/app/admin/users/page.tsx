@@ -7,6 +7,7 @@ import {
   KeyRound,
   Pencil,
   Plus,
+  ShieldOff,
   Trash2,
   UserMinus,
 } from "lucide-react";
@@ -41,6 +42,7 @@ type Employee = {
   avatarUrl: string | null;
   startDate: string | null;
   isActive: boolean;
+  twoFactorEnabled: boolean;
 };
 
 const EMPTY_FORM = {
@@ -194,6 +196,28 @@ export default function UsersPage() {
     load();
   }
 
+  /// Nhân viên mất điện thoại / hết mã dự phòng: admin tắt 2 lớp hộ, họ đăng
+  /// nhập lại bằng mật khẩu rồi tự bật lại.
+  async function resetTwoFactor(user: Employee) {
+    if (
+      !confirm(
+        `Tắt xác thực 2 lớp của ${user.name}? Nhân viên sẽ bị đăng xuất và đăng nhập lại chỉ bằng mật khẩu.`
+      )
+    ) {
+      return;
+    }
+    const response = await fetch(`/api/users/${user.id}/two-factor`, {
+      method: "DELETE",
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      setMessage({ type: "error", text: data.error || "Không thể thực hiện" });
+      return;
+    }
+    setMessage({ type: "success", text: `Đã tắt xác thực 2 lớp của ${user.name}` });
+    load();
+  }
+
   /// Xoá hẳn chỉ dành cho nhân viên đã ngừng hoạt động và chưa có ngày công
   /// nào (server kiểm tra lại và trả 409 nếu đã có công).
   async function hardDelete(user: Employee) {
@@ -272,7 +296,7 @@ export default function UsersPage() {
                   Phòng ban / Chức vụ
                 </th>
                 <th className="px-4 py-3 font-semibold text-slate-900">Liên hệ</th>
-                <th className="w-44 px-4 py-3" />
+                <th className="w-52 px-4 py-3" />
               </tr>
             </thead>
             <tbody>
@@ -302,9 +326,10 @@ export default function UsersPage() {
                       <div className="min-w-0">
                         <div className="font-medium text-slate-900">{user.name}</div>
                         <div className="text-xs text-slate-500">{user.email}</div>
-                        {!user.isActive && (
-                          <div className="mt-1">
-                            <Badge tone="danger">Đã ngừng</Badge>
+                        {(!user.isActive || user.twoFactorEnabled) && (
+                          <div className="mt-1 flex gap-1">
+                            {!user.isActive && <Badge tone="danger">Đã ngừng</Badge>}
+                            {user.twoFactorEnabled && <Badge tone="success">2 lớp</Badge>}
                           </div>
                         )}
                       </div>
@@ -349,6 +374,17 @@ export default function UsersPage() {
                       >
                         <KeyRound size={14} aria-hidden="true" />
                       </Button>
+                      {user.twoFactorEnabled && (
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          onClick={() => resetTwoFactor(user)}
+                          aria-label={`Tắt xác thực 2 lớp của ${user.name}`}
+                          title="Tắt xác thực 2 lớp (nhân viên mất điện thoại)"
+                        >
+                          <ShieldOff size={14} aria-hidden="true" />
+                        </Button>
+                      )}
                       {user.isActive ? (
                         <Button
                           variant="danger"

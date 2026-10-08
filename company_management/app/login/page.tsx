@@ -14,20 +14,37 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  /// Đúng mật khẩu nhưng tài khoản bật 2 lớp: chuyển sang ô nhập mã.
+  const [needCode, setNeedCode] = useState(false);
+  const [code, setCode] = useState("");
 
-
-  async function handleSubmit(event: React.FormEvent) {
-    event.preventDefault();
+  async function submit(url: string, body: Record<string, string>) {
     setError("");
     setLoading(true);
     try {
-      const response = await fetch("/api/auth/login", {
+      const response = await fetch(url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ identifier, password }),
+        body: JSON.stringify(body),
       });
       const data = await response.json();
-      if (!response.ok) throw new Error(data.error || "Đăng nhập thất bại");
+      if (!response.ok) {
+        // Vé tạm 5 phút hết hạn: quay lại bước mật khẩu.
+        if (
+          needCode &&
+          response.status === 401 &&
+          /hết hạn/.test(data.error ?? "")
+        ) {
+          setNeedCode(false);
+          setCode("");
+        }
+        throw new Error(data.error || "Đăng nhập thất bại");
+      }
+      if (data.twoFactorRequired) {
+        setNeedCode(true);
+        setLoading(false);
+        return;
+      }
       // Admin hay nhân viên đều đăng nhập ở đây; server trả trang đích theo
       // vai trò. Điều hướng cả trang để middleware đọc cookie mới; bị đẩy
       // ngược về đây thì form dựng lại, không kẹt ở "Đang đăng nhập...".
@@ -36,6 +53,12 @@ export default function LoginPage() {
       setError(err instanceof Error ? err.message : "Đăng nhập thất bại");
       setLoading(false);
     }
+  }
+
+  function handleSubmit(event: React.FormEvent) {
+    event.preventDefault();
+    if (needCode) submit("/api/auth/login/2fa", { code });
+    else submit("/api/auth/login", { identifier, password });
   }
 
   return (
@@ -51,30 +74,80 @@ export default function LoginPage() {
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-4">
-            <Field label="Email hoặc tên đăng nhập" required>
-              <Input
-                value={identifier}
-                onChange={(event) => setIdentifier(event.target.value)}
-                placeholder="nhanvien@congty.vn"
-                autoComplete="username"
-                required
-              />
-            </Field>
-            <Field label="Mật khẩu" required>
-              <Input
-                type="password"
-                value={password}
-                onChange={(event) => setPassword(event.target.value)}
-                autoComplete="current-password"
-                required
-              />
-            </Field>
+            {needCode ? (
+              <>
+                <p className="text-sm text-slate-600">
+                  Mở app Google Authenticator trên điện thoại và nhập mã 6 số
+                  của tài khoản{" "}
+                  <span className="font-medium text-slate-900">
+                    {identifier}
+                  </span>
+                  . Mất điện thoại thì nhập một mã dự phòng.
+                </p>
+                <Field label="Mã xác thực" required>
+                  <Input
+                    value={code}
+                    onChange={(event) => setCode(event.target.value)}
+                    inputMode="numeric"
+                    autoComplete="one-time-code"
+                    placeholder="123456"
+                    maxLength={9}
+                    autoFocus
+                    required
+                  />
+                </Field>
+              </>
+            ) : (
+              <>
+                <Field label="Email hoặc tên đăng nhập" required>
+                  <Input
+                    value={identifier}
+                    onChange={(event) => setIdentifier(event.target.value)}
+                    placeholder="nhanvien@congty.vn"
+                    autoComplete="username"
+                    required
+                  />
+                </Field>
+                <Field label="Mật khẩu" required>
+                  <Input
+                    type="password"
+                    value={password}
+                    onChange={(event) => setPassword(event.target.value)}
+                    autoComplete="current-password"
+                    required
+                  />
+                </Field>
+              </>
+            )}
 
             {error && <Message type="error">{error}</Message>}
 
-            <Button type="submit" size="lg" disabled={loading} className="w-full">
-              {loading ? "Đang đăng nhập..." : "Đăng nhập"}
+            <Button
+              type="submit"
+              size="lg"
+              disabled={loading}
+              className="w-full"
+            >
+              {loading
+                ? "Đang đăng nhập..."
+                : needCode
+                  ? "Xác nhận"
+                  : "Đăng nhập"}
             </Button>
+            {needCode && (
+              <Button
+                type="button"
+                variant="ghost"
+                className="w-full"
+                onClick={() => {
+                  setNeedCode(false);
+                  setCode("");
+                  setError("");
+                }}
+              >
+                Quay lại
+              </Button>
+            )}
           </form>
         </Card>
 

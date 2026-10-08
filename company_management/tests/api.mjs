@@ -2,6 +2,7 @@ import "dotenv/config";
 import pg from "pg";
 import bcrypt from "bcryptjs";
 import { createHash } from "node:crypto";
+import { totp } from "../lib/totp.ts";
 
 const BASE = process.env.BASE_URL || "http://localhost:3000";
 const ADMIN_USER = "__smoketest_admin@example.test";
@@ -88,6 +89,8 @@ async function main() {
   let previousLunch = null;
   // Cửa sổ đăng ký lịch trước khi test đổi; null = chưa kịp đọc.
   let previousWindow = null;
+  // Chính sách chấm công trước khi test đổi; null = chưa kịp đọc.
+  let previousPolicy = null;
 
   try {
     console.log("\n== xác thực ==");
@@ -409,8 +412,17 @@ async function main() {
     check("sai mật khẩu hiện tại thì từ chối", r.status === 401, `(${r.status})`);
     r = await call(emp, "POST", "/api/auth/password", { currentPassword: EMP_PASS, newPassword: "abc" });
     check("chặn mật khẩu mới quá ngắn", r.status === 400, `(${r.status})`);
+    const empOther = makeJar();
+    r = await call(empOther, "POST", "/api/auth/login", { email: EMP_EMAIL, password: EMP_PASS });
+    check("nhân viên đăng nhập thêm ở máy khác", r.status === 200, `(${r.status})`);
     r = await call(emp, "POST", "/api/auth/password", { currentPassword: EMP_PASS, newPassword: NEW_PASS });
     check("nhân viên tự đổi mật khẩu", r.status === 200, `(${r.status})`);
+    r = await call(empOther, "GET", "/api/attendance");
+    check("đổi mật khẩu thì phiên ở máy khác bị đăng xuất", r.status === 401, `(${r.status})`);
+    r = await call(empOther, "GET", "/api/auth/session");
+    check("session của máy khác trả về rỗng", r.json?.user === null, JSON.stringify(r.json).slice(0, 80));
+    r = await call(emp, "GET", "/api/attendance");
+    check("phiên đang thao tác vẫn dùng được", r.status === 200, `(${r.status})`);
     r = await call(emp, "POST", "/api/auth/login", { email: EMP_EMAIL, password: NEW_PASS });
     check("đăng nhập được bằng mật khẩu mới", r.status === 200, `(${r.status})`);
     r = await call(emp, "POST", "/api/auth/password", { currentPassword: NEW_PASS, newPassword: EMP_PASS });
@@ -606,6 +618,11 @@ async function main() {
     check("đổi mật khẩu bằng mã khi đang bị khoá", r.status === 200, `(${r.status})`);
     r = await call(makeJar(), "POST", "/api/auth/login", { email: EMP_EMAIL, password: EMP_PASS });
     check("đổi mật khẩu xong là đăng nhập được ngay", r.status === 200, `(${r.status})`);
+    // Đặt lại mật khẩu (qua email hay do admin) đá mọi phiên cũ của nhân viên ra.
+    r = await call(emp, "GET", "/api/attendance");
+    check("đặt lại mật khẩu thì phiên cũ hết hiệu lực", r.status === 401, `(${r.status})`);
+    r = await call(emp, "POST", "/api/auth/login", { email: EMP_EMAIL, password: EMP_PASS });
+    check("nhân viên đăng nhập lại", r.status === 200, `(${r.status})`);
 
     await client.query(`DELETE FROM "LoginAttempt" WHERE "identifier" LIKE '@_@_smoketest%' ESCAPE '@'`);
 
@@ -649,6 +666,118 @@ async function main() {
     r = await call(emp, "GET", "/api/admin/access-violations");
     check("nhân viên không xem được nhật ký", r.status === 401, `(${r.status})`);
     await client.query(`DELETE FROM "AccessViolation" WHERE "path" LIKE '/smoketest%'`);
+
+    console.log("\n== xác thực 2 lớp ==");
+    const login = (jar) => call(jar, "POST", "/api/auth/login", { identifier: ADMIN_USER, password: ADMIN_PASS });
+    /// Mã chắc chắn sai: lệch mã hiện tại một đơn vị.
+    const wrongOf = (code) => String((Number(code) + 1) % 1_000_000).padStart(6, "0");
+
+    const admin2 = makeJar();
+    r = await login(admin2);
+    check("admin đăng nhập ở máy thứ hai", r.status === 200 && !r.json.twoFactorRequired, `(${r.status})`);
+    r = await call(admin, "GET", "/api/auth/2fa");
+    check("mặc định chưa bật 2 lớp", r.status === 200 && r.json.enabled === false, JSON.stringify(r.json));
+    r = await call(admin, "POST", "/api/auth/2fa", { action: "setup", password: "sai-mat-khau" });
+    check("tạo mã QR phải đúng mật khẩu", r.status === 400, `(${r.status})`);
+    r = await call(admin, "POST", "/api/auth/2fa", { action: "setup", password: ADMIN_PASS });
+    const adminSecret = r.json.secret ?? "";
+    check(
+      "tạo mã QR (chưa bật)",
+      r.status === 200 && /^[A-Z2-7]{32}$/.test(adminSecret) && r.json.qrSvg?.startsWith("<svg"),
+      `(${r.status})`
+    );
+    r = await call(admin, "GET", "/api/auth/2fa");
+    check("chưa nhập mã xác nhận thì vẫn chưa bật", r.json.enabled === false);
+    r = await call(admin, "POST", "/api/auth/2fa", { action: "confirm", code: wrongOf(totp(adminSecret)) });
+    check("nhập sai mã thì không bật", r.status === 400, `(${r.status})`);
+    r = await call(admin, "POST", "/api/auth/2fa", { action: "confirm", code: totp(adminSecret) });
+    const adminBackup = r.json.backupCodes ?? [];
+    check("nhập đúng mã thì bật, nhận 10 mã dự phòng", r.status === 200 && adminBackup.length === 10, `(${r.status} ${adminBackup.length})`);
+    r = await call(admin, "GET", "/api/admin/security/policy");
+    check("phiên đang thao tác vẫn dùng được sau khi bật", r.status === 200, `(${r.status})`);
+    r = await call(admin2, "GET", "/api/admin/security/policy");
+    check("bật 2 lớp thì phiên ở máy khác bị đăng xuất", r.status === 401, `(${r.status})`);
+
+    const admin3 = makeJar();
+    r = await login(admin3);
+    check(
+      "đúng mật khẩu thì đòi mã, chưa cấp phiên",
+      r.status === 200 && r.json.twoFactorRequired === true && !admin3.header().includes("session="),
+      `(${r.status} ${admin3.header().slice(0, 40)})`
+    );
+    r = await call(admin3, "GET", "/api/admin/security/policy");
+    check("vé tạm không dùng thay phiên được", r.status === 401, `(${r.status})`);
+    r = await call(makeJar(), "POST", "/api/auth/login/2fa", { code: totp(adminSecret) });
+    check("không có vé tạm thì không nhập mã được", r.status === 401, `(${r.status})`);
+    r = await call(admin3, "POST", "/api/auth/login/2fa", { code: wrongOf(totp(adminSecret)) });
+    check("sai mã 2 lớp bị từ chối", r.status === 401, `(${r.status})`);
+    // Mã lúc xác nhận đã bị ghi là "đã dùng": lấy mã của 30 giây kế (vẫn trong
+    // khoảng lệch cho phép) để không phải chờ.
+    const nextCode = totp(adminSecret, Date.now() + 30_000);
+    r = await call(admin3, "POST", "/api/auth/login/2fa", { code: nextCode });
+    check("đúng mã thì vào khu quản trị", r.status === 200 && r.json.redirect?.startsWith("/admin"), JSON.stringify(r.json).slice(0, 100));
+    r = await call(admin3, "GET", "/api/admin/security/policy");
+    check("có phiên sau bước 2", r.status === 200, `(${r.status})`);
+
+    const admin4 = makeJar();
+    await login(admin4);
+    r = await call(admin4, "POST", "/api/auth/login/2fa", { code: nextCode });
+    check("một mã 6 số không đăng nhập được hai lần", r.status === 401, `(${r.status})`);
+    r = await call(admin4, "POST", "/api/auth/login/2fa", { code: adminBackup[0].toLowerCase() });
+    check("mã dự phòng đăng nhập được (không phân biệt hoa thường)", r.status === 200, `(${r.status})`);
+    const admin5 = makeJar();
+    await login(admin5);
+    r = await call(admin5, "POST", "/api/auth/login/2fa", { code: adminBackup[0] });
+    check("mã dự phòng chỉ dùng được một lần", r.status === 401, `(${r.status})`);
+    r = await call(admin, "GET", "/api/auth/2fa");
+    check("còn 9 mã dự phòng", r.json.backupCodesRemaining === 9, `(${r.json.backupCodesRemaining})`);
+
+    r = await call(admin, "POST", "/api/auth/2fa", { action: "disable", password: ADMIN_PASS, code: "000" });
+    check("tắt 2 lớp phải có mã đúng", r.status === 400, `(${r.status})`);
+    r = await call(admin, "POST", "/api/auth/2fa", { action: "disable", password: ADMIN_PASS, code: adminBackup[1] });
+    check("tắt 2 lớp bằng mật khẩu + mã dự phòng", r.status === 200 && r.json.status?.enabled === false, `(${r.status})`);
+    r = await login(makeJar());
+    check("tắt xong đăng nhập lại chỉ cần mật khẩu", r.status === 200 && !r.json.twoFactorRequired, `(${r.status})`);
+
+    r = await call(emp, "POST", "/api/auth/2fa", { action: "setup", password: EMP_PASS });
+    const empSecret = r.json.secret ?? "";
+    r = await call(emp, "POST", "/api/auth/2fa", { action: "confirm", code: totp(empSecret) });
+    check("nhân viên tự bật 2 lớp", r.status === 200 && r.json.backupCodes?.length === 10, `(${r.status})`);
+    r = await call(admin, "GET", "/api/users");
+    check(
+      "danh sách nhân viên có cờ 2 lớp",
+      r.json.users?.find((user) => user.id === employeeId)?.twoFactorEnabled === true
+    );
+    check(
+      "danh sách nhân viên không lộ khoá 2 lớp",
+      !JSON.stringify(r.json).includes("totpSecret") && !JSON.stringify(r.json).includes(empSecret)
+    );
+    r = await call(emp, "DELETE", `/api/users/${employeeId}/two-factor`);
+    check("nhân viên không gọi được API tắt hộ", r.status === 401, `(${r.status})`);
+    r = await call(admin, "DELETE", `/api/users/${employeeId}/two-factor`);
+    check("admin tắt 2 lớp hộ nhân viên", r.status === 200, `(${r.status})`);
+    r = await call(emp, "GET", "/api/attendance");
+    check("admin tắt hộ thì phiên nhân viên bị đăng xuất", r.status === 401, `(${r.status})`);
+    r = await call(emp, "POST", "/api/auth/login", { email: EMP_EMAIL, password: EMP_PASS });
+    check("nhân viên đăng nhập lại chỉ bằng mật khẩu", r.status === 200 && !r.json.twoFactorRequired, `(${r.status})`);
+
+    r = await call(emp, "GET", "/api/admin/security/log?tab=login");
+    check("nhân viên không xem được nhật ký bảo mật", r.status === 401, `(${r.status})`);
+    r = await call(admin, "GET", "/api/admin/security/log?tab=login&days=1");
+    const events = (r.json.rows ?? []).filter((row) => (row.identifier ?? "").toLowerCase().includes("__smoketest"));
+    for (const [event, label] of [
+      ["login", "đăng nhập"],
+      ["login_failed", "sai mật khẩu"],
+      ["2fa_enabled", "bật 2 lớp"],
+      ["2fa_failed", "sai mã 2 lớp"],
+      ["2fa_disabled", "tắt 2 lớp"],
+      ["2fa_reset_by_admin", "admin tắt hộ"],
+      ["password_changed", "đổi mật khẩu"],
+      ["password_reset", "đặt lại mật khẩu"],
+    ]) {
+      check(`nhật ký có sự kiện ${label}`, events.some((row) => row.event === event));
+    }
+    await client.query(`DELETE FROM "LoginAttempt" WHERE "identifier" LIKE '%@_@_smoketest%' ESCAPE '@'`);
 
     console.log("\n== chấm công ==");
     r = await call(emp, "POST", "/api/attendance/punch", {
@@ -702,6 +831,93 @@ async function main() {
     check("đã check-in nên checkInAt khác null", r.json.checkInAt !== null);
     check("lastOutAt lấy lần ra muộn nhất", r.json.lastOutAt !== null);
     check("hôm nay có 3 lần bấm giờ", r.json.todayEntry?.punches?.length === 3, `(${r.json.todayEntry?.punches?.length})`);
+
+    console.log("\n== mã có mặt ==");
+    previousPolicy = (await client.query(`SELECT "value" FROM "Settings" WHERE "key" = 'attendance_policy'`)).rows[0] ?? { value: undefined };
+    const activeKiosks = Number((await client.query(`SELECT count(*) AS n FROM "KioskDevice" WHERE "revokedAt" IS NULL`)).rows[0].n);
+    if (activeKiosks === 0) {
+      r = await call(admin, "PUT", "/api/admin/security/policy", { presenceCode: true, outsideRadius: "reject" });
+      check("chưa có màn hình thì không bật được mã có mặt", r.status === 400, `(${r.status})`);
+    }
+    r = await call(emp, "POST", "/api/admin/security/kiosks", { name: "__smoketest màn hình" });
+    check("nhân viên không tạo được màn hình", r.status === 401, `(${r.status})`);
+    r = await call(admin, "POST", "/api/admin/security/kiosks", { name: "__smoketest màn hình" });
+    const pairToken = r.json.pairingToken;
+    const kioskId = r.json.device?.id;
+    check("admin tạo màn hình, nhận mã ghép nối", r.status === 200 && Boolean(pairToken), `(${r.status})`);
+    const kiosk = makeJar();
+    r = await call(kiosk, "GET", "/api/kiosk/code");
+    check("máy chưa ghép nối không xem được mã", r.status === 401, `(${r.status})`);
+    r = await call(kiosk, "POST", "/api/kiosk/pair", { token: pairToken });
+    check("ghép nối màn hình", r.status === 200 && kiosk.header().includes("kiosk="), `(${r.status})`);
+    r = await call(makeJar(), "POST", "/api/kiosk/pair", { token: pairToken });
+    check("link ghép nối chỉ dùng một lần", r.status === 400, `(${r.status})`);
+    r = await call(kiosk, "GET", "/api/kiosk/code");
+    check(
+      "màn hình lấy được mã 6 số và số giây còn lại",
+      r.status === 200 && /^\d{6}$/.test(r.json.code ?? "") && r.json.secondsLeft >= 1 && r.json.secondsLeft <= 30,
+      JSON.stringify(r.json)
+    );
+    r = await call(admin, "PUT", "/api/admin/security/policy", { presenceCode: true, outsideRadius: "flag" });
+    check("bật bắt mã có mặt, GPS chỉ gắn cờ", r.status === 200 && r.json.policy?.presenceCode === true && r.json.policy?.outsideRadius === "flag", `(${r.status})`);
+    r = await call(emp, "GET", "/api/attendance/policy");
+    check("trang chấm công biết phải nhập mã", r.json.presenceCode === true);
+
+    const punchOut = (extra) => call(emp, "POST", "/api/attendance/punch", { type: "out", ...extra });
+    r = await punchOut({ latitude: 21.0, longitude: 105.8 });
+    check("thiếu mã có mặt bị từ chối", r.status === 400, `(${r.status})`);
+    const shownCode = (await call(kiosk, "GET", "/api/kiosk/code")).json.code;
+    r = await punchOut({ latitude: 21.0, longitude: 105.8, presenceCode: wrongOf(shownCode) });
+    check("sai mã có mặt bị từ chối", r.status === 400 && /mã có mặt/i.test(r.json.error ?? ""), `(${r.status} ${r.json.error})`);
+    r = await punchOut({ latitude: 10.0, longitude: 106.0, accuracy: 25, presenceCode: shownCode });
+    check("đúng mã: ngoài bán kính vẫn nhận nhưng gắn cờ", r.status === 200, `(${r.status} ${r.json.error ?? ""})`);
+    r = await punchOut({ latitude: null, longitude: null, presenceCode: shownCode });
+    check("đúng mã: không lấy được GPS vẫn nhận", r.status === 200, `(${r.status} ${r.json.error ?? ""})`);
+
+    const attempts = (
+      await client.query(`SELECT "result", "reason", "flags" FROM "PunchAttempt" WHERE "userId" = $1`, [employeeId])
+    ).rows;
+    check("nhật ký có lần từ chối ngoài bán kính (trước khi bật)", attempts.some((a) => a.reason === "outside_radius"));
+    check("nhật ký có lần từ chối vì chưa check-in", attempts.some((a) => a.reason === "not_checked_in"));
+    check("nhật ký có lần từ chối vì sai mã", attempts.some((a) => a.reason === "presence_code"));
+    check("nhật ký gắn cờ ngoài bán kính", attempts.some((a) => a.result === "accepted" && a.flags.includes("outside_radius")));
+    check("nhật ký gắn cờ không có vị trí", attempts.some((a) => a.result === "accepted" && a.flags.includes("no_location")));
+    check("nhật ký có lần nhận bình thường", attempts.some((a) => a.result === "accepted" && a.flags.every((f) => f === "no_accuracy" || f === "shared_ip")));
+    const flagged = await client.query(
+      `SELECT p."withinRadius" FROM "AttendancePunch" p JOIN "Attendance" a ON a."id" = p."attendanceId"
+        WHERE a."userId" = $1 AND p."withinRadius" = false`,
+      [employeeId]
+    );
+    check("lần bấm ngoài bán kính lưu withinRadius = false (vào diện xem lại)", flagged.rowCount >= 1, `(${flagged.rowCount})`);
+
+    r = await call(admin, "GET", "/api/admin/security/log?tab=punch&only=suspicious&days=1");
+    const suspiciousRows = (r.json.rows ?? []).filter((row) => row.userEmail === EMP_EMAIL);
+    check(
+      "lọc bất thường chỉ còn lần bị từ chối hoặc có cờ",
+      suspiciousRows.length > 0 && suspiciousRows.every((row) => row.result === "rejected" || row.flags.length > 0),
+      `(${suspiciousRows.length})`
+    );
+
+    // Dò mã: sai đủ ngưỡng thì chặn tạm, kể cả khi sau đó nhập đúng.
+    for (let i = 0; i < 4; i++) {
+      await punchOut({ latitude: 21.0, longitude: 105.8, presenceCode: wrongOf(shownCode) });
+    }
+    const freshCode = (await call(kiosk, "GET", "/api/kiosk/code")).json.code;
+    r = await punchOut({ latitude: 21.0, longitude: 105.8, presenceCode: freshCode });
+    check("sai mã 5 lần thì tạm chặn", r.status === 400 && /quá nhiều lần/.test(r.json.error ?? ""), `(${r.status} ${r.json.error})`);
+    await client.query(`DELETE FROM "PunchAttempt" WHERE "userId" = $1 AND "reason" = 'presence_code'`, [employeeId]);
+
+    r = await call(admin, "DELETE", `/api/admin/security/kiosks/${kioskId}`);
+    check("thu hồi màn hình", r.status === 200, `(${r.status})`);
+    r = await call(kiosk, "GET", "/api/kiosk/code");
+    check("màn hình đã thu hồi không xem được mã", r.status === 401, `(${r.status})`);
+    r = await punchOut({ latitude: 21.0, longitude: 105.8, presenceCode: freshCode });
+    check("thu hồi xong thì mã cũ hết hiệu lực", r.status === 400, `(${r.status})`);
+    await client.query(`DELETE FROM "PunchAttempt" WHERE "userId" = $1 AND "reason" = 'presence_code'`, [employeeId]);
+    r = await call(admin, "PUT", "/api/admin/security/policy", { presenceCode: false, outsideRadius: "flag" });
+    check("tắt mã có mặt", r.status === 200 && r.json.policy?.presenceCode === false, `(${r.status})`);
+    r = await punchOut({ latitude: 10.0, longitude: 106.0 });
+    check("không bắt mã thì GPS ngoài bán kính luôn bị chặn dù chọn gắn cờ", r.status === 400, `(${r.status})`);
 
     console.log("\n== sửa công thủ công ==");
     r = await call(admin, "PUT", `/api/admin/attendance/user/${employeeId}`, {
@@ -1307,6 +1523,15 @@ async function main() {
     await client.query(`DELETE FROM "Allowance" WHERE "name" ILIKE '__smoketest%'`);
     await client.query(`DELETE FROM "WorkLocation" WHERE "name" LIKE '__smoketest%'`);
     await client.query(`DELETE FROM "Admin" WHERE "username" = $1`, [ADMIN_USER]);
+    await client.query(`DELETE FROM "LoginEvent" WHERE "identifier" ILIKE '%@_@_smoketest%' ESCAPE '@'`);
+    await client.query(`DELETE FROM "KioskDevice" WHERE "name" LIKE '__smoketest%'`);
+    if (previousPolicy) {
+      if (previousPolicy.value === undefined) {
+        await client.query(`DELETE FROM "Settings" WHERE "key" = 'attendance_policy'`);
+      } else {
+        await client.query(`UPDATE "Settings" SET "value" = $1 WHERE "key" = 'attendance_policy'`, [previousPolicy.value]);
+      }
+    }
     // Trả lại cửa sổ đăng ký lịch như trước khi test.
     if (previousWindow) {
       if (previousWindow.value === undefined) {

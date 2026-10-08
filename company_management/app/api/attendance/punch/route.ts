@@ -10,43 +10,124 @@ import {
   getLunchBreak,
   resolveUserMonthSchedule,
 } from "@/lib/attendance-service";
+import { clientIp } from "@/lib/request-meta";
+import {
+  getAttendancePolicy,
+  PRESENCE_LOCK_MINUTES,
+  PRESENCE_MAX_FAILURES,
+  rejectsOutsideRadius,
+  verifyPresenceCode,
+} from "@/lib/presence";
+import {
+  ipUsedByOthers,
+  logPunchAttempt,
+  LOW_ACCURACY_METERS,
+  PunchFlag,
+  recentPresenceFailures,
+} from "@/lib/punch-audit";
 import { AttendancePunchRow, WorkLocationRow } from "@/lib/types";
 
+function optionalNumber(value: unknown): number | null {
+  if (value === null || value === undefined || value === "") return null;
+  const number = Number(value);
+  return Number.isFinite(number) ? number : null;
+}
+
 /// Một lần bấm giờ. `type` = "in" | "out".
-/// Vị trí bắt buộc nằm trong bán kính của một vị trí làm việc đang bật;
-/// sai vị trí thì từ chối, nhân viên phải nhờ admin bổ sung công thủ công.
+///
+/// Lớp chặn theo chính sách chấm công (trang Bảo mật):
+/// - Mã có mặt (nếu bật): phải nhập đúng mã đang hiện trên màn hình ở văn phòng.
+/// - GPS: ngoài bán kính thì từ chối, hoặc — khi đã bắt mã có mặt và admin
+///   chọn "gắn cờ" — vẫn nhận nhưng đánh dấu để admin xem lại.
+/// Mọi lần bấm, nhận hay bị từ chối, đều ghi vào PunchAttempt kèm IP.
 export async function POST(req: Request) {
   return handle(async () => {
     const session = await requireEmployee();
     const body = await req.json().catch(() => ({}));
     const type = body?.type;
-    const latitude = Number(body?.latitude);
-    const longitude = Number(body?.longitude);
+    const latitude = optionalNumber(body?.latitude);
+    const longitude = optionalNumber(body?.longitude);
+    const accuracy = optionalNumber(body?.accuracy);
+    const presenceCode = String(body?.presenceCode ?? "").trim();
 
     if (type !== "in" && type !== "out") {
       badRequest("Loại chấm công không hợp lệ");
     }
-    if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
-      badRequest("Không lấy được vị trí của bạn");
+
+    const flags: PunchFlag[] = [];
+    const attempt = {
+      userId: session.userId,
+      type,
+      latitude,
+      longitude,
+      accuracy,
+      distance: null as number | null,
+      locationId: null as string | null,
+    };
+    async function reject(reason: string, message: string): Promise<never> {
+      await logPunchAttempt(req, { ...attempt, result: "rejected", reason, flags });
+      badRequest(message);
     }
 
-    const locations = await query<WorkLocationRow>(
-      `SELECT "id", "name", "latitude", "longitude", "radius"
-         FROM "WorkLocation" WHERE "isActive" = true`
-    );
+    const policy = await getAttendancePolicy();
 
-    if (locations.length === 0) {
-      badRequest(
-        "Công ty chưa khai báo vị trí làm việc. Liên hệ quản trị viên trước khi chấm công."
+    if (policy.presenceCode) {
+      if ((await recentPresenceFailures(session.userId)) >= PRESENCE_MAX_FAILURES) {
+        await reject(
+          "presence_locked",
+          `Bạn đã nhập sai mã có mặt quá nhiều lần. Thử lại sau ${PRESENCE_LOCK_MINUTES} phút.`
+        );
+      }
+      if (!presenceCode) {
+        badRequest("Vui lòng nhập mã có mặt đang hiện trên màn hình ở văn phòng");
+      }
+      if (!(await verifyPresenceCode(presenceCode))) {
+        await reject(
+          "presence_code",
+          "Mã có mặt không đúng hoặc đã đổi. Nhìn lại màn hình ở văn phòng và nhập mã đang hiện."
+        );
+      }
+    }
+
+    const strictGps = rejectsOutsideRadius(policy);
+    let withinRadius = false;
+
+    if (latitude === null || longitude === null) {
+      if (strictGps) await reject("no_location", "Không lấy được vị trí của bạn");
+      flags.push("no_location");
+    } else {
+      const locations = await query<WorkLocationRow>(
+        `SELECT "id", "name", "latitude", "longitude", "radius"
+           FROM "WorkLocation" WHERE "isActive" = true`
       );
+
+      if (locations.length === 0 && strictGps) {
+        await reject(
+          "no_work_location",
+          "Công ty chưa khai báo vị trí làm việc. Liên hệ quản trị viên trước khi chấm công."
+        );
+      }
+
+      const nearest = resolveNearestLocation(latitude, longitude, locations);
+      attempt.distance = nearest.distance;
+      attempt.locationId = nearest.locationId;
+      withinRadius = nearest.withinRadius;
+      if (!nearest.withinRadius) {
+        if (strictGps) {
+          await reject(
+            "outside_radius",
+            nearest.locationName
+              ? `Bạn đang cách ${nearest.locationName} khoảng ${formatDistance(nearest.distance)}, vượt quá bán kính cho phép.`
+              : "Bạn đang ở ngoài bán kính cho phép."
+          );
+        }
+        flags.push("outside_radius");
+      }
+      if (accuracy === null) flags.push("no_accuracy");
+      else if (accuracy > LOW_ACCURACY_METERS) flags.push("low_accuracy");
     }
 
-    const nearest = resolveNearestLocation(latitude, longitude, locations);
-    if (!nearest.withinRadius) {
-      badRequest(
-        `Bạn đang cách ${nearest.locationName} khoảng ${formatDistance(nearest.distance)}, vượt quá bán kính cho phép.`
-      );
-    }
+    if (await ipUsedByOthers(clientIp(req), session.userId)) flags.push("shared_ip");
 
     const today = dateKeyVN();
 
@@ -67,27 +148,34 @@ export async function POST(req: Request) {
     );
 
     if (type === "in" && checkIn) {
-      badRequest("Hôm nay bạn đã check-in rồi, mỗi ngày chỉ check-in một lần.");
+      await reject(
+        "already_checked_in",
+        "Hôm nay bạn đã check-in rồi, mỗi ngày chỉ check-in một lần."
+      );
     }
     if (type === "out" && !checkIn) {
-      badRequest("Bạn chưa check-in nên không thể check-out.");
+      await reject("not_checked_in", "Bạn chưa check-in nên không thể check-out.");
     }
 
+    // withinRadius = false khi được nhận kèm cờ ngoài bán kính: ngày công đó
+    // tự rơi vào diện "cần xem lại" ở bảng chấm công.
     await queryOne(
       `INSERT INTO "AttendancePunch"
          ("attendanceId", "type", "at", "latitude", "longitude", "distance",
           "locationId", "withinRadius")
-       VALUES ($1, $2, now(), $3, $4, $5, $6, true)
+       VALUES ($1, $2, now(), $3, $4, $5, $6, $7)
        RETURNING "id"`,
       [
         attendance!.id,
         type,
         latitude,
         longitude,
-        nearest.distance,
-        nearest.locationId,
+        attempt.distance,
+        attempt.locationId,
+        withinRadius,
       ]
     );
+    await logPunchAttempt(req, { ...attempt, result: "accepted", flags });
 
     const [punches, rules, user, lunchBreak] = await Promise.all([
       query<AttendancePunchRow>(

@@ -19,6 +19,7 @@ import {
   NotebookText,
   PartyPopper,
   ShieldAlert,
+  ShieldCheck,
   Clock,
   Users,
 } from "lucide-react";
@@ -49,6 +50,7 @@ const navItems: NavItem[] = [
   { href: "/admin/holidays", label: "Ngày lễ", icon: <PartyPopper size={18} /> },
   { href: "/admin/company", label: "Công ty", icon: <Building2 size={18} /> },
   { href: "/admin/email", label: "Email", icon: <Mail size={18} /> },
+  { href: "/admin/security", label: "Bảo mật", icon: <ShieldCheck size={18} /> },
   { href: "/admin/access-violations", label: "Truy cập lạ", icon: <ShieldAlert size={18} /> },
   { href: "https://app.clickup.com", label: "ClickUp", icon: <ExternalLink size={18} />, external: true },
 ];
@@ -78,10 +80,18 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
 
   /// Đếm lại mỗi khi đổi trang để admin duyệt xong là badge giảm ngay,
   /// không phải tải lại toàn bộ. Lỗi mạng thì ẩn badge, không báo gì.
+  /// Request này chạy ở mọi lần chuyển trang nên kiêm luôn việc phát hiện phiên
+  /// đã bị thu hồi (đổi mật khẩu / bật 2 lớp ở máy khác): 401 là về đăng nhập.
   useEffect(() => {
     let cancelled = false;
     fetch(`/api/admin/shift-requests?status=pending`)
-      .then((response) => (response.ok ? response.json() : null))
+      .then((response) => {
+        if (response.status === 401) {
+          window.location.href = "/login";
+          return null;
+        }
+        return response.ok ? response.json() : null;
+      })
       .then((payload) => {
         if (cancelled) return;
         const count = Number(payload?.pendingCount);
@@ -124,7 +134,7 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
               className="inline-flex h-10 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 text-sm font-medium text-slate-600 hover:bg-slate-50 hover:text-slate-900 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-600"
             >
               <KeyRound size={16} aria-hidden="true" />
-              <span className="hidden sm:inline">Đổi mật khẩu</span>
+              <span className="hidden sm:inline">Tài khoản</span>
             </Link>
             <button
               onClick={handleLogout}

@@ -37,6 +37,18 @@ import {
   validateContent,
 } from "../lib/work-reports.ts";
 
+import {
+  base32Decode,
+  base32Encode,
+  generateTotpSecret,
+  hotp,
+  otpauthUrl,
+  totp,
+  verifyTotp,
+} from "../lib/totp.ts";
+import { parsePolicy, rejectsOutsideRadius } from "../lib/attendance-policy.ts";
+import { summarizeUserAgent } from "../lib/security-labels.ts";
+
 let pass = 0, fail = 0;
 const bad = [];
 function check(name, ok, detail = "") {
@@ -477,6 +489,43 @@ check('parse "24:00" không hợp lệ', parseEntryTime("24:00") === null);
 check("65 phút hiện 1h05", formatDuration(65) === "1h05", `(${formatDuration(65)})`);
 check("120 phút hiện 2h", formatDuration(120) === "2h", `(${formatDuration(120)})`);
 check("45 phút hiện 45 phút", formatDuration(45) === "45 phút", `(${formatDuration(45)})`);
+
+console.log("\n== TOTP / xác thực 2 lớp ==");
+// Vector chuẩn RFC 6238 (SHA1, khoá ASCII "12345678901234567890").
+const RFC_SECRET = base32Encode(Buffer.from("12345678901234567890"));
+check("base32 khoá RFC", RFC_SECRET === "GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ", `(${RFC_SECRET})`);
+check("base32 giải mã ngược", base32Decode(RFC_SECRET).toString() === "12345678901234567890");
+check("TOTP t=59 = 287082", totp(RFC_SECRET, 59_000) === "287082", `(${totp(RFC_SECRET, 59_000)})`);
+check("TOTP t=1111111109 = 081804", totp(RFC_SECRET, 1_111_111_109_000) === "081804");
+check("TOTP t=1234567890 = 005924", totp(RFC_SECRET, 1_234_567_890_000) === "005924");
+check("HOTP 8 số t=59 = 94287082", hotp(RFC_SECRET, 1, 8) === "94287082");
+
+const t0 = 1_700_000_000_000;
+const s0 = Math.floor(t0 / 30000);
+const secret = generateTotpSecret();
+check("khoá mới 32 ký tự base32 (160 bit)", /^[A-Z2-7]{32}$/.test(secret), `(${secret})`);
+check("mã hiện tại hợp lệ, trả về bước", verifyTotp(secret, totp(secret, t0), { now: t0 }) === s0);
+check("mã lệch -30 giây vẫn nhận", verifyTotp(secret, totp(secret, t0 - 30000), { now: t0 }) === s0 - 1);
+check("mã lệch +30 giây vẫn nhận", verifyTotp(secret, totp(secret, t0 + 30000), { now: t0 }) === s0 + 1);
+check("mã lệch 90 giây bị từ chối", verifyTotp(secret, totp(secret, t0 - 90000), { now: t0 }) === null);
+check("mã đã dùng (bước <= minStep) bị từ chối", verifyTotp(secret, totp(secret, t0), { now: t0, minStep: s0 }) === null);
+check("mã bước sau minStep vẫn nhận", verifyTotp(secret, totp(secret, t0 + 30000), { now: t0, minStep: s0 }) === s0 + 1);
+check("mã có khoảng trắng vẫn nhận", verifyTotp(secret, totp(secret, t0).replace(/(\d{3})/, "$1 "), { now: t0 }) === s0);
+check("mã không phải 6 số bị từ chối", verifyTotp(secret, "12345", { now: t0 }) === null && verifyTotp(secret, "abcdef", { now: t0 }) === null);
+const url = otpauthUrl("Công ty A", "admin@x.vn", secret);
+check("otpauth URL đúng định dạng", url.startsWith("otpauth://totp/") && url.includes(`secret=${secret}`) && url.includes("period=30"), `(${url})`);
+
+console.log("\n== chính sách chấm công ==");
+check("mặc định: từ chối ngoài bán kính, không bắt mã", JSON.stringify(parsePolicy(null)) === JSON.stringify({ outsideRadius: "reject", presenceCode: false }));
+check("JSON hỏng về mặc định", parsePolicy("{oops").presenceCode === false);
+check("giá trị lạ về reject", parsePolicy('{"outsideRadius":"allow","presenceCode":"yes"}').outsideRadius === "reject");
+check("chưa bắt mã có mặt thì GPS luôn chặn dù cấu hình flag", rejectsOutsideRadius({ outsideRadius: "flag", presenceCode: false }) === true);
+check("bắt mã có mặt + flag thì GPS chỉ gắn cờ", rejectsOutsideRadius({ outsideRadius: "flag", presenceCode: true }) === false);
+check("bắt mã có mặt + reject vẫn chặn", rejectsOutsideRadius({ outsideRadius: "reject", presenceCode: true }) === true);
+
+check("UA Chrome Windows", summarizeUserAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0 Safari/537.36") === "Chrome · Windows");
+check("UA Cốc Cốc", summarizeUserAgent("Mozilla/5.0 (Windows NT 10.0) AppleWebKit/537.36 (KHTML, like Gecko) coc_coc_browser/130.0 Chrome/130.0 CocCoc Safari/537.36").startsWith("Cốc Cốc"));
+check("UA curl là công cụ", summarizeUserAgent("curl/8.7.1") === "Công cụ / script");
 
 console.log(`\n===== ${pass} đạt / ${fail} hỏng =====`);
 if (bad.length) bad.forEach((f) => console.log(" -", f));

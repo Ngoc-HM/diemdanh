@@ -1,6 +1,7 @@
 import { execute, queryOne } from "@/lib/db";
 import { badRequest, handle, notFound, requireAdmin } from "@/lib/auth-guard";
 import { hashPassword } from "@/lib/utils";
+import { logLoginEvent } from "@/lib/security-log";
 
 export async function POST(
   req: Request,
@@ -14,16 +15,24 @@ export async function POST(
 
     if (password.length < 6) badRequest("Mật khẩu phải có ít nhất 6 ký tự");
 
-    const user = await queryOne<{ id: string }>(
-      `SELECT "id" FROM "User" WHERE "id" = $1`,
+    const user = await queryOne<{ id: string; email: string }>(
+      `SELECT "id", "email" FROM "User" WHERE "id" = $1`,
       [id]
     );
     if (!user) notFound("Không tìm thấy nhân viên");
 
+    // Admin đặt lại mật khẩu: các phiên đang mở của nhân viên bị đăng xuất.
     await execute(
-      `UPDATE "User" SET "password" = $2, "updatedAt" = now() WHERE "id" = $1`,
+      `UPDATE "User" SET "password" = $2, "sessionVersion" = "sessionVersion" + 1,
+              "updatedAt" = now()
+        WHERE "id" = $1`,
       [id, await hashPassword(password)]
     );
+    await logLoginEvent(req, "password_reset", {
+      type: "employee",
+      id,
+      identifier: `${user!.email} (admin đặt lại)`,
+    });
 
     return { success: true };
   }, "Reset password error");

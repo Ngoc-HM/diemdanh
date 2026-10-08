@@ -37,6 +37,9 @@ export type SessionPayload = {
   role: "admin" | "employee";
   name: string;
   email: string;
+  /// Phiên bản phiên của tài khoản (cột sessionVersion). Đổi / đặt lại mật
+  /// khẩu, bật / tắt 2 lớp thì cột này tăng và JWT cũ hết hiệu lực.
+  sv?: number;
 };
 
 export const SESSION_COOKIE = "session";
@@ -78,7 +81,31 @@ export async function verifySession(
   const secret = getSecret();
   try {
     const { payload } = await jwtVerify(token, secret);
+    // Vé tạm của bước 2 lớp ký cùng khoá nhưng không phải phiên đăng nhập.
+    if (payload.purpose) return null;
     return payload as unknown as VerifiedSession;
+  } catch {
+    return null;
+  }
+}
+
+/// Vé tạm sau khi nhập đúng mật khẩu, chờ nhập mã 2 lớp. Sống 5 phút, mang
+/// nguyên thông tin phiên sẽ cấp; verifySession luôn từ chối loại vé này.
+export async function signMfaChallenge(payload: SessionPayload) {
+  return await new SignJWT({ ...payload, purpose: "mfa" })
+    .setProtectedHeader({ alg: "HS256" })
+    .setIssuedAt()
+    .setExpirationTime("5m")
+    .sign(getSecret());
+}
+
+export async function verifyMfaChallenge(token: string): Promise<SessionPayload | null> {
+  const secret = getSecret();
+  try {
+    const { payload } = await jwtVerify(token, secret);
+    if (payload.purpose !== "mfa") return null;
+    const { userId, role, name, email, sv } = payload as unknown as SessionPayload;
+    return { userId, role, name, email, sv };
   } catch {
     return null;
   }

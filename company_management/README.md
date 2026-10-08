@@ -58,6 +58,37 @@ Vị trí bắt buộc nằm trong bán kính của một `WorkLocation` đang b
 từ chối. Trường hợp sai vị trí hoặc quên bấm giờ thì admin bổ sung tay ở trang chi
 tiết nhân viên (các dòng nhập tay được đánh dấu `isManual`).
 
+### Chống chấm công hộ / giả vị trí (trang Bảo mật)
+
+GPS do trình duyệt tự báo nên giả được (bài test ngày 06/10/2026 đã vượt qua từ
+nhà). Phòng thủ đặt ở chính server, không phụ thuộc máy tấn công là máy nào:
+
+- **Mã có mặt** (`lib/presence.ts`): một màn hình đặt cố định ở văn phòng mở
+  `/kiosk`, hiện mã 6 số đổi mỗi 30 giây. Bật "Bắt nhập mã có mặt" ở
+  `/admin/security` thì nhân viên phải nhập mã đang hiện khi bấm Vào / Ra ca —
+  ngồi nhà không thấy màn hình. Nhận mã hiện tại và mã ngay trước (chậm tay);
+  sai 5 lần trong 10 phút thì tạm chặn. Chưa có màn hình nào thì không bật được.
+- **Ghép nối màn hình**: admin bấm "Thêm màn hình", mở link `/kiosk?pair=…` trên
+  chính máy đó (link dùng một lần, hết hạn sau 24 giờ). Máy nhận cookie bí mật
+  riêng, server chỉ lưu băm (`KioskDevice`). Thu hồi màn hình thì khoá sinh mã
+  đổi luôn — mã ai chụp lại trước đó vô dụng. `/kiosk` không bị chặn điện thoại /
+  máy tính bảng, không cần đăng nhập.
+- **GPS thành tín hiệu phụ**: khi đã bắt mã có mặt, admin chọn "Vẫn nhận, gắn cờ"
+  thì ngoài bán kính / không lấy được vị trí vẫn nhận (máy bàn hay báo sai vị
+  trí) nhưng lưu `withinRadius = false`, ngày đó vào diện xem lại. Chưa bắt mã có
+  mặt thì GPS luôn chặn như cũ dù chọn gì.
+- **Nhật ký mọi lần bấm** (`PunchAttempt`, `lib/punch-audit.ts`): cả lần bị từ
+  chối, kèm lý do, IP, trình duyệt, khoảng cách, độ chính xác GPS và cờ bất
+  thường (ngoài bán kính, không có vị trí, GPS kém chính xác, **IP dùng chung** —
+  cùng một IP chấm công thành công cho người khác trong 15 phút). Xem ở tab Chấm
+  công của `/admin/security`, lọc "Chỉ hiện bất thường".
+
+IP lấy từ `X-Forwarded-For` do Caddy đặt (Caddy bỏ giá trị client tự gửi). Chạy
+thẳng cổng 3000 không qua Caddy thì cột IP trống.
+
+Mặc định (migration 020) mọi thứ **tắt** — hành vi giống hệt trước, chỉ thêm
+nhật ký. Bật khi màn hình ở văn phòng đã sẵn sàng.
+
 ### Bảng chấm công gửi kế toán
 
 `/admin/attendance/monthly` → nút **Xuất Excel** tải file `.xlsx` của tháng đang
@@ -250,6 +281,39 @@ dùng đều đặn thì không bao giờ phải đăng nhập lại; nghỉ h�
 - Đang bị khoá mà **đổi mật khẩu bằng mã ở "Quên mật khẩu"** thì khoá được gỡ
   ngay — người dùng thật vừa chứng minh họ đọc được hộp thư của chính mình.
 - Admin bị khoá thì phải chờ hết 15 phút, vì không có luồng quên mật khẩu.
+- Nhập sai mã 2 lớp đếm chung bộ đếm này.
+
+Phiên mang số `sv` (cột `sessionVersion`). **Đổi / đặt lại mật khẩu, bật / tắt 2
+lớp** thì số này tăng: mọi phiên khác của tài khoản bị đăng xuất ngay ở request
+kế tiếp (`requireAdmin` / `requireEmployee` / `/api/auth/session`), người đang
+thao tác được ký lại phiên nên không bị đá ra. Admin đặt lại mật khẩu cho nhân
+viên cũng đăng xuất nhân viên đó.
+
+Nhật ký tài khoản (`LoginEvent`, `lib/security-log.ts`): đăng nhập, sai mật khẩu,
+sai mã 2 lớp, bật / tắt 2 lớp, đổi / đặt lại mật khẩu, kèm IP và trình duyệt —
+tab Đăng nhập của `/admin/security`.
+
+### Xác thực 2 lớp
+
+Admin (trang Tài khoản `/admin/change-password`) và nhân viên (Cài đặt) tự bật
+bằng app **Google Authenticator** / Microsoft Authenticator — chuẩn TOTP, không
+cài gì thêm trên server, không gọi dịch vụ ngoài (`lib/totp.ts`, `lib/two-factor.ts`).
+
+- Bật: nhập mật khẩu → quét QR → nhập mã 6 số để xác nhận → nhận **10 mã dự
+  phòng** (hiện một lần, mỗi mã dùng một lần). Tắt cần mật khẩu + mã.
+- Đăng nhập: đúng mật khẩu thì chỉ nhận vé tạm 5 phút (cookie `mfa_challenge`,
+  không dùng thay phiên được), nhập mã ở bước 2 mới có phiên. Một mã 6 số không
+  dùng lại được (`totpLastStep`).
+- Khoá TOTP lưu mã hoá bằng khoá dẫn xuất từ `AUTH_SECRET`; mã dự phòng chỉ lưu
+  HMAC. **Đổi `AUTH_SECRET` là mọi tài khoản đã bật 2 lớp không đăng nhập được**
+  cho tới khi tắt 2 lớp bằng SQL bên dưới.
+- Nhân viên mất điện thoại: admin bấm nút khiên gạch ở `/admin/users` để tắt hộ.
+- Admin mất cả điện thoại lẫn mã dự phòng: chạy trên server
+
+  ```bash
+  docker compose -p company_management exec -T db psql -U postgres -d company_mana -c \
+    "UPDATE \"Admin\" SET \"totpSecret\"=NULL, \"totpPendingSecret\"=NULL, \"totpEnabledAt\"=NULL, \"totpBackupCodes\"=NULL, \"totpLastStep\"=NULL, \"sessionVersion\"=\"sessionVersion\"+1 WHERE \"username\"='admin';"
+  ```
 
 ### Email
 
@@ -358,13 +422,14 @@ file cũ đã chạy.
 |---|---|
 | `/login` | Công khai — đăng nhập chung cho admin và nhân viên |
 | `/forgot-password`, `/desktop-only` | Công khai |
+| `/kiosk` | Màn hình ở văn phòng (đã ghép nối) — hiện mã có mặt |
 | `/dashboard` | Nhân viên — check in / check out |
 | `/dashboard/schedule` | Nhân viên — đăng ký lịch tháng |
 | `/dashboard/history` | Nhân viên — lịch sử chấm công |
 | `/dashboard/work-reports` | Nhân viên — khai nội dung công việc theo khoảng thời gian |
 | `/dashboard/shift-requests` | Nhân viên — gửi yêu cầu đổi ca / xin nghỉ một ngày |
 | `/dashboard/overtime` | Nhân viên — làm phiếu OT |
-| `/dashboard/settings` | Nhân viên — đổi họ tên, email, ảnh đại diện, mật khẩu |
+| `/dashboard/settings` | Nhân viên — đổi họ tên, email, ảnh đại diện, mật khẩu, xác thực 2 lớp |
 | `/admin/attendance/monthly` | Admin — bảng chấm công tháng, xuất Excel |
 | `/admin/attendance/user/[userId]` | Admin — chi tiết theo ngày, sửa công tay |
 | `/admin/schedules` | Admin — lịch cả công ty, xếp lịch cho nhân viên |
@@ -377,8 +442,10 @@ file cũ đã chạy.
 | `/admin/sessions` | Admin — danh mục ca |
 | `/admin/locations` | Admin — vị trí GPS |
 | `/admin/holidays` | Admin — ngày lễ |
+| `/admin/security` | Admin — chính sách chấm công, màn hình mã có mặt, nhật ký chấm công / đăng nhập |
 | `/admin/access-violations` | Admin — nhật ký truy cập lạ |
-| `/admin/company`, `/admin/email`, `/admin/change-password` | Admin |
+| `/admin/change-password` | Admin — Tài khoản: xác thực 2 lớp, đổi mật khẩu |
+| `/admin/company`, `/admin/email` | Admin |
 
 Menu của cả hai khu vực có thêm mục **ClickUp** mở `https://app.clickup.com` ở
 tab mới.
@@ -423,6 +490,11 @@ lib/
 ├── validation.ts       # Chuẩn hoá + kiểm tra input dùng chung
 ├── session.ts          # JWT session qua cookie
 ├── login-throttle.ts   # Đếm đăng nhập sai, khoá tạm tài khoản
+├── totp.ts             # TOTP (RFC 6238) cho 2 lớp và mã có mặt
+├── two-factor.ts       # Bật / tắt / kiểm tra xác thực 2 lớp, mã dự phòng
+├── presence.ts         # Mã có mặt, màn hình kiosk, chính sách chấm công
+├── punch-audit.ts      # Nhật ký mọi lần bấm giờ + cờ bất thường
+├── security-log.ts     # Nhật ký đăng nhập / đổi mật khẩu
 ├── mailer.ts           # Cấu hình SMTP trong Settings + gửi email
 └── reminder.ts         # Email nhắc đăng ký lịch theo ngày mở cửa sổ
 

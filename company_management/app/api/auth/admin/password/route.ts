@@ -2,6 +2,9 @@ import { execute, queryOne } from "@/lib/db";
 import { badRequest, handle, HttpError, requireAdmin } from "@/lib/auth-guard";
 import { hashPassword, verifyPassword } from "@/lib/utils";
 import { AdminRow } from "@/lib/types";
+import { reissueSession } from "@/lib/session";
+import { logLoginEvent } from "@/lib/security-log";
+import { bumpSessionVersion } from "@/lib/two-factor";
 
 function isBcryptHash(value: string) {
   return value.startsWith("$2a$") || value.startsWith("$2b$") || value.startsWith("$2y$");
@@ -35,6 +38,10 @@ export async function PUT(req: Request) {
         `UPDATE "Admin" SET "password" = $1, "updatedAt" = now() WHERE "id" = $2`,
         [await hashPassword(newPassword), admin.id]
       );
+      // Đá mọi phiên admin khác ra, giữ phiên đang thao tác.
+      const account = { type: "admin", id: admin.id } as const;
+      await reissueSession(session, await bumpSessionVersion(account));
+      await logLoginEvent(req, "password_changed", { ...account, identifier: session.email });
       return { success: true };
     }
 

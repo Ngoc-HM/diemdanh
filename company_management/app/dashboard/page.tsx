@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { LogIn, LogOut, MapPin } from "lucide-react";
-import { Badge, Button, Card, Message } from "@/app/_components/ui";
+import { Badge, Button, Card, Field, Input, Message } from "@/app/_components/ui";
 import type { DayStatus } from "@/lib/attendance-rules";
 import { DAY_STATUS_TONE } from "@/app/_components/status-styles";
 import DashboardPageHeader from "@/app/dashboard/_components/page-header";
@@ -58,6 +58,9 @@ export default function DashboardPage() {
   const [data, setData] = useState<Payload | null>(null);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
+  /// Công ty bật mã có mặt: phải nhập mã đang hiện trên màn hình ở văn phòng.
+  const [presenceRequired, setPresenceRequired] = useState(false);
+  const [presenceCode, setPresenceCode] = useState("");
   const [message, setMessage] = useState<{
     type: "success" | "error";
     text: string;
@@ -81,6 +84,10 @@ export default function DashboardPage() {
 
   useEffect(() => {
     load();
+    fetch("/api/attendance/policy")
+      .then((response) => (response.ok ? response.json() : null))
+      .then((payload) => setPresenceRequired(Boolean(payload?.presenceCode)))
+      .catch(() => undefined);
   }, [load]);
 
   function getPosition(): Promise<GeolocationCoordinates> {
@@ -101,14 +108,26 @@ export default function DashboardPage() {
     setSubmitting(true);
     setMessage(null);
     try {
-      const coords = await getPosition();
+      if (presenceRequired && !/^\d{6}$/.test(presenceCode.trim())) {
+        throw new Error("Nhập mã có mặt 6 số đang hiện trên màn hình ở văn phòng");
+      }
+      // Đã bắt mã có mặt thì vị trí chỉ là tín hiệu phụ: không lấy được vẫn
+      // gửi, server quyết định theo chính sách của công ty.
+      let coords: GeolocationCoordinates | null = null;
+      try {
+        coords = await getPosition();
+      } catch (error) {
+        if (!presenceRequired) throw error;
+      }
       const response = await fetch("/api/attendance/punch", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           type,
-          latitude: coords.latitude,
-          longitude: coords.longitude,
+          latitude: coords?.latitude ?? null,
+          longitude: coords?.longitude ?? null,
+          accuracy: coords?.accuracy ?? null,
+          presenceCode: presenceRequired ? presenceCode.trim() : undefined,
         }),
       });
       const result = await response.json();
@@ -118,6 +137,7 @@ export default function DashboardPage() {
         type: "success",
         text: type === "in" ? "Đã check-in" : "Đã check-out",
       });
+      setPresenceCode("");
       await load();
     } catch (error) {
       setMessage({
@@ -172,6 +192,26 @@ export default function DashboardPage() {
             {entry?.workedHours ?? 0}h đã làm
           </Badge>
         </div>
+
+        {presenceRequired && (
+          <div className="mt-4 max-w-xs">
+            <Field
+              label="Mã có mặt"
+              required
+              hint="Mã 6 số trên màn hình ở văn phòng, đổi mỗi 30 giây"
+            >
+              <Input
+                value={presenceCode}
+                onChange={(event) => setPresenceCode(event.target.value)}
+                inputMode="numeric"
+                autoComplete="off"
+                placeholder="123456"
+                maxLength={6}
+                className="font-mono text-lg tracking-widest"
+              />
+            </Field>
+          </div>
+        )}
 
         <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
           <Button

@@ -12,6 +12,16 @@ import {
   recordLoginFailure,
 } from "@/lib/login-throttle";
 
+/// Kết quả bước mật khẩu. `twoFactor` = tài khoản đã bật xác thực 2 lớp: chưa
+/// được cấp phiên, phải qua /api/auth/login/2fa. Bộ đếm sai chỉ xoá khi qua
+/// hết các bước, nên dò mã 2 lớp cũng bị khoá như dò mật khẩu.
+export type LoginResult = { session: SessionPayload; twoFactor: boolean };
+
+/// Khoá đếm đăng nhập sai của một phiên sắp cấp — bước 2 lớp dùng lại.
+export function throttleKeyFor(session: SessionPayload): string {
+  return session.role === "admin" ? adminKey(session.email) : employeeKey(session.email);
+}
+
 /// Một trang đăng nhập cho cả hai vai trò, một ô "Email hoặc tên đăng nhập".
 /// Chuỗi nhập vào trùng tên đăng nhập admin (bảng Admin, không phân biệt hoa
 /// thường, có thể là "admin" hay một email) thì vào khu quản trị, không thì tìm
@@ -20,7 +30,7 @@ import {
 export async function login(
   rawIdentifier: string,
   password: string
-): Promise<SessionPayload> {
+): Promise<LoginResult> {
   const identifier = rawIdentifier.trim().toLowerCase();
   const admin = await queryOne<{ username: string }>(
     `SELECT "username" FROM "Admin" WHERE lower("username") = $1`,
@@ -53,15 +63,18 @@ const INVALID_LOGIN = "Tài khoản hoặc mật khẩu không đúng";
 async function loginEmployee(
   rawEmail: string,
   password: string
-): Promise<SessionPayload> {
+): Promise<LoginResult> {
   const email = rawEmail.toLowerCase();
   // Đếm cả email không có trong hệ thống, để không ai suy ra được email nào
   // có tài khoản qua việc có bị khoá hay không.
   const throttleKey = employeeKey(email);
   await assertLoginAllowed(throttleKey, EMPLOYEE_UNLOCK_HINT);
 
-  const user = await queryOne<UserRow>(
-    `SELECT "id", "name", "email", "password", "role", "isActive"
+  const user = await queryOne<
+    UserRow & { sessionVersion: number; twoFactor: boolean }
+  >(
+    `SELECT "id", "name", "email", "password", "role", "isActive", "sessionVersion",
+            "totpSecret" IS NOT NULL AS "twoFactor"
        FROM "User" WHERE "email" = $1`,
     [email]
   );
@@ -80,23 +93,52 @@ async function loginEmployee(
     throw new HttpError(403, "Tài khoản đã ngừng hoạt động. Liên hệ quản trị viên.");
   }
 
-  await clearLoginFailures(throttleKey);
-  return { userId: user.id, role: "employee", name: user.name, email: user.email };
+  if (!user.twoFactor) await clearLoginFailures(throttleKey);
+  return {
+    session: {
+      userId: user.id,
+      role: "employee",
+      name: user.name,
+      email: user.email,
+      sv: user.sessionVersion,
+    },
+    twoFactor: user.twoFactor,
+  };
 }
 
 function isBcryptHash(value: string) {
   return value.startsWith("$2a$") || value.startsWith("$2b$") || value.startsWith("$2y$");
 }
 
+/// Đối chiếu mật khẩu của tài khoản đang đăng nhập — dùng cho các thao tác
+/// nhạy cảm (bật / tắt 2 lớp) để phiên bị lộ không tự làm được.
+export async function verifyAccountPassword(
+  account: { type: "admin" | "employee"; id: string },
+  password: string
+): Promise<boolean> {
+  const row = await queryOne<{ password: string }>(
+    `SELECT "password" FROM ${account.type === "admin" ? '"Admin"' : '"User"'} WHERE "id" = $1`,
+    [account.id]
+  );
+  if (!row || !password) return false;
+  return isBcryptHash(row.password)
+    ? verifyPassword(password, row.password)
+    : account.type === "admin" && row.password === password;
+}
+
 async function loginAdmin(
   username: string,
   password: string
-): Promise<SessionPayload> {
+): Promise<LoginResult> {
   const throttleKey = adminKey(username);
   await assertLoginAllowed(throttleKey);
 
-  const admin = await queryOne<AdminRow>(
-    `SELECT "id", "username", "password" FROM "Admin" WHERE "username" = $1`,
+  const admin = await queryOne<
+    AdminRow & { sessionVersion: number; twoFactor: boolean }
+  >(
+    `SELECT "id", "username", "password", "sessionVersion",
+            "totpSecret" IS NOT NULL AS "twoFactor"
+       FROM "Admin" WHERE "username" = $1`,
     [username]
   );
 
@@ -118,12 +160,16 @@ async function loginAdmin(
       );
     }
 
-    await clearLoginFailures(throttleKey);
+    if (!admin.twoFactor) await clearLoginFailures(throttleKey);
     return {
-      userId: admin.id,
-      role: "admin",
-      name: "Administrator",
-      email: admin.username,
+      session: {
+        userId: admin.id,
+        role: "admin",
+        name: "Administrator",
+        email: admin.username,
+        sv: admin.sessionVersion,
+      },
+      twoFactor: admin.twoFactor,
     };
   }
 
@@ -146,9 +192,13 @@ async function loginAdmin(
 
   await clearLoginFailures(throttleKey);
   return {
-    userId: created!.id,
-    role: "admin",
-    name: "Administrator",
-    email: created!.username,
+    session: {
+      userId: created!.id,
+      role: "admin",
+      name: "Administrator",
+      email: created!.username,
+      sv: 0,
+    },
+    twoFactor: false,
   };
 }

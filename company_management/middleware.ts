@@ -80,6 +80,7 @@ async function withRefreshedSession(session: VerifiedSession) {
     role: session.role,
     name: session.name,
     email: session.email,
+    sv: session.sv,
   });
   response.cookies.set(SESSION_COOKIE, token, sessionCookieOptions());
   return response;

@@ -1,8 +1,12 @@
 import { execute, queryOne } from "@/lib/db";
 import { badRequest, handle, HttpError, notFound, requireEmployee } from "@/lib/auth-guard";
 import { hashPassword, verifyPassword } from "@/lib/utils";
+import { reissueSession } from "@/lib/session";
+import { logLoginEvent } from "@/lib/security-log";
+import { bumpSessionVersion } from "@/lib/two-factor";
 
-/// Nhân viên tự đổi mật khẩu, phải biết mật khẩu hiện tại.
+/// Nhân viên tự đổi mật khẩu, phải biết mật khẩu hiện tại. Đổi xong thì mọi
+/// phiên khác (máy khác, trình duyệt khác) bị đăng xuất.
 export async function POST(req: Request) {
   return handle(async () => {
     const session = await requireEmployee();
@@ -30,6 +34,9 @@ export async function POST(req: Request) {
       `UPDATE "User" SET "password" = $2, "updatedAt" = now() WHERE "id" = $1`,
       [user!.id, await hashPassword(newPassword)]
     );
+    const account = { type: "employee", id: user!.id } as const;
+    await reissueSession(session, await bumpSessionVersion(account));
+    await logLoginEvent(req, "password_changed", { ...account, identifier: session.email });
     return { success: true };
   }, "Change password error");
 }

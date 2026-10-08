@@ -39,13 +39,14 @@ async function loadProfile(userId: string): Promise<Profile> {
 
 /// Phiên đăng nhập mang sẵn tên và email để header hiển thị, nên đổi hồ sơ thì
 /// phải ký lại cookie, nếu không tên cũ còn nằm đó tới khi JWT hết hạn.
-async function refreshSession(profile: Profile) {
+async function refreshSession(profile: Profile, sv: number | undefined) {
   await setSessionCookie(
     await signSession({
       userId: profile.id,
       role: "employee",
       name: profile.name,
       email: profile.email,
+      sv,
     })
   );
 }
@@ -84,7 +85,7 @@ export async function PUT(req: Request) {
     }
     if (!profile) notFound("Không tìm thấy tài khoản");
 
-    await refreshSession(profile);
+    await refreshSession(profile, session.sv);
     return { profile };
   }, "Profile update error");
 }

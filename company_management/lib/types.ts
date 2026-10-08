@@ -21,11 +21,15 @@ export type UserRow = {
 };
 
 /// Hồ sơ nhân viên không kèm mật khẩu — dùng cho mọi response.
-export type EmployeeRow = Omit<UserRow, "password" | "role" | "updatedAt">;
+export type EmployeeRow = Omit<UserRow, "password" | "role" | "updatedAt"> & {
+  /// Đã bật xác thực 2 lớp hay chưa (không bao giờ trả khoá ra ngoài).
+  twoFactorEnabled: boolean;
+};
 
 export const EMPLOYEE_COLUMNS = `
   "id", "employeeCode", "name", "email", "employmentType", "phone",
-  "department", "position", "avatarUrl", "startDate", "isActive", "createdAt"
+  "department", "position", "avatarUrl", "startDate", "isActive", "createdAt",
+  "totpSecret" IS NOT NULL AS "twoFactorEnabled"
 `;
 
 export type WorkSessionRow = {

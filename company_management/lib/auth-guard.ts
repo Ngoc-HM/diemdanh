@@ -11,6 +11,9 @@ export class HttpError extends Error {
   }
 }
 
+/// Phiên cũ sau khi đổi / đặt lại mật khẩu hoặc bật / tắt 2 lớp.
+const SESSION_REVOKED = "Phiên đăng nhập đã hết hiệu lực, vui lòng đăng nhập lại";
+
 /// Trả về session admin, hoặc ném HttpError 401 để `handle` biến thành response.
 /// Phiên là JWT tự ký, sống 7 ngày, nên phải đối chiếu tài khoản còn tồn tại:
 /// admin đã bị xoá mà vẫn giữ cookie thì không được dùng tiếp.
@@ -19,13 +22,17 @@ export async function requireAdmin(): Promise<SessionPayload> {
   if (!session || session.role !== "admin") {
     throw new HttpError(401, "Bạn không có quyền truy cập");
   }
-  const admin = await queryOne<{ id: string }>(
-    `SELECT "id" FROM "Admin" WHERE "id" = $1`,
+  const admin = await queryOne<{ id: string; sessionVersion: number }>(
+    `SELECT "id", "sessionVersion" FROM "Admin" WHERE "id" = $1`,
     [session.userId]
   );
   if (!admin) {
     await clearSessionCookie();
     throw new HttpError(401, "Tài khoản quản trị không còn tồn tại");
+  }
+  if ((session.sv ?? 0) !== admin.sessionVersion) {
+    await clearSessionCookie();
+    throw new HttpError(401, SESSION_REVOKED);
   }
   return session;
 }
@@ -46,13 +53,17 @@ export async function requireEmployee(): Promise<SessionPayload> {
   // Tài khoản bị ngừng hoạt động sau khi đã đăng nhập: cookie còn hạn nhưng
   // không được dùng nữa. Xoá cookie luôn để lần điều hướng kế tiếp middleware
   // đẩy về trang đăng nhập thay vì đợi JWT hết hạn.
-  const user = await queryOne<{ isActive: boolean }>(
-    `SELECT "isActive" FROM "User" WHERE "id" = $1`,
+  const user = await queryOne<{ isActive: boolean; sessionVersion: number }>(
+    `SELECT "isActive", "sessionVersion" FROM "User" WHERE "id" = $1`,
     [session.userId]
   );
   if (!user || !user.isActive) {
     await clearSessionCookie();
     throw new HttpError(403, "Tài khoản đã ngừng hoạt động. Liên hệ quản trị viên.");
+  }
+  if ((session.sv ?? 0) !== user.sessionVersion) {
+    await clearSessionCookie();
+    throw new HttpError(401, SESSION_REVOKED);
   }
   return session;
 }
