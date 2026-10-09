@@ -47,6 +47,7 @@ import {
   verifyTotp,
 } from "../lib/totp.ts";
 import { summarizeUserAgent } from "../lib/security-labels.ts";
+import { findMatchingCidr, ipInCidr, normalizeCidr, parseIpv4, parsePunchNetwork } from "../lib/ip-match.ts";
 import {
   attendanceEditNotice,
   composeNoticeEmail,
@@ -551,6 +552,20 @@ check("OT sửa giờ: tiêu đề riêng", overtimeNotice({ date: "2026-10-04",
 const composed = composeNoticeEmail(editNotice, { name: "An", companyName: "Sao Mộc" });
 check("email: tiền tố + lời chào + chỉ chỗ xem lại", composed.subject.startsWith("[Chấm công] ") && composed.text.startsWith("Chào An,") && composed.text.includes('mục "Lịch sử chấm công"'));
 check("email: không có đường link nào", !/https?:|www\.|\/dashboard/i.test(composed.text), composed.text);
+
+console.log("\n== chặn theo IP ==");
+check("IPv4 hợp lệ", parseIpv4("192.168.1.26") === 3232235802);
+check("IPv4 sai bị loại", [parseIpv4("256.1.1.1"), parseIpv4("1.2.3"), parseIpv4("::1"), parseIpv4("a.b.c.d")].every((value) => value === null));
+check("chuẩn hoá dải: xoá phần host", normalizeCidr(" 192.168.1.77/24 ") === "192.168.1.0/24", `(${normalizeCidr(" 192.168.1.77/24 ")})`);
+check("chuẩn hoá /32 về một IP", normalizeCidr("10.1.2.3/32") === "10.1.2.3");
+check("chuẩn hoá: sai định dạng → null", [normalizeCidr("1.2.3.4/0"), normalizeCidr("1.2.3.4/33"), normalizeCidr("1.2.3.4/24/1"), normalizeCidr("")].every((value) => value === null));
+check("IP trong dải /24", ipInCidr("192.168.1.255", "192.168.1.0/24") && !ipInCidr("192.168.2.0", "192.168.1.0/24"));
+check("IP gateway Docker (Tailscale) không thuộc mạng văn phòng", !ipInCidr("172.19.0.1", "192.168.1.0/24"));
+check("một IP chỉ khớp đúng nó", ipInCidr("192.168.1.26", "192.168.1.26") && !ipInCidr("192.168.1.27", "192.168.1.26"));
+check("dải lớn /1", ipInCidr("255.255.255.255", "128.0.0.0/1") && !ipInCidr("127.255.255.255", "128.0.0.0/1"));
+check("tìm dải khớp đầu tiên", findMatchingCidr("10.0.0.5", ["192.168.1.26", "10.0.0.0/8"]) === "10.0.0.0/8" && findMatchingCidr(null, ["0.0.0.0/1"]) === null);
+check("cấu hình mạng chấm công mặc định", JSON.stringify(parsePunchNetwork('{"enabled":true,"ranges":["192.168.1.0/24"]}')) === JSON.stringify({ enabled: true, ranges: ["192.168.1.0/24"] }));
+check("bật mà không có dải hợp lệ thì coi như tắt", parsePunchNetwork('{"enabled":true,"ranges":["bừa"]}').enabled === false);
 
 console.log(`\n===== ${pass} đạt / ${fail} hỏng =====`);
 if (bad.length) bad.forEach((f) => console.log(" -", f));

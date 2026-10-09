@@ -49,12 +49,13 @@ function makeJar() {
   };
 }
 
-async function call(jar, method, path, body) {
+async function call(jar, method, path, body, extraHeaders = {}) {
   const res = await fetch(BASE + path, {
     method,
     headers: {
       "Content-Type": "application/json",
       ...(jar.header() ? { Cookie: jar.header() } : {}),
+      ...extraHeaders,
     },
     body: body === undefined ? undefined : JSON.stringify(body),
     redirect: "manual",
@@ -188,6 +189,8 @@ async function main() {
   // Cấu hình SMTP trước khi test trỏ sang máy chủ giả; null = chưa kịp đọc.
   let previousEmail = null;
   let sink = null;
+  // Dải mạng chấm công trước khi test đổi; null = chưa kịp đọc.
+  let previousNetwork = null;
 
   try {
     console.log("\n== xác thực ==");
@@ -214,6 +217,14 @@ async function main() {
 
     r = await call(admin, "GET", "/api/auth/session");
     check("session trả về vai trò admin", r.json?.user?.role === "admin");
+
+    // Test gọi thẳng cổng 3000 (không qua Caddy) nên không có IP: tắt "chỉ chấm
+    // công từ mạng văn phòng" cho các phần chấm công bên dưới, phần riêng về
+    // mạng chấm công sẽ bật lại và giả IP bằng X-Forwarded-For.
+    previousNetwork = (await client.query(`SELECT "value" FROM "Settings" WHERE "key" = 'punch_network'`)).rows[0] ?? { value: undefined };
+    r = await call(admin, "GET", "/api/admin/security/network");
+    r = await call(admin, "PUT", "/api/admin/security/network", { enabled: false, ranges: r.json.network?.ranges ?? [] });
+    check("tạm tắt chặn theo mạng cho các test chấm công", r.status === 200 && r.json.network?.enabled === false, `(${r.status})`);
 
     console.log("\n== cấu hình email ==");
     r = await call(admin, "GET", "/api/admin/email-settings");
@@ -953,6 +964,107 @@ async function main() {
       `(${suspiciousRows.length})`
     );
 
+    console.log("\n== mạng chấm công ==");
+    const fromIp = (ip) => ({ "X-Forwarded-For": ip });
+    const punchFrom = (headers) =>
+      call(emp, "POST", "/api/attendance/punch", { type: "out", latitude: 21.0, longitude: 105.8, accuracy: 20 }, headers);
+    r = await call(admin, "PUT", "/api/admin/security/network", { enabled: true, ranges: ["10.77.0.0/16", "bừa"] });
+    check("chặn dải IP sai định dạng", r.status === 400, `(${r.status})`);
+    r = await call(admin, "PUT", "/api/admin/security/network", { enabled: true, ranges: [] });
+    check("bật mà không có dải nào thì chặn", r.status === 400, `(${r.status})`);
+    r = await call(admin, "PUT", "/api/admin/security/network", { enabled: true, ranges: ["10.77.9.9/16"] });
+    check("bật chỉ chấm công từ mạng văn phòng (dải được chuẩn hoá)", r.status === 200 && r.json.network?.enabled === true && r.json.network?.ranges?.[0] === "10.77.0.0/16", JSON.stringify(r.json.network));
+    r = await call(emp, "GET", "/api/admin/security/network");
+    check("nhân viên không xem / sửa được mạng chấm công", r.status === 401, `(${r.status})`);
+    r = await punchFrom(fromIp("10.77.3.4"));
+    check("máy trong mạng văn phòng chấm công được", r.status === 200, `(${r.status} ${r.json.error ?? ""})`);
+    r = await punchFrom(fromIp("172.19.0.1"));
+    check("máy ngoài mạng (vd vào qua Tailscale) bị từ chối", r.status === 400 && /mạng của văn phòng/.test(r.json.error ?? ""), `(${r.status} ${r.json.error})`);
+    r = await punchFrom({});
+    check("không xác định được IP cũng bị từ chối", r.status === 400, `(${r.status})`);
+    const networkRejects = await client.query(
+      `SELECT count(*)::int AS n FROM "PunchAttempt" WHERE "userId" = $1 AND "reason" = 'outside_network'`,
+      [employeeId]
+    );
+    check("lần bị từ chối vì ngoài mạng có trong nhật ký", networkRejects.rows[0].n >= 2, `(${networkRejects.rows[0].n})`);
+    r = await call(admin, "PUT", "/api/admin/security/network", { enabled: false, ranges: ["10.77.0.0/16"] });
+    check("tắt lại chặn theo mạng", r.status === 200 && r.json.network?.enabled === false, `(${r.status})`);
+
+    console.log("\n== chặn IP (blacklist) ==");
+    const BLOCKED = "10.66.0.5";
+    const lockedAt = async () =>
+      (await client.query(`SELECT "lockedAt", "lockReason" FROM "User" WHERE "id" = $1`, [employeeId])).rows[0];
+    r = await call(admin, "POST", "/api/admin/security/blocked-ips", { cidr: "bừa" });
+    check("chặn IP sai định dạng", r.status === 400, `(${r.status})`);
+    r = await call(admin, "POST", "/api/admin/security/blocked-ips", { cidr: "10.66.0.0/24" }, fromIp("10.66.0.9"));
+    check("không cho chặn chính IP admin đang dùng", r.status === 400 && /đang truy cập/.test(r.json.error ?? ""), `(${r.status} ${r.json.error})`);
+    r = await call(emp, "POST", "/api/admin/security/blocked-ips", { cidr: BLOCKED });
+    check("nhân viên không thêm được IP chặn", r.status === 401, `(${r.status})`);
+    r = await call(admin, "POST", "/api/admin/security/blocked-ips", { cidr: BLOCKED, note: "__smoketest máy trung chuyển" });
+    const blockedId = r.json.item?.id;
+    check("admin chặn một IP", r.status === 200 && r.json.item?.cidr === BLOCKED, `(${r.status})`);
+    r = await call(admin, "POST", "/api/admin/security/blocked-ips", { cidr: BLOCKED });
+    check("chặn trùng IP thì báo đã có", r.status === 409, `(${r.status})`);
+    r = await call(admin, "POST", "/api/admin/security/blocked-ips", { cidr: "10.88.1.7/24", note: "__smoketest dải" });
+    const rangeId = r.json.item?.id;
+    check("chặn cả dải (được chuẩn hoá về 10.88.1.0/24)", r.json.item?.cidr === "10.88.1.0/24", `(${r.json.item?.cidr})`);
+
+    const blockedPage = await fetch(BASE + "/login", { headers: fromIp(BLOCKED) });
+    const blockedHtml = await blockedPage.text();
+    check("IP bị chặn mở trang nào cũng bị chặn", blockedPage.status === 403 && blockedHtml.includes("Truy cập bị chặn"), `(${blockedPage.status})`);
+    r = await call(makeJar(), "GET", "/api/settings/company", undefined, fromIp("10.88.1.200"));
+    check("IP nằm trong dải bị chặn cũng không gọi được API", r.status === 403, `(${r.status})`);
+    r = await call(makeJar(), "GET", "/api/settings/company", undefined, fromIp("10.66.0.6"));
+    check("IP ngay cạnh không bị chặn nhầm", r.status === 200, `(${r.status})`);
+
+    r = await call(admin, "GET", "/api/users", undefined, fromIp(BLOCKED));
+    check("admin vào từ IP bị chặn cũng bị chặn", r.status === 403, `(${r.status})`);
+    r = await call(admin, "GET", "/api/users");
+    check("nhưng admin không bị khoá (vào từ IP khác vẫn được)", r.status === 200, `(${r.status})`);
+
+    r = await call(emp, "GET", "/api/attendance", undefined, fromIp(BLOCKED));
+    check("nhân viên đang đăng nhập dùng IP bị chặn thì bị chặn", r.status === 403, `(${r.status})`);
+    let lock = await lockedAt();
+    check("và tài khoản bị khoá ngay", Boolean(lock?.lockedAt) && (lock?.lockReason ?? "").includes(BLOCKED), JSON.stringify(lock));
+    r = await call(emp, "GET", "/api/attendance");
+    check("phiên của tài khoản bị khoá hết dùng được ở mọi nơi", r.status === 401 || r.status === 403, `(${r.status})`);
+    r = await call(makeJar(), "POST", "/api/auth/login", { email: EMP_EMAIL, password: EMP_PASS });
+    check("tài khoản bị khoá không đăng nhập được", r.status === 403 && /bị khoá/.test(r.json.error ?? ""), `(${r.status} ${r.json.error})`);
+    r = await call(admin, "GET", "/api/users");
+    check("trang Nhân viên thấy tài khoản bị khoá kèm lý do", Boolean(r.json.users?.find((user) => user.id === employeeId)?.lockReason));
+    r = await call(emp, "POST", `/api/users/${employeeId}/unlock`);
+    check("nhân viên không tự mở khoá được", r.status === 401 || r.status === 403, `(${r.status})`);
+    r = await call(admin, "POST", `/api/users/${employeeId}/unlock`);
+    check("admin mở khoá", r.status === 200, `(${r.status})`);
+    r = await call(admin, "POST", `/api/users/${employeeId}/unlock`);
+    check("mở khoá tài khoản không bị khoá thì báo 404", r.status === 404, `(${r.status})`);
+
+    r = await call(makeJar(), "POST", "/api/auth/login", { email: EMP_EMAIL, password: "sai-mat-khau" }, fromIp(BLOCKED));
+    check("đăng nhập sai mật khẩu từ IP bị chặn: chặn", r.status === 403, `(${r.status})`);
+    check("sai mật khẩu thì không khoá ai", !(await lockedAt())?.lockedAt);
+    r = await call(makeJar(), "POST", "/api/auth/login", { email: EMP_EMAIL, password: EMP_PASS }, fromIp(BLOCKED));
+    check("đăng nhập đúng mật khẩu từ IP bị chặn: không cho vào", r.status === 403, `(${r.status})`);
+    lock = await lockedAt();
+    check("và khoá luôn tài khoản đó", Boolean(lock?.lockedAt) && (lock?.lockReason ?? "").startsWith("đăng nhập từ IP bị chặn"), JSON.stringify(lock));
+    r = await call(admin, "POST", `/api/users/${employeeId}/unlock`);
+
+    r = await call(makeJar(), "POST", "/api/auth/login", { email: EMP_EMAIL, password: EMP_PASS }, { "x-blocked-ip": "spoofed" });
+    check("tự gửi header x-blocked-ip không làm khoá ai", r.status === 200 && !(await lockedAt())?.lockedAt, `(${r.status})`);
+    r = await call(emp, "POST", "/api/auth/login", { email: EMP_EMAIL, password: EMP_PASS });
+    check("nhân viên đăng nhập lại sau khi mở khoá", r.status === 200, `(${r.status})`);
+
+    r = await call(admin, "GET", "/api/admin/security/log?tab=login&days=1");
+    const ipEvents = (r.json.rows ?? []).filter((row) => (row.identifier ?? "").includes("__smoketest_employee"));
+    for (const [event, label] of [["account_locked", "khoá tài khoản"], ["account_unlocked", "mở khoá"], ["blocked_ip", "đăng nhập từ IP bị chặn"]]) {
+      check(`nhật ký có sự kiện ${label}`, ipEvents.some((row) => row.event === event));
+    }
+
+    r = await call(admin, "DELETE", `/api/admin/security/blocked-ips/${blockedId}`);
+    check("bỏ chặn IP", r.status === 200, `(${r.status})`);
+    await call(admin, "DELETE", `/api/admin/security/blocked-ips/${rangeId}`);
+    const unblockedPage = await fetch(BASE + "/login", { headers: fromIp(BLOCKED) });
+    check("bỏ chặn là vào lại được ngay", unblockedPage.status === 200, `(${unblockedPage.status})`);
+
     console.log("\n== email thông báo nhân viên (máy chủ SMTP giả) ==");
     previousEmail = (await client.query(`SELECT "value" FROM "Settings" WHERE "key" = 'email_config'`)).rows[0] ?? { value: undefined };
     sink = await startSmtpSink();
@@ -1620,6 +1732,14 @@ async function main() {
       }
     }
     sink?.server.close();
+    await client.query(`DELETE FROM "BlockedIp" WHERE "note" LIKE '__smoketest%'`);
+    if (previousNetwork) {
+      if (previousNetwork.value === undefined) {
+        await client.query(`DELETE FROM "Settings" WHERE "key" = 'punch_network'`);
+      } else {
+        await client.query(`UPDATE "Settings" SET "value" = $1 WHERE "key" = 'punch_network'`, [previousNetwork.value]);
+      }
+    }
     await client.query(`DELETE FROM "LoginEvent" WHERE "identifier" ILIKE '%@_@_smoketest%' ESCAPE '@'`);
     // Trả lại cửa sổ đăng ký lịch như trước khi test.
     if (previousWindow) {

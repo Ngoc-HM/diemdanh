@@ -18,11 +18,18 @@ export async function GET() {
       isActive: boolean;
       avatarUrl: string | null;
       sessionVersion: number;
+      locked: boolean;
     }>(
-      `SELECT "isActive", "avatarUrl", "sessionVersion" FROM "User" WHERE "id" = $1`,
+      `SELECT "isActive", "avatarUrl", "sessionVersion", "lockedAt" IS NOT NULL AS "locked"
+         FROM "User" WHERE "id" = $1`,
       [session.userId]
     );
-    if (!user || !user.isActive || user.sessionVersion !== (session.sv ?? 0)) {
+    if (
+      !user ||
+      !user.isActive ||
+      user.locked ||
+      user.sessionVersion !== (session.sv ?? 0)
+    ) {
       await clearSessionCookie();
       return NextResponse.json({ user: null });
     }

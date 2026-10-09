@@ -7,6 +7,52 @@ import {
   verifySession,
   type VerifiedSession,
 } from "@/lib/session-token";
+import { clientIp } from "@/lib/request-meta";
+import { findMatchingCidr } from "@/lib/ip-match";
+import {
+  BLOCKED_IP_HEADER,
+  BLOCKED_MESSAGE,
+  getBlockedRanges,
+  lockEmployee,
+} from "@/lib/ip-policy";
+
+/// Hai route đăng nhập vẫn được đi tiếp (kèm header) khi IP bị chặn: chỉ ở đó
+/// mới biết người đang dùng IP này là tài khoản nào để khoá.
+const LOGIN_ROUTES = new Set(["/api/auth/login", "/api/auth/login/2fa"]);
+
+/// Các đường dẫn giao diện cần chặn điện thoại / kiểm tra phiên như trước.
+const PAGE_PATHS = new Set([
+  "/",
+  "/login",
+  "/forgot-password",
+  "/reset-password",
+  "/desktop-only",
+  "/canh-bao",
+]);
+
+const BLOCKED_PAGE = `<!doctype html><html lang="vi"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Truy cập bị chặn</title></head><body style="margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;background:#0f172a;color:#e2e8f0;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif"><main style="max-width:480px;padding:32px;text-align:center"><h1 style="font-size:28px;margin:0 0 12px;color:#fff">Truy cập bị chặn</h1><p style="font-size:16px;line-height:1.6;margin:0">${BLOCKED_MESSAGE} Lần truy cập này đã được ghi lại. Nếu bạn cho rằng có nhầm lẫn, hãy liên hệ quản trị viên.</p></main></body></html>`;
+
+/// IP nằm trong blacklist: chặn mọi trang và API. Nếu request mang phiên của
+/// một nhân viên thì khoá luôn tài khoản đó (admin thì chỉ chặn, không khoá,
+/// tránh admin tự khoá mất quyền quản trị).
+async function blockRequest(req: NextRequest, ip: string, cidr: string) {
+  const token = req.cookies.get(SESSION_COOKIE)?.value;
+  const session = token ? await verifySession(token) : null;
+  const lockAccount = session?.role === "employee";
+  if (lockAccount) {
+    await lockEmployee(req, session.userId, `truy cập từ IP bị chặn ${ip} (${cidr})`);
+  }
+
+  const response = req.nextUrl.pathname.startsWith("/api/")
+    ? NextResponse.json({ error: BLOCKED_MESSAGE }, { status: 403 })
+    : new NextResponse(BLOCKED_PAGE, {
+        status: 403,
+        headers: { "content-type": "text/html; charset=utf-8" },
+      });
+  // Phiên nhân viên vừa bị khoá thì xoá cookie luôn; admin chỉ bị chặn ở IP này.
+  if (lockAccount) response.cookies.delete(SESSION_COOKIE);
+  return response;
+}
 
 /// Hệ thống chỉ dùng trên máy tính. Điện thoại và máy tính bảng bị đưa sang
 /// trang thông báo. iPad đời mới tự nhận là máy Mac nên không chặn được.
@@ -32,9 +78,29 @@ function redirectTo(req: NextRequest, pathname: string) {
   return NextResponse.redirect(url);
 }
 
-/// Chặn ngay ở tầng edge thay vì để client tự redirect sau khi đã render.
+/// Chặn ngay ở cửa vào thay vì để client tự redirect sau khi đã render.
 export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
+
+  const ip = clientIp(req);
+  const blockedBy = ip ? findMatchingCidr(ip, await getBlockedRanges()) : null;
+  if (blockedBy && !(LOGIN_ROUTES.has(pathname) && req.method === "POST")) {
+    return await blockRequest(req, ip!, blockedBy);
+  }
+  if (blockedBy || req.headers.has(BLOCKED_IP_HEADER)) {
+    const headers = new Headers(req.headers);
+    headers.delete(BLOCKED_IP_HEADER);
+    if (blockedBy) headers.set(BLOCKED_IP_HEADER, `${ip} (${blockedBy})`);
+    return NextResponse.next({ request: { headers } });
+  }
+
+  const isPagePath =
+    PAGE_PATHS.has(pathname) ||
+    pathname === "/admin" ||
+    pathname.startsWith("/admin/") ||
+    pathname === "/dashboard" ||
+    pathname.startsWith("/dashboard/");
+  if (!isPagePath) return NextResponse.next();
 
   if (
     pathname !== DESKTOP_ONLY_PATH &&
@@ -86,15 +152,9 @@ async function withRefreshedSession(session: VerifiedSession) {
   return response;
 }
 
+/// Chạy runtime Node (không phải edge) để tra blacklist trong database. Bắt
+/// mọi đường dẫn — trang, API, ảnh upload — trừ file tĩnh của Next.
 export const config = {
-  matcher: [
-    "/",
-    "/login",
-    "/forgot-password",
-    "/reset-password",
-    "/desktop-only",
-    "/canh-bao",
-    "/admin/:path*",
-    "/dashboard/:path*",
-  ],
+  runtime: "nodejs",
+  matcher: ["/((?!_next/static|_next/image|favicon.ico).*)"],
 };

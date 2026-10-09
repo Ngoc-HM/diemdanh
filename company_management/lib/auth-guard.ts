@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { queryOne } from "@/lib/db";
 import { clearSessionCookie, getSession, SessionPayload } from "@/lib/session";
+import { lockedMessage } from "@/lib/ip-policy";
 
 export class HttpError extends Error {
   constructor(
@@ -53,13 +54,22 @@ export async function requireEmployee(): Promise<SessionPayload> {
   // Tài khoản bị ngừng hoạt động sau khi đã đăng nhập: cookie còn hạn nhưng
   // không được dùng nữa. Xoá cookie luôn để lần điều hướng kế tiếp middleware
   // đẩy về trang đăng nhập thay vì đợi JWT hết hạn.
-  const user = await queryOne<{ isActive: boolean; sessionVersion: number }>(
-    `SELECT "isActive", "sessionVersion" FROM "User" WHERE "id" = $1`,
+  const user = await queryOne<{
+    isActive: boolean;
+    sessionVersion: number;
+    lockedAt: Date | null;
+    lockReason: string | null;
+  }>(
+    `SELECT "isActive", "sessionVersion", "lockedAt", "lockReason" FROM "User" WHERE "id" = $1`,
     [session.userId]
   );
   if (!user || !user.isActive) {
     await clearSessionCookie();
     throw new HttpError(403, "Tài khoản đã ngừng hoạt động. Liên hệ quản trị viên.");
+  }
+  if (user.lockedAt) {
+    await clearSessionCookie();
+    throw new HttpError(403, lockedMessage(user.lockReason));
   }
   if ((session.sv ?? 0) !== user.sessionVersion) {
     await clearSessionCookie();

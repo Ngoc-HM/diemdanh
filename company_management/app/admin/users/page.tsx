@@ -5,6 +5,7 @@ import Link from "next/link";
 import {
   CalendarSearch,
   KeyRound,
+  LockOpen,
   Pencil,
   Plus,
   ShieldOff,
@@ -43,6 +44,8 @@ type Employee = {
   startDate: string | null;
   isActive: boolean;
   twoFactorEnabled: boolean;
+  lockedAt: string | null;
+  lockReason: string | null;
 };
 
 const EMPTY_FORM = {
@@ -196,6 +199,20 @@ export default function UsersPage() {
     load();
   }
 
+  async function unlock(user: Employee) {
+    if (!confirm(`Mở khoá tài khoản của ${user.name}?\nLý do bị khoá: ${user.lockReason ?? "không rõ"}`)) {
+      return;
+    }
+    const response = await fetch(`/api/users/${user.id}/unlock`, { method: "POST" });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      setMessage({ type: "error", text: data.error || "Không mở khoá được" });
+      return;
+    }
+    setMessage({ type: "success", text: `Đã mở khoá ${user.name}` });
+    load();
+  }
+
   /// Nhân viên mất điện thoại / hết mã dự phòng: admin tắt 2 lớp hộ, họ đăng
   /// nhập lại bằng mật khẩu rồi tự bật lại.
   async function resetTwoFactor(user: Employee) {
@@ -296,7 +313,7 @@ export default function UsersPage() {
                   Phòng ban / Chức vụ
                 </th>
                 <th className="px-4 py-3 font-semibold text-slate-900">Liên hệ</th>
-                <th className="w-52 px-4 py-3" />
+                <th className="w-60 px-4 py-3" />
               </tr>
             </thead>
             <tbody>
@@ -326,9 +343,14 @@ export default function UsersPage() {
                       <div className="min-w-0">
                         <div className="font-medium text-slate-900">{user.name}</div>
                         <div className="text-xs text-slate-500">{user.email}</div>
-                        {(!user.isActive || user.twoFactorEnabled) && (
+                        {(!user.isActive || user.twoFactorEnabled || user.lockedAt) && (
                           <div className="mt-1 flex gap-1">
                             {!user.isActive && <Badge tone="danger">Đã ngừng</Badge>}
+                            {user.lockedAt && (
+                              <span title={user.lockReason ?? undefined}>
+                                <Badge tone="danger">Bị khoá</Badge>
+                              </span>
+                            )}
                             {user.twoFactorEnabled && <Badge tone="success">2 lớp</Badge>}
                           </div>
                         )}
@@ -374,6 +396,17 @@ export default function UsersPage() {
                       >
                         <KeyRound size={14} aria-hidden="true" />
                       </Button>
+                      {user.lockedAt && (
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          onClick={() => unlock(user)}
+                          aria-label={`Mở khoá ${user.name}`}
+                          title={`Mở khoá (${user.lockReason ?? "bị khoá"})`}
+                        >
+                          <LockOpen size={14} aria-hidden="true" />
+                        </Button>
+                      )}
                       {user.twoFactorEnabled && (
                         <Button
                           variant="secondary"

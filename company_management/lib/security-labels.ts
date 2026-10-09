@@ -9,7 +9,10 @@ export type LoginEventType =
   | "2fa_disabled"
   | "2fa_reset_by_admin"
   | "password_changed"
-  | "password_reset";
+  | "password_reset"
+  | "account_locked"
+  | "account_unlocked"
+  | "blocked_ip";
 
 export const LOGIN_EVENT_LABELS: Record<LoginEventType, string> = {
   login: "Đăng nhập",
@@ -20,6 +23,9 @@ export const LOGIN_EVENT_LABELS: Record<LoginEventType, string> = {
   "2fa_reset_by_admin": "Admin tắt 2 lớp",
   password_changed: "Đổi mật khẩu",
   password_reset: "Đặt lại mật khẩu",
+  account_locked: "Khoá tài khoản",
+  account_unlocked: "Mở khoá tài khoản",
+  blocked_ip: "Đăng nhập từ IP bị chặn",
 };
 
 export type PunchFlag = "low_accuracy" | "no_accuracy" | "shared_ip";
@@ -34,6 +40,7 @@ export const PUNCH_REASON_LABELS: Record<string, string> = {
   outside_radius: "Ngoài bán kính",
   no_location: "Không có vị trí",
   no_work_location: "Chưa khai báo vị trí",
+  outside_network: "Ngoài mạng văn phòng",
   already_checked_in: "Đã check-in rồi",
   not_checked_in: "Chưa check-in",
 };

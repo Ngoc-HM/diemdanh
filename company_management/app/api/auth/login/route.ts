@@ -5,6 +5,7 @@ import { signMfaChallenge } from "@/lib/session-token";
 import { login } from "@/lib/auth-login";
 import { logLoginEvent } from "@/lib/security-log";
 import { HOME_BY_ROLE, MFA_COOKIE, mfaCookieOptions } from "@/lib/login-flow";
+import { BLOCKED_IP_HEADER, BLOCKED_MESSAGE, lockEmployee } from "@/lib/ip-policy";
 
 /// Đăng nhập chung cho admin và nhân viên bằng email hoặc tên đăng nhập. Trùng
 /// tài khoản admin thì vào khu quản trị, còn lại là nhân viên (lib/auth-login.ts).
@@ -21,6 +22,22 @@ export async function POST(req: Request) {
 
     if (!identifier || !password) {
       badRequest("Vui lòng nhập tài khoản và mật khẩu");
+    }
+
+    // IP nằm trong blacklist (middleware gắn header): không bao giờ cho vào.
+    // Đúng mật khẩu nhân viên thì khoá luôn tài khoản đó; sai thì chỉ chặn.
+    const blockedIp = req.headers.get(BLOCKED_IP_HEADER);
+    if (blockedIp) {
+      const attempt = await login(identifier, password).catch(() => null);
+      await logLoginEvent(req, "blocked_ip", {
+        type: attempt?.session.role ?? "unknown",
+        id: attempt?.session.userId,
+        identifier,
+      });
+      if (attempt?.session.role === "employee") {
+        await lockEmployee(req, attempt.session.userId, `đăng nhập từ IP bị chặn ${blockedIp}`);
+      }
+      throw new HttpError(403, BLOCKED_MESSAGE);
     }
 
     let result;

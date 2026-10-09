@@ -1,14 +1,19 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
+import { Ban, Plus, Save, Trash2 } from "lucide-react";
 import PageHeader from "../_components/page-header";
 import {
   Badge,
+  Button,
   Card,
   EmptyState,
+  Field,
+  Input,
   Message,
   Select,
   TableSkeleton,
+  Textarea,
 } from "@/app/_components/ui";
 import { dateKeyVN, formatTimeVN } from "@/lib/datetime";
 import {
@@ -323,13 +328,291 @@ function SecurityLog() {
   );
 }
 
+type Feedback = { type: "success" | "error"; text: string };
+
+type BlockedIp = {
+  id: string;
+  cidr: string;
+  note: string | null;
+  createdAt: string;
+};
+
+/// Dải mạng văn phòng được phép chấm công.
+function NetworkCard({
+  onFeedback,
+}: {
+  onFeedback: (feedback: Feedback) => void;
+}) {
+  const [enabled, setEnabled] = useState(false);
+  const [rangesText, setRangesText] = useState("");
+  const [currentIp, setCurrentIp] = useState<string | null>(null);
+  const [loaded, setLoaded] = useState(false);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    requestJson("/api/admin/security/network")
+      .then((payload) => {
+        setEnabled(payload.network.enabled);
+        setRangesText(payload.network.ranges.join("\n"));
+        setCurrentIp(payload.currentIp);
+        setLoaded(true);
+      })
+      .catch((error) => onFeedback({ type: "error", text: error.message }));
+  }, [onFeedback]);
+
+  async function save() {
+    setSaving(true);
+    try {
+      const payload = await requestJson("/api/admin/security/network", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ enabled, ranges: rangesText.split(/[\s,;]+/) }),
+      });
+      setEnabled(payload.network.enabled);
+      setRangesText(payload.network.ranges.join("\n"));
+      onFeedback({ type: "success", text: "Đã lưu mạng chấm công" });
+    } catch (error) {
+      onFeedback({
+        type: "error",
+        text: error instanceof Error ? error.message : "Không lưu được",
+      });
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <Card>
+      <div className="space-y-4 p-5">
+        <h3 className="text-lg font-semibold text-slate-900">Mạng chấm công</h3>
+        {!loaded ? (
+          <div className="h-40 animate-pulse rounded-lg bg-slate-100" />
+        ) : (
+          <>
+            <label className="flex items-start gap-3">
+              <input
+                type="checkbox"
+                className="mt-1 h-4 w-4 rounded border-slate-300 text-sky-600"
+                checked={enabled}
+                onChange={(event) => setEnabled(event.target.checked)}
+              />
+              <span>
+                <span className="block text-sm font-medium text-slate-900">
+                  Chỉ nhận chấm công từ mạng văn phòng
+                </span>
+                <span className="block text-sm text-slate-600">
+                  Máy không nằm trong các dải dưới đây (ở nhà, vào qua
+                  Tailscale, VPN…) bấm Vào / Ra ca sẽ bị từ chối và ghi vào nhật
+                  ký.
+                </span>
+              </span>
+            </label>
+            <Field
+              label="Dải IP văn phòng"
+              hint={`Mỗi dòng một IP hoặc một dải, vd 192.168.1.0/24.${currentIp ? ` IP của bạn lúc này: ${currentIp}` : ""}`}
+            >
+              <Textarea
+                value={rangesText}
+                onChange={(event) => setRangesText(event.target.value)}
+                className="font-mono text-sm"
+                rows={3}
+              />
+            </Field>
+            <div className="flex justify-end">
+              <Button onClick={save} disabled={saving}>
+                <Save size={16} aria-hidden="true" />
+                {saving ? "Đang lưu..." : "Lưu"}
+              </Button>
+            </div>
+          </>
+        )}
+      </div>
+    </Card>
+  );
+}
+
+/// Blacklist: IP / dải IP bị chặn khỏi toàn bộ web.
+function BlockedIpCard({
+  onFeedback,
+}: {
+  onFeedback: (feedback: Feedback) => void;
+}) {
+  const [items, setItems] = useState<BlockedIp[] | null>(null);
+  const [currentIp, setCurrentIp] = useState<string | null>(null);
+  const [cidr, setCidr] = useState("");
+  const [note, setNote] = useState("");
+  const [adding, setAdding] = useState(false);
+
+  const load = useCallback(() => {
+    requestJson("/api/admin/security/blocked-ips")
+      .then((payload) => {
+        setItems(payload.items);
+        setCurrentIp(payload.currentIp);
+      })
+      .catch((error) => onFeedback({ type: "error", text: error.message }));
+  }, [onFeedback]);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  async function add(event: React.FormEvent) {
+    event.preventDefault();
+    setAdding(true);
+    try {
+      const payload = await requestJson("/api/admin/security/blocked-ips", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ cidr, note }),
+      });
+      onFeedback({ type: "success", text: `Đã chặn ${payload.item.cidr}` });
+      setCidr("");
+      setNote("");
+      load();
+    } catch (error) {
+      onFeedback({
+        type: "error",
+        text: error instanceof Error ? error.message : "Không thêm được",
+      });
+    } finally {
+      setAdding(false);
+    }
+  }
+
+  async function remove(item: BlockedIp) {
+    if (
+      !confirm(
+        `Bỏ chặn ${item.cidr}? Tài khoản đã bị khoá vì IP này vẫn giữ khoá cho tới khi mở ở trang Nhân viên.`,
+      )
+    )
+      return;
+    try {
+      await requestJson(`/api/admin/security/blocked-ips/${item.id}`, {
+        method: "DELETE",
+      });
+      onFeedback({ type: "success", text: `Đã bỏ chặn ${item.cidr}` });
+      load();
+    } catch (error) {
+      onFeedback({
+        type: "error",
+        text: error instanceof Error ? error.message : "Không bỏ chặn được",
+      });
+    }
+  }
+
+  return (
+    <Card>
+      <div className="space-y-4 p-5">
+        <h3 className="text-lg font-semibold text-slate-900">
+          IP bị chặn (blacklist)
+        </h3>
+        <p className="text-sm text-slate-600">
+          IP trong danh sách không vào được web nữa (mọi trang). Tài khoản nhân
+          viên nào dùng IP đó — đang đăng nhập sẵn hoặc đăng nhập đúng mật khẩu
+          — bị <span className="font-medium text-slate-900">khoá ngay</span>, mở
+          lại ở trang Nhân viên. Chỉ nên chặn IP cố định (máy chủ, máy trung
+          chuyển): IP cấp động có thể trùng máy của người khác.
+        </p>
+
+        {!items ? (
+          <div className="h-16 animate-pulse rounded-lg bg-slate-100" />
+        ) : items.length === 0 ? (
+          <p className="text-sm text-slate-500">Chưa chặn IP nào.</p>
+        ) : (
+          <ul className="divide-y divide-slate-100 rounded-lg border border-slate-200">
+            {items.map((item) => (
+              <li
+                key={item.id}
+                className="flex items-center justify-between gap-3 px-3 py-2"
+              >
+                <div className="flex min-w-0 items-center gap-3">
+                  <Ban
+                    size={16}
+                    className="shrink-0 text-rose-500"
+                    aria-hidden="true"
+                  />
+                  <div className="min-w-0">
+                    <div className="font-mono text-sm text-slate-900">
+                      {item.cidr}
+                    </div>
+                    <div className="truncate text-xs text-slate-500">
+                      {item.note ? `${item.note} · ` : ""}thêm lúc{" "}
+                      {stamp(item.createdAt)}
+                    </div>
+                  </div>
+                </div>
+                <Button
+                  size="sm"
+                  variant="danger"
+                  onClick={() => remove(item)}
+                  aria-label={`Bỏ chặn ${item.cidr}`}
+                >
+                  <Trash2 size={14} aria-hidden="true" />
+                </Button>
+              </li>
+            ))}
+          </ul>
+        )}
+
+        <form
+          onSubmit={add}
+          className="grid items-end gap-2 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]"
+        >
+          <Field label="IP hoặc dải IP">
+            <Input
+              value={cidr}
+              onChange={(event) => setCidr(event.target.value)}
+              placeholder="192.168.1.26"
+              className="font-mono"
+              required
+            />
+          </Field>
+          <Field label="Ghi chú">
+            <Input
+              value={note}
+              onChange={(event) => setNote(event.target.value)}
+              placeholder="VD: VPS dev"
+              maxLength={200}
+            />
+          </Field>
+          <Button
+            type="submit"
+            disabled={adding}
+            className="h-11 whitespace-nowrap"
+          >
+            <Plus size={16} aria-hidden="true" />
+            Chặn
+          </Button>
+        </form>
+        {currentIp && (
+          <p className="text-xs text-slate-500">
+            IP của bạn lúc này: {currentIp}
+          </p>
+        )}
+      </div>
+    </Card>
+  );
+}
+
 export default function SecurityPage() {
+  const [feedback, setFeedback] = useState<Feedback | null>(null);
   return (
     <>
       <PageHeader
         title="Bảo mật"
-        description="Nhật ký mọi lần chấm công (kể cả bị từ chối) và đăng nhập, kèm IP và trình duyệt."
+        description="Chặn theo IP và nhật ký mọi lần chấm công (kể cả bị từ chối), đăng nhập kèm IP và trình duyệt."
       />
+      {feedback && (
+        <div className="mb-4">
+          <Message type={feedback.type} onDismiss={() => setFeedback(null)}>
+            {feedback.text}
+          </Message>
+        </div>
+      )}
+      <div className="mb-6 grid items-start gap-4 xl:grid-cols-2">
+        <NetworkCard onFeedback={setFeedback} />
+        <BlockedIpCard onFeedback={setFeedback} />
+      </div>
       <SecurityLog />
     </>
   );

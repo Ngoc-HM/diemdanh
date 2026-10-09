@@ -24,12 +24,15 @@ export type UserRow = {
 export type EmployeeRow = Omit<UserRow, "password" | "role" | "updatedAt"> & {
   /// Đã bật xác thực 2 lớp hay chưa (không bao giờ trả khoá ra ngoài).
   twoFactorEnabled: boolean;
+  /// Bị khoá (vd truy cập từ IP bị chặn); null = bình thường.
+  lockedAt: Date | null;
+  lockReason: string | null;
 };
 
 export const EMPLOYEE_COLUMNS = `
   "id", "employeeCode", "name", "email", "employmentType", "phone",
   "department", "position", "avatarUrl", "startDate", "isActive", "createdAt",
-  "totpSecret" IS NOT NULL AS "twoFactorEnabled"
+  "totpSecret" IS NOT NULL AS "twoFactorEnabled", "lockedAt", "lockReason"
 `;
 
 export type WorkSessionRow = {

@@ -74,6 +74,29 @@ Caddy thì cột IP trống.
 
 (Tính năng "mã có mặt" thêm ở migration 020 đã gỡ ở migration 021.)
 
+### Chặn theo IP (trang Bảo mật)
+
+Hai lớp, cấu hình ở `/admin/security` (`lib/ip-policy.ts`, `lib/ip-match.ts`,
+migration 022):
+
+- **Mạng chấm công**: chỉ nhận bấm Vào / Ra ca từ các dải IP văn phòng (mặc định
+  `192.168.1.0/24`, đang bật). Ngoài dải — ở nhà, vào qua Tailscale (hiện IP
+  `172.19.0.1`), VPN — bị từ chối và ghi nhật ký lý do "Ngoài mạng văn phòng".
+  Không xác định được IP cũng từ chối.
+- **Blacklist**: IP / dải IP admin thêm bị chặn khỏi **toàn bộ web** (mọi trang,
+  API, ảnh) ngay ở middleware — trả trang "Truy cập bị chặn". Nhân viên nào dùng
+  IP đó, đang đăng nhập sẵn hoặc đăng nhập đúng mật khẩu, bị **khoá tài khoản
+  ngay** (cột `lockedAt` / `lockReason`, mọi phiên bị đá ra); admin mở khoá ở
+  trang Nhân viên (nút ổ khoá). Admin vào từ IP bị chặn chỉ bị chặn, không bị
+  khoá, và không thêm được IP mình đang dùng. Sai mật khẩu từ IP bị chặn thì
+  không khoá ai. Chỉ nên chặn IP cố định (máy chủ, máy trung chuyển như VPS dev
+  `192.168.1.26`): IP cấp động có thể rơi vào máy người khác.
+
+Middleware chạy runtime **Node** (không phải edge) để đọc blacklist trong
+database, giữ bản sao 5 giây; thêm / xoá IP có hiệu lực ngay. Lỡ chặn nhầm khiến
+không vào được: xoá trên server bằng
+`docker compose -p company_management exec -T db psql -U postgres -d company_mana -c 'DELETE FROM "BlockedIp";'`.
+
 ### Bảng chấm công gửi kế toán
 
 `/admin/attendance/monthly` → nút **Xuất Excel** tải file `.xlsx` của tháng đang

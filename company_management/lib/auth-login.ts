@@ -3,6 +3,7 @@ import { HttpError } from "@/lib/auth-guard";
 import { hashPassword, verifyPassword } from "@/lib/utils";
 import type { SessionPayload } from "@/lib/session";
 import { AdminRow, UserRow } from "@/lib/types";
+import { lockedMessage } from "@/lib/ip-policy";
 import {
   adminKey,
   assertLoginAllowed,
@@ -71,10 +72,15 @@ async function loginEmployee(
   await assertLoginAllowed(throttleKey, EMPLOYEE_UNLOCK_HINT);
 
   const user = await queryOne<
-    UserRow & { sessionVersion: number; twoFactor: boolean }
+    UserRow & {
+      sessionVersion: number;
+      twoFactor: boolean;
+      lockedAt: Date | null;
+      lockReason: string | null;
+    }
   >(
     `SELECT "id", "name", "email", "password", "role", "isActive", "sessionVersion",
-            "totpSecret" IS NOT NULL AS "twoFactor"
+            "totpSecret" IS NOT NULL AS "twoFactor", "lockedAt", "lockReason"
        FROM "User" WHERE "email" = $1`,
     [email]
   );
@@ -92,6 +98,8 @@ async function loginEmployee(
   if (!user.isActive) {
     throw new HttpError(403, "Tài khoản đã ngừng hoạt động. Liên hệ quản trị viên.");
   }
+  // Chỉ báo bị khoá sau khi đúng mật khẩu, để không ai dò được tài khoản nào bị khoá.
+  if (user.lockedAt) throw new HttpError(403, lockedMessage(user.lockReason));
 
   if (!user.twoFactor) await clearLoginFailures(throttleKey);
   return {

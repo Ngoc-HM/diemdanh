@@ -1,7 +1,7 @@
 import { Pool, PoolClient } from "pg";
 
-/// Một pool dùng chung cho cả tiến trình. Ở chế độ dev, Next.js nạp lại module
-/// mỗi lần sửa file nên phải gắn vào globalThis, nếu không mỗi lần hot-reload
+/// Một pool dùng chung cho cả tiến trình, gắn vào globalThis: ở chế độ dev
+/// Next.js nạp lại module mỗi lần sửa file, không gắn thì mỗi lần hot-reload
 /// lại mở thêm một pool và nhanh chóng hết kết nối.
 const globalForDb = globalThis as unknown as { pool?: Pool };
 
@@ -19,7 +19,9 @@ function createPool() {
 }
 
 export const pool = globalForDb.pool ?? createPool();
-if (process.env.NODE_ENV !== "production") globalForDb.pool = pool;
+// Middleware (runtime Node) và route handler là hai bundle khác nhau trong cùng
+// tiến trình: giữ pool trên globalThis để cả hai dùng chung, không mở hai pool.
+globalForDb.pool = pool;
 
 export async function query<T extends object = Record<string, unknown>>(
   sql: string,

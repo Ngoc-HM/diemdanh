@@ -11,6 +11,8 @@ import {
   resolveUserMonthSchedule,
 } from "@/lib/attendance-service";
 import { clientIp } from "@/lib/request-meta";
+import { findMatchingCidr } from "@/lib/ip-match";
+import { getPunchNetwork } from "@/lib/ip-policy";
 import {
   ipUsedByOthers,
   logPunchAttempt,
@@ -60,6 +62,16 @@ export async function POST(req: Request) {
         flags,
       });
       badRequest(message);
+    }
+
+    // Chỉ nhận chấm công từ mạng văn phòng (dải IP admin khai ở trang Bảo
+    // mật). Không xác định được IP thì cũng từ chối: thà chặn nhầm còn hơn lọt.
+    const network = await getPunchNetwork();
+    if (network.enabled && !findMatchingCidr(clientIp(req), network.ranges)) {
+      await reject(
+        "outside_network",
+        "Chỉ chấm công được khi máy tính đang dùng mạng của văn phòng."
+      );
     }
 
     if (!hasLocation)
