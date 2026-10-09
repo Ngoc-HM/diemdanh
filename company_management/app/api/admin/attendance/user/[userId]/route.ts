@@ -38,6 +38,8 @@ import {
 import { toEntryView, WORK_REPORT_COLUMNS } from "@/lib/work-reports";
 import { WorkReportEntryRow } from "@/lib/types";
 import { getApprovedOvertime } from "@/lib/overtime-service";
+import { attendanceEditNotice, describePunches } from "@/lib/employee-notice";
+import { notifyEmployee } from "@/lib/notify";
 import {
   buildEmployeeAttendanceWorkbook,
   employeeAttendanceFileName,
@@ -331,6 +333,20 @@ export async function PUT(
       badRequest("Có hai lần bấm giờ trùng nhau");
     }
 
+    // Giờ cũ để email báo nhân viên thấy rõ trước / sau.
+    const previous = await query<{ type: string; at: Date; note: string | null }>(
+      `SELECT p."type", p."at", a."note"
+         FROM "Attendance" a
+         LEFT JOIN "AttendancePunch" p ON p."attendanceId" = a."id"
+        WHERE a."userId" = $1 AND a."date" = $2
+        ORDER BY p."at" ASC`,
+      [userId, date]
+    );
+    const before = previous
+      .filter((row) => row.type)
+      .map((row) => ({ type: row.type, time: formatTimeVN(row.at) }));
+    const previousNote = previous[0]?.note ?? null;
+
     await transaction(async (client) => {
       const attendance = await client.query<{ id: string }>(
         `INSERT INTO "Attendance" ("userId", "date", "note", "editedBy", "editedAt")
@@ -362,6 +378,10 @@ export async function PUT(
         );
       }
     });
+
+    if (describePunches(before) !== describePunches(sorted) || previousNote !== note) {
+      notifyEmployee(userId, attendanceEditNotice({ date, before, after: sorted, note }));
+    }
 
     return { success: true, date, punches: sorted.length };
   }, "Manual attendance edit error");

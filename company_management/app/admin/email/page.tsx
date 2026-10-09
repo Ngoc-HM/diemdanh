@@ -19,6 +19,7 @@ type ConfigView = {
   from: string;
   appUrl: string;
   reminderEnabled: boolean;
+  notifyEnabled: boolean;
 };
 
 type Payload = { config: ConfigView; lastReminderMonth: string | null };
@@ -32,6 +33,7 @@ const EMPTY_FORM = {
   from: "",
   appUrl: "",
   reminderEnabled: true,
+  notifyEnabled: true,
 };
 
 export default function EmailSettingsPage() {
@@ -66,6 +68,7 @@ export default function EmailSettingsPage() {
         from: payload.config.from,
         appUrl: payload.config.appUrl,
         reminderEnabled: payload.config.reminderEnabled,
+        notifyEnabled: payload.config.notifyEnabled,
       });
       setHasPassword(payload.config.hasPassword);
       setLastReminderMonth(payload.lastReminderMonth);
@@ -172,7 +175,7 @@ export default function EmailSettingsPage() {
     <>
       <PageHeader
         title="Email (SMTP)"
-        description="Máy chủ gửi email dùng cho quên mật khẩu và nhắc đăng ký lịch. Cấu hình lưu trong hệ thống, mật khẩu được mã hoá."
+        description="Máy chủ gửi email dùng cho quên mật khẩu, nhắc đăng ký lịch và thông báo cho nhân viên. Cấu hình lưu trong hệ thống, mật khẩu được mã hoá."
       />
 
       {message && (
@@ -285,6 +288,7 @@ export default function EmailSettingsPage() {
                   variant="secondary"
                   onClick={sendTest}
                   disabled={testing || !testTo}
+                  className="shrink-0 whitespace-nowrap"
                 >
                   <Send size={16} aria-hidden="true" />
                   {testing ? "Đang gửi..." : "Gửi thử"}
@@ -323,6 +327,25 @@ export default function EmailSettingsPage() {
                   {reminding ? "Đang gửi..." : "Gửi nhắc ngay"}
                 </Button>
               </div>
+            </Card>
+
+            <Card className="p-5">
+              <h3 className="font-semibold text-slate-900">Thông báo cho nhân viên</h3>
+              <label className="mt-3 flex items-start gap-2 text-sm text-slate-700">
+                <input
+                  type="checkbox"
+                  checked={form.notifyEnabled}
+                  onChange={(event) =>
+                    setForm({ ...form, notifyEnabled: event.target.checked })
+                  }
+                  className="mt-0.5 h-4 w-4 rounded-sm border-slate-300 text-sky-600"
+                />
+                <span>
+                  Gửi email cho nhân viên mỗi khi admin sửa giờ chấm công, chấm lại ô
+                  ngày, quyết định ngày thiếu giờ, duyệt / từ chối đổi ca và OT. Bấm
+                  “Lưu cấu hình” để áp dụng.
+                </span>
+              </label>
             </Card>
           </div>
         </div>

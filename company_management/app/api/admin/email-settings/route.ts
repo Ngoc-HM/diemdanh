@@ -17,6 +17,7 @@ function publicView(config: EmailConfig | null) {
     from: config?.from ?? "",
     appUrl: config?.appUrl ?? "",
     reminderEnabled: config?.reminderEnabled ?? true,
+    notifyEnabled: config?.notifyEnabled ?? true,
   };
 }
 
@@ -65,6 +66,10 @@ export async function PUT(req: Request) {
         body?.reminderEnabled === undefined
           ? (existing?.reminderEnabled ?? true)
           : Boolean(body.reminderEnabled),
+      notifyEnabled:
+        body?.notifyEnabled === undefined
+          ? (existing?.notifyEnabled ?? true)
+          : Boolean(body.notifyEnabled),
     };
 
     await saveEmailConfig(config);

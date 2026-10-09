@@ -47,6 +47,16 @@ import {
   verifyTotp,
 } from "../lib/totp.ts";
 import { summarizeUserAgent } from "../lib/security-labels.ts";
+import {
+  attendanceEditNotice,
+  composeNoticeEmail,
+  dayMarkNotice,
+  dayReviewNotice,
+  describePunches,
+  formatDateWithWeekday,
+  overtimeNotice,
+  shiftRequestNotice,
+} from "../lib/employee-notice.ts";
 
 let pass = 0, fail = 0;
 const bad = [];
@@ -518,6 +528,29 @@ console.log("\n== nhật ký bảo mật ==");
 check("UA Chrome Windows", summarizeUserAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0 Safari/537.36") === "Chrome · Windows");
 check("UA Cốc Cốc", summarizeUserAgent("Mozilla/5.0 (Windows NT 10.0) AppleWebKit/537.36 (KHTML, like Gecko) coc_coc_browser/130.0 Chrome/130.0 CocCoc Safari/537.36").startsWith("Cốc Cốc"));
 check("UA curl là công cụ", summarizeUserAgent("curl/8.7.1") === "Công cụ / script");
+
+console.log("\n== email thông báo nhân viên ==");
+check("ngày kèm thứ", formatDateWithWeekday("2026-10-08") === "08/10/2026 (T5)", `(${formatDateWithWeekday("2026-10-08")})`);
+check("giờ vào ra xếp theo giờ", describePunches([{ type: "out", time: "17:30" }, { type: "in", time: "08:00" }]) === "Vào 08:00 · Ra 17:30");
+check("không có giờ chấm công", describePunches([]) === "không có giờ chấm công");
+const editNotice = attendanceEditNotice({ date: "2026-10-07", before: [{ type: "in", time: "08:05" }], after: [{ type: "in", time: "08:05" }, { type: "out", time: "17:30" }], note: "Quên checkout" });
+check("sửa giờ: tiêu đề có ngày", editNotice.subject === "Giờ chấm công ngày 07/10 đã được điều chỉnh", `(${editNotice.subject})`);
+check("sửa giờ: có trước / sau", editNotice.lines.includes("Trước: Vào 08:05") && editNotice.lines.includes("Sau: Vào 08:05 · Ra 17:30"));
+check("sửa giờ: có ghi chú admin", editNotice.lines.includes("Ghi chú của quản trị viên: Quên checkout"));
+check("sửa giờ: không ghi chú thì không có dòng ghi chú", !attendanceEditNotice({ date: "2026-10-07", before: [], after: [], note: null }).lines.some((line) => line.startsWith("Ghi chú")));
+check("chấm ô: ốm", dayMarkNotice({ date: "2026-10-07", leaveCode: "O", sessions: [] }).lines.at(-1).includes("Ốm (O)"));
+check("chấm ô: đổi ca", dayMarkNotice({ date: "2026-10-07", leaveCode: null, sessions: [{ code: "S", name: "Ca sáng" }, { code: "C", name: "Ca chiều" }] }).lines.at(-1).includes("Ca sáng (S) + Ca chiều (C)"));
+check("chấm ô: xoá đánh dấu", dayMarkNotice({ date: "2026-10-07", leaveCode: null, sessions: [] }).lines.at(-1).startsWith("Đã bỏ đánh dấu"));
+check("ngày thiếu giờ: không tính công", dayReviewNotice({ date: "2026-10-07", decision: "exclude" }).lines[0].endsWith("không tính công."));
+const leaveNotice = shiftRequestNotice({ date: "2026-10-07", approved: false, requestedCodes: ["N"], adminNote: "Thiếu người" });
+check("xin nghỉ bị từ chối: tiêu đề", leaveNotice.subject === "Yêu cầu xin nghỉ ngày 07/10 bị từ chối", `(${leaveNotice.subject})`);
+check("đổi ca được duyệt: nêu ca mới", shiftRequestNotice({ date: "2026-10-07", approved: true, requestedCodes: ["S", "C"], adminNote: null }).lines[0].includes("sang S + C"));
+const otNotice = overtimeNotice({ date: "2026-10-04", action: "approve", plannedStart: "08:00", plannedEnd: "12:00", hours: "3,5", code: "T1", rate: 200, adminNote: null });
+check("OT duyệt: số giờ + hệ số", otNotice.subject === "Phiếu OT ngày 04/10 đã được duyệt" && otNotice.lines.includes("Số giờ tính lương: 3,5 giờ, loại T1 hệ số 200%."));
+check("OT sửa giờ: tiêu đề riêng", overtimeNotice({ date: "2026-10-04", action: "update", plannedStart: "08:00", plannedEnd: "12:00", hours: "4", code: "T1", rate: 200, adminNote: null }).subject === "Số giờ OT ngày 04/10 đã được điều chỉnh");
+const composed = composeNoticeEmail(editNotice, { name: "An", appUrl: "https://cc.example.vn", companyName: "Sao Mộc" });
+check("email: tiền tố + lời chào + link", composed.subject.startsWith("[Chấm công] ") && composed.text.startsWith("Chào An,") && composed.text.includes("Xem chi tiết: https://cc.example.vn/dashboard/history"));
+check("email: chưa khai địa chỉ web thì không có link", !composeNoticeEmail(editNotice, { name: "An", appUrl: "", companyName: "" }).text.includes("Xem chi tiết"));
 
 console.log(`\n===== ${pass} đạt / ${fail} hỏng =====`);
 if (bad.length) bad.forEach((f) => console.log(" -", f));

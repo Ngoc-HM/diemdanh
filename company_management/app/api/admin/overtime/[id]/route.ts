@@ -5,6 +5,9 @@ import {
   OVERTIME_SELECT,
   OvertimeRow,
 } from "@/lib/overtime-service";
+import { formatOvertimeHours } from "@/lib/overtime";
+import { overtimeNotice } from "@/lib/employee-notice";
+import { notifyEmployee } from "@/lib/notify";
 
 const ADMIN_NOTE_MAX = 500;
 
@@ -40,8 +43,12 @@ export async function PATCH(
       approvedMinutes = Math.round(hours * 60);
     }
 
-    const current = await queryOne<{ status: string }>(
-      `SELECT "status" FROM "OvertimeRequest" WHERE "id" = $1`,
+    const current = await queryOne<{
+      status: string;
+      approvedMinutes: number | null;
+      adminNote: string | null;
+    }>(
+      `SELECT "status", "approvedMinutes", "adminNote" FROM "OvertimeRequest" WHERE "id" = $1`,
       [id]
     );
     if (!current) notFound("Không tìm thấy phiếu OT");
@@ -79,6 +86,26 @@ export async function PATCH(
 
     const row = await queryOne<OvertimeRow>(`${OVERTIME_SELECT} WHERE o."id" = $1`, [id]);
     const [request] = await buildOvertimeViews([row!]);
+    // Sửa số giờ mà không đổi gì (bấm lưu lại) thì không báo nhân viên.
+    const noop =
+      action === "update" &&
+      current!.approvedMinutes === request.approvedMinutes &&
+      current!.adminNote === request.adminNote;
+    if (!noop) {
+      notifyEmployee(
+        request.user.id,
+        overtimeNotice({
+          date: request.date,
+          action: action as "approve" | "reject" | "update",
+          plannedStart: request.plannedStart,
+          plannedEnd: request.plannedEnd,
+          hours: formatOvertimeHours(request.minutes),
+          code: request.code,
+          rate: request.rate,
+          adminNote: request.adminNote,
+        })
+      );
+    }
     return { request };
   }, "Admin overtime review error");
 }

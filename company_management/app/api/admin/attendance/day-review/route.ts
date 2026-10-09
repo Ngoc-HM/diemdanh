@@ -1,6 +1,8 @@
 import { query, queryOne } from "@/lib/db";
 import { badRequest, handle, notFound, requireAdmin } from "@/lib/auth-guard";
 import { isValidDateKey } from "@/lib/datetime";
+import { dayReviewNotice } from "@/lib/employee-notice";
+import { notifyEmployee } from "@/lib/notify";
 
 /// Admin xem lại một ngày làm thiếu giờ: "count" = vẫn tính đủ công,
 /// "exclude" = không tính công, null = bỏ quyết định (quay về mặc định: chưa
@@ -25,11 +27,23 @@ export async function PUT(req: Request) {
     );
     if (!user) notFound("Không tìm thấy nhân viên");
 
+    const previous = await queryOne<{ decision: string }>(
+      `SELECT "decision" FROM "DayReview" WHERE "userId" = $1 AND "date" = $2`,
+      [userId, date]
+    );
+    // Gửi sau khi đã ghi xong; quyết định y như cũ thì không báo lại.
+    const notify = () => {
+      if ((previous?.decision ?? null) !== decision) {
+        notifyEmployee(userId, dayReviewNotice({ date, decision }));
+      }
+    };
+
     if (decision === null) {
       await query(`DELETE FROM "DayReview" WHERE "userId" = $1 AND "date" = $2`, [
         userId,
         date,
       ]);
+      notify();
       return { userId, date, decision: null };
     }
 
@@ -42,6 +56,7 @@ export async function PUT(req: Request) {
          "reviewedAt" = now()`,
       [userId, date, decision, admin.userId]
     );
+    notify();
     return { userId, date, decision };
   }, "Day review error");
 }

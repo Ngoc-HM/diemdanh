@@ -23,6 +23,8 @@ export type EmailConfig = {
   /// Địa chỉ web của hệ thống để tạo link trong email.
   appUrl: string;
   reminderEnabled: boolean;
+  /// Email báo cho nhân viên khi admin sửa công / duyệt đổi ca / duyệt OT.
+  notifyEnabled: boolean;
 };
 
 const SETTING_KEY = "email_config";
@@ -85,6 +87,8 @@ export async function getEmailConfig(): Promise<EmailConfig | null> {
       from: stored.from ?? "",
       appUrl: stored.appUrl ?? "",
       reminderEnabled: Boolean(stored.reminderEnabled),
+      // Cấu hình lưu trước khi có tuỳ chọn này thì mặc định bật.
+      notifyEnabled: stored.notifyEnabled !== false,
     };
   } catch {
     return null;

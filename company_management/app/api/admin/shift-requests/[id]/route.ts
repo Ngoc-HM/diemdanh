@@ -14,6 +14,8 @@ import {
   RequestWithUserRow,
 } from "@/lib/shift-requests";
 import { ShiftChangeRequestRow } from "@/lib/types";
+import { shiftRequestNotice } from "@/lib/employee-notice";
+import { notifyEmployee } from "@/lib/notify";
 
 /// Admin duyệt hoặc từ chối một yêu cầu đang chờ.
 /// Duyệt = ghi một DayMark y như admin tự chấm lại ô đó (isAdminEdit = true),
@@ -99,6 +101,15 @@ export async function PUT(
       [id]
     );
     const [view] = await buildAdminRequestViews([row!]);
+    notifyEmployee(
+      request!.userId,
+      shiftRequestNotice({
+        date: view.date,
+        approved: action === "approve",
+        requestedCodes: view.requestedCodes,
+        adminNote: view.adminNote,
+      })
+    );
     return { request: view };
   }, "Shift request review error");
 }

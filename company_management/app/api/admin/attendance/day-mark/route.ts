@@ -2,6 +2,8 @@ import { query, queryOne } from "@/lib/db";
 import { badRequest, handle, notFound, requireAdmin } from "@/lib/auth-guard";
 import { isValidDateKey } from "@/lib/datetime";
 import { getActiveSessionRules } from "@/lib/attendance-service";
+import { dayMarkNotice } from "@/lib/employee-notice";
+import { notifyEmployee } from "@/lib/notify";
 
 /// Admin chấm lại một ô ngày của một nhân viên trong bảng chấm công:
 /// đổi ca (S / C / CN / T), đánh dấu nghỉ N, ốm O, hoặc xoá để trả về lịch gốc.
@@ -37,20 +39,49 @@ export async function PUT(req: Request) {
       ? [...new Set(rawSessionIds.map((id: unknown) => String(id)))]
       : null;
 
+    const rules = await getActiveSessionRules();
     if (sessionIds && sessionIds.length > 0) {
-      const rules = await getActiveSessionRules();
       const activeIds = new Set(rules.map((rule) => rule.id));
       for (const id of sessionIds) {
         if (!activeIds.has(id)) badRequest("Ca làm việc không tồn tại");
       }
     }
 
+    // Đánh dấu cũ: chấm lại y hệt thì không gửi email báo nhân viên.
+    const previous = await queryOne<{ leaveCode: string | null; sessionIds: string[] | null }>(
+      `SELECT "leaveCode", "sessionIds" FROM "DayMark" WHERE "userId" = $1 AND "date" = $2`,
+      [userId, date]
+    );
+    const clearing = !leaveCode && (!sessionIds || sessionIds.length === 0);
+    const sameIds = (a: string[] | null | undefined, b: string[] | null | undefined) =>
+      [...(a ?? [])].sort().join(",") === [...(b ?? [])].sort().join(",");
+    const unchanged = clearing
+      ? !previous
+      : Boolean(previous) &&
+        (previous!.leaveCode ?? null) === (leaveCode ?? null) &&
+        sameIds(previous!.sessionIds, sessionIds);
+    const notify = () => {
+      if (unchanged) return;
+      const chosen = new Set(sessionIds ?? []);
+      notifyEmployee(
+        userId,
+        dayMarkNotice({
+          date,
+          leaveCode: leaveCode ?? null,
+          sessions: rules
+            .filter((rule) => chosen.has(rule.id))
+            .map((rule) => ({ code: rule.code, name: rule.name })),
+        })
+      );
+    };
+
     // Không chọn gì cả = xoá đánh dấu, ngày trở về lịch nhân viên đã đăng ký.
-    if (!leaveCode && (!sessionIds || sessionIds.length === 0)) {
+    if (clearing) {
       await query(`DELETE FROM "DayMark" WHERE "userId" = $1 AND "date" = $2`, [
         userId,
         date,
       ]);
+      notify();
       return { userId, date, cleared: true };
     }
 
@@ -64,6 +95,7 @@ export async function PUT(req: Request) {
                      "editedBy" = $5, "editedAt" = now(), "updatedAt" = now()`,
       [userId, date, leaveCode, sessionIds, admin.userId]
     );
+    notify();
 
     return { userId, date, leaveCode, sessionIds, cleared: false };
   }, "Day mark error");

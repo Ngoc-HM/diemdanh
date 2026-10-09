@@ -2,6 +2,7 @@ import "dotenv/config";
 import pg from "pg";
 import bcrypt from "bcryptjs";
 import { createHash } from "node:crypto";
+import net from "node:net";
 import { totp } from "../lib/totp.ts";
 
 const BASE = process.env.BASE_URL || "http://localhost:3000";
@@ -69,6 +70,101 @@ async function call(jar, method, path, body) {
   return { status: res.status, json };
 }
 
+/// Máy chủ SMTP giả chạy ngay trong test: app gửi email thông báo vào đây,
+/// không đụng máy chủ mail thật. Chỉ đủ lệnh cho nodemailer (không STARTTLS).
+function startSmtpSink() {
+  const messages = [];
+  const server = net.createServer((socket) => {
+    socket.setEncoding("utf8");
+    let buffer = "";
+    let inData = false;
+    let current = { to: [], raw: "" };
+    socket.on("error", () => {});
+    socket.write("220 smoketest ESMTP\r\n");
+    socket.on("data", (chunk) => {
+      buffer += chunk;
+      for (;;) {
+        if (inData) {
+          const end = buffer.indexOf("\r\n.\r\n");
+          if (end === -1) return;
+          current.raw = buffer.slice(0, end);
+          buffer = buffer.slice(end + 5);
+          inData = false;
+          messages.push(decodeMail(current));
+          current = { to: [], raw: "" };
+          socket.write("250 OK\r\n");
+          continue;
+        }
+        const eol = buffer.indexOf("\r\n");
+        if (eol === -1) return;
+        const line = buffer.slice(0, eol);
+        buffer = buffer.slice(eol + 2);
+        const command = line.slice(0, 4).toUpperCase();
+        if (command === "RCPT") current.to.push(line.match(/<([^>]*)>/)?.[1] ?? "");
+        if (command === "DATA") {
+          inData = true;
+          socket.write("354 go ahead\r\n");
+        } else if (command === "QUIT") {
+          socket.end("221 bye\r\n");
+        } else {
+          socket.write(command === "EHLO" || command === "HELO" ? "250 smoketest\r\n" : "250 OK\r\n");
+        }
+      }
+    });
+  });
+  return new Promise((resolve) =>
+    server.listen(0, "127.0.0.1", () => resolve({ server, port: server.address().port, messages }))
+  );
+}
+
+function qpBytes(text) {
+  const bytes = [];
+  for (let i = 0; i < text.length; i++) {
+    const hex = text.slice(i + 1, i + 3);
+    if (text[i] === "=" && /^[0-9A-F]{2}$/i.test(hex)) {
+      bytes.push(parseInt(hex, 16));
+      i += 2;
+    } else {
+      bytes.push(text.charCodeAt(i));
+    }
+  }
+  return Buffer.from(bytes).toString("utf8");
+}
+
+/// Giải mã tiêu đề (encoded-word) và thân thư (quoted-printable / base64).
+function decodeMail({ to, raw }) {
+  const split = raw.indexOf("\r\n\r\n");
+  const headers = raw.slice(0, split).replace(/\r\n[ \t]+/g, " ");
+  const body = raw.slice(split + 4);
+  const header = (name) => headers.match(new RegExp(`^${name}:\\s*(.*)$`, "im"))?.[1] ?? "";
+  const subject = header("Subject").replace(/=\?UTF-8\?([BQ])\?([^?]*)\?=\s*/gi, (_, enc, text) =>
+    enc.toUpperCase() === "B" ? Buffer.from(text, "base64").toString("utf8") : qpBytes(text.replace(/_/g, " "))
+  );
+  const encoding = header("Content-Transfer-Encoding").toLowerCase();
+  const text =
+    encoding === "base64"
+      ? Buffer.from(body.replace(/\s+/g, ""), "base64").toString("utf8")
+      : encoding === "quoted-printable"
+        ? qpBytes(body.replace(/=\r\n/g, ""))
+        : body;
+  return { to, subject, text: text.replace(/\r\n/g, "\n") };
+}
+
+function mailsTo(sink, to, subjectPart) {
+  return sink.messages.filter((mail) => mail.to.includes(to) && mail.subject.includes(subjectPart));
+}
+
+/// Chờ email thông báo (app gửi nền nên tới sau response vài trăm ms).
+async function waitForMail(sink, to, subjectPart, timeoutMs = 6000) {
+  const started = Date.now();
+  while (Date.now() - started < timeoutMs) {
+    const found = mailsTo(sink, to, subjectPart);
+    if (found.length > 0) return found[found.length - 1];
+    await new Promise((resolve) => setTimeout(resolve, 150));
+  }
+  return null;
+}
+
 async function main() {
   await client.connect();
 
@@ -89,6 +185,9 @@ async function main() {
   let previousLunch = null;
   // Cửa sổ đăng ký lịch trước khi test đổi; null = chưa kịp đọc.
   let previousWindow = null;
+  // Cấu hình SMTP trước khi test trỏ sang máy chủ giả; null = chưa kịp đọc.
+  let previousEmail = null;
+  let sink = null;
 
   try {
     console.log("\n== xác thực ==");
@@ -854,8 +953,22 @@ async function main() {
       `(${suspiciousRows.length})`
     );
 
+    console.log("\n== email thông báo nhân viên (máy chủ SMTP giả) ==");
+    previousEmail = (await client.query(`SELECT "value" FROM "Settings" WHERE "key" = 'email_config'`)).rows[0] ?? { value: undefined };
+    sink = await startSmtpSink();
+    const sinkConfig = {
+      host: "127.0.0.1",
+      port: sink.port,
+      secure: false,
+      from: "Chấm công <noreply@example.test>",
+      appUrl: "https://cham-cong.example.test",
+      reminderEnabled: false,
+    };
+    r = await call(admin, "PUT", "/api/admin/email-settings", { ...sinkConfig, notifyEnabled: true });
+    check("trỏ SMTP sang máy chủ giả, bật thông báo", r.status === 200 && r.json.config?.notifyEnabled === true, `(${r.status})`);
+
     console.log("\n== sửa công thủ công ==");
-    r = await call(admin, "PUT", `/api/admin/attendance/user/${employeeId}`, {
+    const editDay = {
       date: "2026-09-01",
       punches: [
         { type: "in", time: "08:00" },
@@ -863,8 +976,26 @@ async function main() {
         { type: "out", time: "17:00" },
       ],
       note: "__smoketest bổ sung công",
-    });
+    };
+    r = await call(admin, "PUT", `/api/admin/attendance/user/${employeeId}`, editDay);
     check("nhập tay 1 vào + 2 ra", r.status === 200 && r.json.punches === 3, JSON.stringify(r.json).slice(0, 120));
+    let mail = await waitForMail(sink, EMP_EMAIL, "Giờ chấm công ngày 01/09 đã được điều chỉnh");
+    check("sửa giờ thì nhân viên nhận email", Boolean(mail), `(${sink.messages.length} thư)`);
+    check("email có giờ trước / sau", mail?.text.includes("Trước: không có giờ chấm công") && mail?.text.includes("Sau: Vào 08:00 · Ra 12:00 · Ra 17:00"), mail?.text);
+    check("email có ghi chú của admin", mail?.text.includes("Ghi chú của quản trị viên: __smoketest bổ sung công"));
+    check("email có link xem lại", mail?.text.includes("https://cham-cong.example.test/dashboard/history"));
+    check("tiêu đề email có tiền tố [Chấm công]", mail?.subject.startsWith("[Chấm công] "), `(${mail?.subject})`);
+    r = await call(admin, "PUT", `/api/admin/attendance/user/${employeeId}`, editDay);
+    await new Promise((resolve) => setTimeout(resolve, 1500));
+    check("lưu lại y hệt thì không gửi thêm email", mailsTo(sink, EMP_EMAIL, "ngày 01/09 đã được điều chỉnh").length === 1, `(${mailsTo(sink, EMP_EMAIL, "ngày 01/09 đã được điều chỉnh").length})`);
+
+    r = await call(admin, "PUT", "/api/admin/email-settings", { ...sinkConfig, notifyEnabled: false });
+    check("tắt thông báo ở trang Email", r.status === 200 && r.json.config?.notifyEnabled === false, `(${r.status})`);
+    r = await call(admin, "PUT", `/api/admin/attendance/user/${employeeId}`, { ...editDay, note: "__smoketest đã tắt thông báo" });
+    await new Promise((resolve) => setTimeout(resolve, 1500));
+    check("tắt thông báo thì không gửi email", mailsTo(sink, EMP_EMAIL, "ngày 01/09 đã được điều chỉnh").length === 1);
+    r = await call(admin, "PUT", "/api/admin/email-settings", { ...sinkConfig, notifyEnabled: true });
+    r = await call(admin, "PUT", `/api/admin/attendance/user/${employeeId}`, editDay);
 
     r = await call(admin, "PUT", `/api/admin/attendance/user/${employeeId}`, {
       date: "2026-09-01",
@@ -993,6 +1124,22 @@ async function main() {
     check("chi tiết có ngày công tháng", short.totals?.standardWorkdays === 22, `(${short.totals?.standardWorkdays})`);
     r = await call(admin, "PUT", "/api/admin/attendance/day-review", { userId: employeeId, date: ABSENT_DATE, decision: "exclude" });
     check("admin chọn không tính công", r.status === 200 && r.json.decision === "exclude", `(${r.status})`);
+    const absentShort = `${ABSENT_DATE.slice(8, 10)}/${ABSENT_DATE.slice(5, 7)}`;
+    mail = await waitForMail(sink, EMP_EMAIL, `Ngày ${absentShort} làm thiếu giờ đã được xem lại`);
+    check("quyết định ngày thiếu giờ thì báo nhân viên", mail?.text.includes("Quản trị viên không tính công."), mail?.text);
+
+    console.log("\n== chấm lại ô ngày ==");
+    r = await call(admin, "PUT", "/api/admin/attendance/day-mark", { userId: employeeId, date: "2026-09-29", leaveCode: "O" });
+    check("admin chấm ô ngày là Ốm", r.status === 200 && r.json.leaveCode === "O", `(${r.status})`);
+    mail = await waitForMail(sink, EMP_EMAIL, "Bảng chấm công ngày 29/09 đã được điều chỉnh");
+    check("chấm lại ô thì báo nhân viên", mail?.text.includes("được ghi là Ốm (O)"), mail?.text);
+    r = await call(admin, "PUT", "/api/admin/attendance/day-mark", { userId: employeeId, date: "2026-09-29", leaveCode: null, sessionIds: [] });
+    check("xoá đánh dấu ô", r.status === 200 && r.json.cleared === true, `(${r.status})`);
+    await waitForMail(sink, EMP_EMAIL, "__không-có__", 1500);
+    check("xoá đánh dấu cũng báo nhân viên", mailsTo(sink, EMP_EMAIL, "Bảng chấm công ngày 29/09").some((item) => item.text.includes("Đã bỏ đánh dấu")));
+    r = await call(admin, "PUT", "/api/admin/attendance/day-mark", { userId: employeeId, date: "2026-09-29", leaveCode: null, sessionIds: [] });
+    await new Promise((resolve) => setTimeout(resolve, 1500));
+    check("xoá ô vốn không có đánh dấu thì không gửi", mailsTo(sink, EMP_EMAIL, "Bảng chấm công ngày 29/09").length === 2, `(${mailsTo(sink, EMP_EMAIL, "Bảng chấm công ngày 29/09").length})`);
     short = await shortDayOf();
     check("không tính thì về 0 công, hết chờ xem", short.day?.workdayValue === 0 && short.day?.needsReview === false, `(${short.day?.workdayValue})`);
     r = await call(admin, "PUT", "/api/admin/attendance/day-review", { userId: employeeId, date: ABSENT_DATE, decision: "count" });
@@ -1056,6 +1203,8 @@ async function main() {
     check("phiếu không tồn tại = 404", r.status === 404, `(${r.status})`);
     r = await call(admin, "PATCH", `/api/admin/overtime/${weekendOt?.id}`, { action: "approve", approvedHours: 3.5, adminNote: "Chốt 3,5h" });
     check("admin duyệt và chốt 3,5 giờ", r.status === 200 && r.json.request?.status === "approved" && r.json.request?.minutes === 210, `(${r.status} ${r.json.request?.minutes})`);
+    mail = await waitForMail(sink, EMP_EMAIL, "Phiếu OT ngày 05/09 đã được duyệt");
+    check("duyệt OT thì báo nhân viên kèm số giờ", mail?.text.includes("3,5 giờ, loại T1"), mail?.text);
 
     r = await call(emp, "POST", "/api/overtime", { date: "2026-09-05", plannedStart: "08:00", plannedEnd: "17:00", content: "Muốn sửa phiếu đã duyệt" });
     check("ngày đã có phiếu duyệt thì không làm phiếu mới", r.status === 409, `(${r.status})`);
@@ -1075,6 +1224,8 @@ async function main() {
     check("bỏ số giờ chốt thì quay về giờ tính được (4h)", r.json.request?.minutes === 240 && r.json.request?.approvedMinutes === null, `(${r.json.request?.minutes})`);
     r = await call(admin, "PATCH", `/api/admin/overtime/${weekendOt?.id}`, { action: "reject", adminNote: "Không cần đi" });
     check("admin từ chối phiếu", r.json.request?.status === "rejected", `(${r.json.request?.status})`);
+    mail = await waitForMail(sink, EMP_EMAIL, "Phiếu OT ngày 05/09 bị từ chối");
+    check("từ chối OT thì báo nhân viên kèm lý do", mail?.text.includes("Không cần đi"), mail?.text);
     r = await call(admin, "GET", "/api/admin/attendance/monthly?month=2026-09");
     otSummary = r.json.summary?.find((item) => item.user.id === employeeId);
     check("phiếu bị từ chối không còn tính giờ OT", (otSummary?.overtimeMinutes?.T1 ?? 0) === 0, JSON.stringify(otSummary?.overtimeMinutes));
@@ -1252,6 +1403,8 @@ async function main() {
       `(${JSON.stringify(r.json.request?.currentCodes)})`
     );
     check("có reviewedAt sau khi duyệt", typeof r.json.request?.reviewedAt === "string");
+    mail = await waitForMail(sink, EMP_EMAIL, "Yêu cầu đổi ca ngày 01/09 đã được duyệt");
+    check("duyệt đổi ca thì báo nhân viên", mail?.text.includes(`sang ${fullDay.code}`), mail?.text);
     r = await call(admin, "PUT", `/api/admin/shift-requests/${requestId}`, { action: "reject" });
     check("yêu cầu đã duyệt không xử lý lại được", r.status === 409, `(${r.status})`);
 
@@ -1291,6 +1444,8 @@ async function main() {
       r.status === 200 && r.json.request?.status === "rejected" && r.json.request?.adminNote === "__smoketest thiếu người",
       JSON.stringify(r.json).slice(0, 120)
     );
+    mail = await waitForMail(sink, EMP_EMAIL, "Yêu cầu xin nghỉ ngày");
+    check("từ chối xin nghỉ thì báo nhân viên kèm ghi chú", mail?.subject.includes("bị từ chối") && mail?.text.includes("__smoketest thiếu người"), mail?.subject);
     r = await call(emp, "GET", "/api/schedule?month=2026-09");
     check(
       "từ chối thì lịch ngày đó giữ nguyên",
@@ -1458,6 +1613,14 @@ async function main() {
     await client.query(`DELETE FROM "Allowance" WHERE "name" ILIKE '__smoketest%'`);
     await client.query(`DELETE FROM "WorkLocation" WHERE "name" LIKE '__smoketest%'`);
     await client.query(`DELETE FROM "Admin" WHERE "username" = $1`, [ADMIN_USER]);
+    if (previousEmail) {
+      if (previousEmail.value === undefined) {
+        await client.query(`DELETE FROM "Settings" WHERE "key" = 'email_config'`);
+      } else {
+        await client.query(`UPDATE "Settings" SET "value" = $1 WHERE "key" = 'email_config'`, [previousEmail.value]);
+      }
+    }
+    sink?.server.close();
     await client.query(`DELETE FROM "LoginEvent" WHERE "identifier" ILIKE '%@_@_smoketest%' ESCAPE '@'`);
     // Trả lại cửa sổ đăng ký lịch như trước khi test.
     if (previousWindow) {

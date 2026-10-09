@@ -304,7 +304,7 @@ cài gì thêm trên server, không gọi dịch vụ ngoài (`lib/totp.ts`, `li
 
 Admin cấu hình SMTP ở `/admin/email`. Cấu hình lưu trong bảng `Settings`, mật
 khẩu SMTP mã hoá bằng khoá dẫn xuất từ `AUTH_SECRET` (đổi `AUTH_SECRET` thì
-phải nhập lại mật khẩu SMTP). Email dùng cho hai việc:
+phải nhập lại mật khẩu SMTP). Email dùng cho ba việc:
 
 - **Quên mật khẩu**: nhân viên nhập email ở `/forgot-password`, nhận **mã 8 số**
   qua email rồi nhập thẳng mã đó kèm mật khẩu mới ngay trên trang. Mã sống 15
@@ -316,6 +316,14 @@ phải nhập lại mật khẩu SMTP). Email dùng cho hai việc:
   bán thời gian và thực tập, mỗi tháng một lần. Bộ đếm chạy trong tiến trình
   server (`instrumentation.ts` → `lib/reminder.ts`), kiểm tra mỗi giờ. Admin
   bật/tắt hoặc bấm "Gửi nhắc ngay" ở trang Email.
+- **Thông báo cho nhân viên** (`lib/notify.ts`, nội dung ở
+  `lib/employee-notice.ts`): mỗi khi admin sửa giờ vào / ra (kể cả chấm lại ngày
+  quên checkout), chấm lại ô ngày (đổi ca, N, O, xoá đánh dấu), quyết định ngày
+  thiếu giờ, duyệt / từ chối đổi ca hoặc xin nghỉ, duyệt / từ chối / sửa giờ
+  OT, nhân viên đó nhận một email nêu rõ thay đổi (giờ trước / sau, ghi chú của
+  admin, link xem lại nếu đã khai "Địa chỉ web"). Lưu lại y hệt thì không gửi.
+  Gửi nền: admin không phải chờ, SMTP lỗi chỉ ghi log `[notify]`, không làm hỏng
+  thao tác. Tắt được ở thẻ "Thông báo cho nhân viên" trang Email (mặc định bật).
 
 ### Hồ sơ nhân viên
 
