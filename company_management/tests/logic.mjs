@@ -46,7 +46,6 @@ import {
   totp,
   verifyTotp,
 } from "../lib/totp.ts";
-import { parsePolicy, rejectsOutsideRadius } from "../lib/attendance-policy.ts";
 import { summarizeUserAgent } from "../lib/security-labels.ts";
 
 let pass = 0, fail = 0;
@@ -515,14 +514,7 @@ check("mã không phải 6 số bị từ chối", verifyTotp(secret, "12345", {
 const url = otpauthUrl("Công ty A", "admin@x.vn", secret);
 check("otpauth URL đúng định dạng", url.startsWith("otpauth://totp/") && url.includes(`secret=${secret}`) && url.includes("period=30"), `(${url})`);
 
-console.log("\n== chính sách chấm công ==");
-check("mặc định: từ chối ngoài bán kính, không bắt mã", JSON.stringify(parsePolicy(null)) === JSON.stringify({ outsideRadius: "reject", presenceCode: false }));
-check("JSON hỏng về mặc định", parsePolicy("{oops").presenceCode === false);
-check("giá trị lạ về reject", parsePolicy('{"outsideRadius":"allow","presenceCode":"yes"}').outsideRadius === "reject");
-check("chưa bắt mã có mặt thì GPS luôn chặn dù cấu hình flag", rejectsOutsideRadius({ outsideRadius: "flag", presenceCode: false }) === true);
-check("bắt mã có mặt + flag thì GPS chỉ gắn cờ", rejectsOutsideRadius({ outsideRadius: "flag", presenceCode: true }) === false);
-check("bắt mã có mặt + reject vẫn chặn", rejectsOutsideRadius({ outsideRadius: "reject", presenceCode: true }) === true);
-
+console.log("\n== nhật ký bảo mật ==");
 check("UA Chrome Windows", summarizeUserAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0 Safari/537.36") === "Chrome · Windows");
 check("UA Cốc Cốc", summarizeUserAgent("Mozilla/5.0 (Windows NT 10.0) AppleWebKit/537.36 (KHTML, like Gecko) coc_coc_browser/130.0 Chrome/130.0 CocCoc Safari/537.36").startsWith("Cốc Cốc"));
 check("UA curl là công cụ", summarizeUserAgent("curl/8.7.1") === "Công cụ / script");

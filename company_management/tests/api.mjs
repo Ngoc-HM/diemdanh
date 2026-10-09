@@ -89,8 +89,6 @@ async function main() {
   let previousLunch = null;
   // Cửa sổ đăng ký lịch trước khi test đổi; null = chưa kịp đọc.
   let previousWindow = null;
-  // Chính sách chấm công trước khi test đổi; null = chưa kịp đọc.
-  let previousPolicy = null;
 
   try {
     console.log("\n== xác thực ==");
@@ -693,9 +691,9 @@ async function main() {
     r = await call(admin, "POST", "/api/auth/2fa", { action: "confirm", code: totp(adminSecret) });
     const adminBackup = r.json.backupCodes ?? [];
     check("nhập đúng mã thì bật, nhận 10 mã dự phòng", r.status === 200 && adminBackup.length === 10, `(${r.status} ${adminBackup.length})`);
-    r = await call(admin, "GET", "/api/admin/security/policy");
+    r = await call(admin, "GET", "/api/admin/security/log?tab=login&days=1");
     check("phiên đang thao tác vẫn dùng được sau khi bật", r.status === 200, `(${r.status})`);
-    r = await call(admin2, "GET", "/api/admin/security/policy");
+    r = await call(admin2, "GET", "/api/admin/security/log?tab=login&days=1");
     check("bật 2 lớp thì phiên ở máy khác bị đăng xuất", r.status === 401, `(${r.status})`);
 
     const admin3 = makeJar();
@@ -705,7 +703,7 @@ async function main() {
       r.status === 200 && r.json.twoFactorRequired === true && !admin3.header().includes("session="),
       `(${r.status} ${admin3.header().slice(0, 40)})`
     );
-    r = await call(admin3, "GET", "/api/admin/security/policy");
+    r = await call(admin3, "GET", "/api/admin/security/log?tab=login&days=1");
     check("vé tạm không dùng thay phiên được", r.status === 401, `(${r.status})`);
     r = await call(makeJar(), "POST", "/api/auth/login/2fa", { code: totp(adminSecret) });
     check("không có vé tạm thì không nhập mã được", r.status === 401, `(${r.status})`);
@@ -716,7 +714,7 @@ async function main() {
     const nextCode = totp(adminSecret, Date.now() + 30_000);
     r = await call(admin3, "POST", "/api/auth/login/2fa", { code: nextCode });
     check("đúng mã thì vào khu quản trị", r.status === 200 && r.json.redirect?.startsWith("/admin"), JSON.stringify(r.json).slice(0, 100));
-    r = await call(admin3, "GET", "/api/admin/security/policy");
+    r = await call(admin3, "GET", "/api/admin/security/log?tab=login&days=1");
     check("có phiên sau bước 2", r.status === 200, `(${r.status})`);
 
     const admin4 = makeJar();
@@ -832,64 +830,22 @@ async function main() {
     check("lastOutAt lấy lần ra muộn nhất", r.json.lastOutAt !== null);
     check("hôm nay có 3 lần bấm giờ", r.json.todayEntry?.punches?.length === 3, `(${r.json.todayEntry?.punches?.length})`);
 
-    console.log("\n== mã có mặt ==");
-    previousPolicy = (await client.query(`SELECT "value" FROM "Settings" WHERE "key" = 'attendance_policy'`)).rows[0] ?? { value: undefined };
-    const activeKiosks = Number((await client.query(`SELECT count(*) AS n FROM "KioskDevice" WHERE "revokedAt" IS NULL`)).rows[0].n);
-    if (activeKiosks === 0) {
-      r = await call(admin, "PUT", "/api/admin/security/policy", { presenceCode: true, outsideRadius: "reject" });
-      check("chưa có màn hình thì không bật được mã có mặt", r.status === 400, `(${r.status})`);
-    }
-    r = await call(emp, "POST", "/api/admin/security/kiosks", { name: "__smoketest màn hình" });
-    check("nhân viên không tạo được màn hình", r.status === 401, `(${r.status})`);
-    r = await call(admin, "POST", "/api/admin/security/kiosks", { name: "__smoketest màn hình" });
-    const pairToken = r.json.pairingToken;
-    const kioskId = r.json.device?.id;
-    check("admin tạo màn hình, nhận mã ghép nối", r.status === 200 && Boolean(pairToken), `(${r.status})`);
-    const kiosk = makeJar();
-    r = await call(kiosk, "GET", "/api/kiosk/code");
-    check("máy chưa ghép nối không xem được mã", r.status === 401, `(${r.status})`);
-    r = await call(kiosk, "POST", "/api/kiosk/pair", { token: pairToken });
-    check("ghép nối màn hình", r.status === 200 && kiosk.header().includes("kiosk="), `(${r.status})`);
-    r = await call(makeJar(), "POST", "/api/kiosk/pair", { token: pairToken });
-    check("link ghép nối chỉ dùng một lần", r.status === 400, `(${r.status})`);
-    r = await call(kiosk, "GET", "/api/kiosk/code");
-    check(
-      "màn hình lấy được mã 6 số và số giây còn lại",
-      r.status === 200 && /^\d{6}$/.test(r.json.code ?? "") && r.json.secondsLeft >= 1 && r.json.secondsLeft <= 30,
-      JSON.stringify(r.json)
-    );
-    r = await call(admin, "PUT", "/api/admin/security/policy", { presenceCode: true, outsideRadius: "flag" });
-    check("bật bắt mã có mặt, GPS chỉ gắn cờ", r.status === 200 && r.json.policy?.presenceCode === true && r.json.policy?.outsideRadius === "flag", `(${r.status})`);
-    r = await call(emp, "GET", "/api/attendance/policy");
-    check("trang chấm công biết phải nhập mã", r.json.presenceCode === true);
-
-    const punchOut = (extra) => call(emp, "POST", "/api/attendance/punch", { type: "out", ...extra });
-    r = await punchOut({ latitude: 21.0, longitude: 105.8 });
-    check("thiếu mã có mặt bị từ chối", r.status === 400, `(${r.status})`);
-    const shownCode = (await call(kiosk, "GET", "/api/kiosk/code")).json.code;
-    r = await punchOut({ latitude: 21.0, longitude: 105.8, presenceCode: wrongOf(shownCode) });
-    check("sai mã có mặt bị từ chối", r.status === 400 && /mã có mặt/i.test(r.json.error ?? ""), `(${r.status} ${r.json.error})`);
-    r = await punchOut({ latitude: 10.0, longitude: 106.0, accuracy: 25, presenceCode: shownCode });
-    check("đúng mã: ngoài bán kính vẫn nhận nhưng gắn cờ", r.status === 200, `(${r.status} ${r.json.error ?? ""})`);
-    r = await punchOut({ latitude: null, longitude: null, presenceCode: shownCode });
-    check("đúng mã: không lấy được GPS vẫn nhận", r.status === 200, `(${r.status} ${r.json.error ?? ""})`);
-
+    console.log("\n== nhật ký chấm công ==");
+    r = await call(emp, "POST", "/api/attendance/punch", { type: "out", latitude: 21.0, longitude: 105.8, accuracy: 900 });
+    check("check-out kèm GPS kém chính xác vẫn nhận", r.status === 200, `(${r.status})`);
+    r = await call(emp, "POST", "/api/attendance/punch", { type: "out" });
+    check("không gửi vị trí thì từ chối", r.status === 400, `(${r.status})`);
     const attempts = (
       await client.query(`SELECT "result", "reason", "flags" FROM "PunchAttempt" WHERE "userId" = $1`, [employeeId])
     ).rows;
-    check("nhật ký có lần từ chối ngoài bán kính (trước khi bật)", attempts.some((a) => a.reason === "outside_radius"));
+    check("nhật ký có lần từ chối ngoài bán kính", attempts.some((a) => a.reason === "outside_radius"));
     check("nhật ký có lần từ chối vì chưa check-in", attempts.some((a) => a.reason === "not_checked_in"));
-    check("nhật ký có lần từ chối vì sai mã", attempts.some((a) => a.reason === "presence_code"));
-    check("nhật ký gắn cờ ngoài bán kính", attempts.some((a) => a.result === "accepted" && a.flags.includes("outside_radius")));
-    check("nhật ký gắn cờ không có vị trí", attempts.some((a) => a.result === "accepted" && a.flags.includes("no_location")));
-    check("nhật ký có lần nhận bình thường", attempts.some((a) => a.result === "accepted" && a.flags.every((f) => f === "no_accuracy" || f === "shared_ip")));
-    const flagged = await client.query(
-      `SELECT p."withinRadius" FROM "AttendancePunch" p JOIN "Attendance" a ON a."id" = p."attendanceId"
-        WHERE a."userId" = $1 AND p."withinRadius" = false`,
-      [employeeId]
-    );
-    check("lần bấm ngoài bán kính lưu withinRadius = false (vào diện xem lại)", flagged.rowCount >= 1, `(${flagged.rowCount})`);
-
+    check("nhật ký có lần từ chối vì đã check-in", attempts.some((a) => a.reason === "already_checked_in"));
+    check("nhật ký có lần từ chối vì không có vị trí", attempts.some((a) => a.reason === "no_location"));
+    check("nhật ký gắn cờ GPS kém chính xác", attempts.some((a) => a.result === "accepted" && a.flags.includes("low_accuracy")));
+    check("nhật ký có lần nhận bình thường", attempts.some((a) => a.result === "accepted"));
+    r = await call(emp, "GET", "/api/admin/security/log?tab=punch");
+    check("nhân viên không xem được nhật ký chấm công", r.status === 401, `(${r.status})`);
     r = await call(admin, "GET", "/api/admin/security/log?tab=punch&only=suspicious&days=1");
     const suspiciousRows = (r.json.rows ?? []).filter((row) => row.userEmail === EMP_EMAIL);
     check(
@@ -897,27 +853,6 @@ async function main() {
       suspiciousRows.length > 0 && suspiciousRows.every((row) => row.result === "rejected" || row.flags.length > 0),
       `(${suspiciousRows.length})`
     );
-
-    // Dò mã: sai đủ ngưỡng thì chặn tạm, kể cả khi sau đó nhập đúng.
-    for (let i = 0; i < 4; i++) {
-      await punchOut({ latitude: 21.0, longitude: 105.8, presenceCode: wrongOf(shownCode) });
-    }
-    const freshCode = (await call(kiosk, "GET", "/api/kiosk/code")).json.code;
-    r = await punchOut({ latitude: 21.0, longitude: 105.8, presenceCode: freshCode });
-    check("sai mã 5 lần thì tạm chặn", r.status === 400 && /quá nhiều lần/.test(r.json.error ?? ""), `(${r.status} ${r.json.error})`);
-    await client.query(`DELETE FROM "PunchAttempt" WHERE "userId" = $1 AND "reason" = 'presence_code'`, [employeeId]);
-
-    r = await call(admin, "DELETE", `/api/admin/security/kiosks/${kioskId}`);
-    check("thu hồi màn hình", r.status === 200, `(${r.status})`);
-    r = await call(kiosk, "GET", "/api/kiosk/code");
-    check("màn hình đã thu hồi không xem được mã", r.status === 401, `(${r.status})`);
-    r = await punchOut({ latitude: 21.0, longitude: 105.8, presenceCode: freshCode });
-    check("thu hồi xong thì mã cũ hết hiệu lực", r.status === 400, `(${r.status})`);
-    await client.query(`DELETE FROM "PunchAttempt" WHERE "userId" = $1 AND "reason" = 'presence_code'`, [employeeId]);
-    r = await call(admin, "PUT", "/api/admin/security/policy", { presenceCode: false, outsideRadius: "flag" });
-    check("tắt mã có mặt", r.status === 200 && r.json.policy?.presenceCode === false, `(${r.status})`);
-    r = await punchOut({ latitude: 10.0, longitude: 106.0 });
-    check("không bắt mã thì GPS ngoài bán kính luôn bị chặn dù chọn gắn cờ", r.status === 400, `(${r.status})`);
 
     console.log("\n== sửa công thủ công ==");
     r = await call(admin, "PUT", `/api/admin/attendance/user/${employeeId}`, {
@@ -1524,14 +1459,6 @@ async function main() {
     await client.query(`DELETE FROM "WorkLocation" WHERE "name" LIKE '__smoketest%'`);
     await client.query(`DELETE FROM "Admin" WHERE "username" = $1`, [ADMIN_USER]);
     await client.query(`DELETE FROM "LoginEvent" WHERE "identifier" ILIKE '%@_@_smoketest%' ESCAPE '@'`);
-    await client.query(`DELETE FROM "KioskDevice" WHERE "name" LIKE '__smoketest%'`);
-    if (previousPolicy) {
-      if (previousPolicy.value === undefined) {
-        await client.query(`DELETE FROM "Settings" WHERE "key" = 'attendance_policy'`);
-      } else {
-        await client.query(`UPDATE "Settings" SET "value" = $1 WHERE "key" = 'attendance_policy'`, [previousPolicy.value]);
-      }
-    }
     // Trả lại cửa sổ đăng ký lịch như trước khi test.
     if (previousWindow) {
       if (previousWindow.value === undefined) {

@@ -22,24 +22,15 @@ export const LOGIN_EVENT_LABELS: Record<LoginEventType, string> = {
   password_reset: "Đặt lại mật khẩu",
 };
 
-export type PunchFlag =
-  | "outside_radius"
-  | "no_location"
-  | "low_accuracy"
-  | "no_accuracy"
-  | "shared_ip";
+export type PunchFlag = "low_accuracy" | "no_accuracy" | "shared_ip";
 
 export const PUNCH_FLAG_LABELS: Record<PunchFlag, string> = {
-  outside_radius: "Ngoài bán kính",
-  no_location: "Không có vị trí",
   low_accuracy: "GPS kém chính xác",
   no_accuracy: "Không rõ độ chính xác",
   shared_ip: "IP dùng chung",
 };
 
 export const PUNCH_REASON_LABELS: Record<string, string> = {
-  presence_code: "Sai mã có mặt",
-  presence_locked: "Sai mã quá nhiều lần",
   outside_radius: "Ngoài bán kính",
   no_location: "Không có vị trí",
   no_work_location: "Chưa khai báo vị trí",

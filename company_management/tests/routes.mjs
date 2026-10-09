@@ -78,7 +78,6 @@ async function main() {
     ["/login", "Chấm công nội bộ"],
     ["/forgot-password", "Quên mật khẩu"],
     ["/desktop-only", "Chỉ hỗ trợ máy tính"],
-    ["/kiosk", "Mã có mặt"],
   ]) {
     const r = await visit(anon, path);
     check(`${path} tải được`, r.status === 200, `(${r.status})`);
@@ -106,12 +105,6 @@ async function main() {
     redirect: "follow",
   });
   check("Android cũng bị chặn", new URL(android.url).pathname === "/desktop-only");
-  // Màn hình mã có mặt hay là máy tính bảng / TV: không bị đưa sang /desktop-only.
-  const tabletKiosk = await fetch(BASE + "/kiosk", {
-    headers: { "User-Agent": "Mozilla/5.0 (Linux; Android 14; SM-X710) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36" },
-    redirect: "follow",
-  });
-  check("máy tính bảng mở được /kiosk", new URL(tabletKiosk.url).pathname === "/kiosk", `(-> ${new URL(tabletKiosk.url).pathname})`);
   const desktop = await visit(anon, "/login");
   check("máy tính vào /login bình thường", desktop.url === "/login", `(-> ${desktop.url})`);
 

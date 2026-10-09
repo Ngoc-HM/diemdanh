@@ -58,36 +58,21 @@ Vị trí bắt buộc nằm trong bán kính của một `WorkLocation` đang b
 từ chối. Trường hợp sai vị trí hoặc quên bấm giờ thì admin bổ sung tay ở trang chi
 tiết nhân viên (các dòng nhập tay được đánh dấu `isManual`).
 
-### Chống chấm công hộ / giả vị trí (trang Bảo mật)
+### Nhật ký chấm công (trang Bảo mật)
 
-GPS do trình duyệt tự báo nên giả được (bài test ngày 06/10/2026 đã vượt qua từ
-nhà). Phòng thủ đặt ở chính server, không phụ thuộc máy tấn công là máy nào:
+Mọi lần bấm Vào / Ra ca, **kể cả lần bị từ chối**, ghi một dòng `PunchAttempt`
+(`lib/punch-audit.ts`): lý do từ chối, IP, trình duyệt, khoảng cách tới vị trí
+làm việc, độ chính xác GPS và cờ bất thường — GPS kém chính xác (> 200 m), không
+rõ độ chính xác, **IP dùng chung** (cùng một IP chấm công thành công cho người
+khác trong 15 phút). Xem ở tab Chấm công của `/admin/security`, lọc "Chỉ hiện
+bất thường".
 
-- **Mã có mặt** (`lib/presence.ts`): một màn hình đặt cố định ở văn phòng mở
-  `/kiosk`, hiện mã 6 số đổi mỗi 30 giây. Bật "Bắt nhập mã có mặt" ở
-  `/admin/security` thì nhân viên phải nhập mã đang hiện khi bấm Vào / Ra ca —
-  ngồi nhà không thấy màn hình. Nhận mã hiện tại và mã ngay trước (chậm tay);
-  sai 5 lần trong 10 phút thì tạm chặn. Chưa có màn hình nào thì không bật được.
-- **Ghép nối màn hình**: admin bấm "Thêm màn hình", mở link `/kiosk?pair=…` trên
-  chính máy đó (link dùng một lần, hết hạn sau 24 giờ). Máy nhận cookie bí mật
-  riêng, server chỉ lưu băm (`KioskDevice`). Thu hồi màn hình thì khoá sinh mã
-  đổi luôn — mã ai chụp lại trước đó vô dụng. `/kiosk` không bị chặn điện thoại /
-  máy tính bảng, không cần đăng nhập.
-- **GPS thành tín hiệu phụ**: khi đã bắt mã có mặt, admin chọn "Vẫn nhận, gắn cờ"
-  thì ngoài bán kính / không lấy được vị trí vẫn nhận (máy bàn hay báo sai vị
-  trí) nhưng lưu `withinRadius = false`, ngày đó vào diện xem lại. Chưa bắt mã có
-  mặt thì GPS luôn chặn như cũ dù chọn gì.
-- **Nhật ký mọi lần bấm** (`PunchAttempt`, `lib/punch-audit.ts`): cả lần bị từ
-  chối, kèm lý do, IP, trình duyệt, khoảng cách, độ chính xác GPS và cờ bất
-  thường (ngoài bán kính, không có vị trí, GPS kém chính xác, **IP dùng chung** —
-  cùng một IP chấm công thành công cho người khác trong 15 phút). Xem ở tab Chấm
-  công của `/admin/security`, lọc "Chỉ hiện bất thường".
+IP lấy từ `X-Forwarded-For` do Caddy đặt (Caddy bỏ giá trị client tự gửi). Máy
+trong LAN ghi đúng IP thật; máy vào qua Tailscale hiện chung một IP gateway Docker
+(`172.19.0.1`) do Tailscale trên server NAT lại. Chạy thẳng cổng 3000 không qua
+Caddy thì cột IP trống.
 
-IP lấy từ `X-Forwarded-For` do Caddy đặt (Caddy bỏ giá trị client tự gửi). Chạy
-thẳng cổng 3000 không qua Caddy thì cột IP trống.
-
-Mặc định (migration 020) mọi thứ **tắt** — hành vi giống hệt trước, chỉ thêm
-nhật ký. Bật khi màn hình ở văn phòng đã sẵn sàng.
+(Tính năng "mã có mặt" thêm ở migration 020 đã gỡ ở migration 021.)
 
 ### Bảng chấm công gửi kế toán
 
@@ -422,7 +407,6 @@ file cũ đã chạy.
 |---|---|
 | `/login` | Công khai — đăng nhập chung cho admin và nhân viên |
 | `/forgot-password`, `/desktop-only` | Công khai |
-| `/kiosk` | Màn hình ở văn phòng (đã ghép nối) — hiện mã có mặt |
 | `/dashboard` | Nhân viên — check in / check out |
 | `/dashboard/schedule` | Nhân viên — đăng ký lịch tháng |
 | `/dashboard/history` | Nhân viên — lịch sử chấm công |
@@ -442,7 +426,7 @@ file cũ đã chạy.
 | `/admin/sessions` | Admin — danh mục ca |
 | `/admin/locations` | Admin — vị trí GPS |
 | `/admin/holidays` | Admin — ngày lễ |
-| `/admin/security` | Admin — chính sách chấm công, màn hình mã có mặt, nhật ký chấm công / đăng nhập |
+| `/admin/security` | Admin — nhật ký chấm công / đăng nhập |
 | `/admin/access-violations` | Admin — nhật ký truy cập lạ |
 | `/admin/change-password` | Admin — Tài khoản: xác thực 2 lớp, đổi mật khẩu |
 | `/admin/company`, `/admin/email` | Admin |
@@ -490,9 +474,8 @@ lib/
 ├── validation.ts       # Chuẩn hoá + kiểm tra input dùng chung
 ├── session.ts          # JWT session qua cookie
 ├── login-throttle.ts   # Đếm đăng nhập sai, khoá tạm tài khoản
-├── totp.ts             # TOTP (RFC 6238) cho 2 lớp và mã có mặt
+├── totp.ts             # TOTP (RFC 6238) cho xác thực 2 lớp
 ├── two-factor.ts       # Bật / tắt / kiểm tra xác thực 2 lớp, mã dự phòng
-├── presence.ts         # Mã có mặt, màn hình kiosk, chính sách chấm công
 ├── punch-audit.ts      # Nhật ký mọi lần bấm giờ + cờ bất thường
 ├── security-log.ts     # Nhật ký đăng nhập / đổi mật khẩu
 ├── mailer.ts           # Cấu hình SMTP trong Settings + gửi email

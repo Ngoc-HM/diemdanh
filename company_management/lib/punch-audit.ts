@@ -2,7 +2,6 @@
 /// để admin soi lại khi nghi ngờ chấm công hộ / giả vị trí.
 import { query, queryOne } from "@/lib/db";
 import { clientIp, userAgent } from "@/lib/request-meta";
-import { PRESENCE_LOCK_MINUTES } from "@/lib/presence";
 import type { PunchFlag } from "@/lib/security-labels";
 
 export type { PunchFlag };
@@ -52,17 +51,6 @@ export async function logPunchAttempt(req: Request, attempt: PunchAttempt) {
   } catch (error) {
     console.error("Không ghi được nhật ký chấm công:", error);
   }
-}
-
-/// Số lần nhập sai mã có mặt gần đây của một nhân viên.
-export async function recentPresenceFailures(userId: string): Promise<number> {
-  const row = await queryOne<{ count: number }>(
-    `SELECT count(*)::int AS "count" FROM "PunchAttempt"
-      WHERE "userId" = $1 AND "reason" = 'presence_code'
-        AND "createdAt" > now() - ($2 || ' minutes')::interval`,
-    [userId, String(PRESENCE_LOCK_MINUTES)],
-  );
-  return row?.count ?? 0;
 }
 
 /// IP này vừa chấm công thành công cho một người khác?

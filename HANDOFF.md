@@ -204,25 +204,22 @@ cũ đổi tên thành `~/company_management.old-rsync-20261006` (xoá được 
 ## Đợt 08/10/2026 — Siết bảo mật sau bài test vượt định vị
 
 Bài test 06/10 (tester ngồi nhà vẫn chấm công được, qua VPS dev .26 làm cầu vào
-LAN) cho thấy app tin GPS của trình duyệt. Hướng đã chốt: phòng thủ ở chính
-server .28, không phụ thuộc máy tấn công. Migration 020, chi tiết ở README mục
-"Chống chấm công hộ" và "Xác thực 2 lớp":
+LAN) cho thấy app tin GPS của trình duyệt. Đã làm (migration 020, chi tiết ở
+README mục "Nhật ký chấm công" và "Xác thực 2 lớp"):
 
-- Mã có mặt trên màn hình kiosk ở văn phòng (`/kiosk`), GPS thành tín hiệu phụ.
 - Nhật ký mọi lần bấm giờ (kể cả bị từ chối) + nhật ký đăng nhập, kèm IP.
 - Xác thực 2 lớp Google Authenticator cho admin và nhân viên (tự bật).
 - Đổi mật khẩu / bật tắt 2 lớp đăng xuất mọi phiên khác (`sessionVersion`).
 
-Mặc định tất cả **tắt** sau deploy. Việc của chủ dự án sau deploy: đặt một màn
-hình ở văn phòng → `/admin/security` → Thêm màn hình → mở link trên máy đó →
-bật "Bắt nhập mã có mặt"; admin vào Tài khoản bật 2 lớp.
-
-Test sau đợt này: `test:logic` 238/238, `test:api` 360/360, `test:routes` 79/79;
-UI đo ở 1920×1080, 1920×1200, 2560×1440, 2560×1600, 3840×2160.
+09/10: chủ dự án bỏ "mã có mặt" (màn hình kiosk) — đã gỡ hết, migration 021
+xoá bảng `KioskDevice` và các dòng Settings liên quan. Chặn dò mật khẩu giữ cách
+khoá theo tài khoản (5 lần sai / 15 phút), **không ban IP** — chủ dự án đồng ý.
 
 Phía hệ thống .28 (cần sudo, chủ dự án tự chạy — chưa làm): chặn cổng Docker
 bằng chain DOCKER-USER, SSH chỉ qua Tailscale, chặn IPv6 inbound, fail2ban, log
-truy cập Caddy, đặt IP tĩnh (DHCP reservation) trên router.
+truy cập Caddy, đặt IP tĩnh (DHCP reservation) trên router, có thể tắt SNAT của
+Tailscale (`tailscale set --snat-subnet-routes=false`) để nhật ký thấy IP thật
+của máy Tailscale.
 
 ## Việc còn lại
 
