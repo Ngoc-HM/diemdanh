@@ -15,7 +15,6 @@ function publicView(config: EmailConfig | null) {
     user: config?.user ?? "",
     hasPassword: Boolean(config?.password),
     from: config?.from ?? "",
-    appUrl: config?.appUrl ?? "",
     reminderEnabled: config?.reminderEnabled ?? true,
     notifyEnabled: config?.notifyEnabled ?? true,
   };
@@ -42,7 +41,6 @@ export async function PUT(req: Request) {
     const host = String(body?.host || "").trim();
     const port = Number(body?.port);
     const from = String(body?.from || "").trim();
-    const appUrl = String(body?.appUrl || "").trim().replace(/\/+$/, "");
     const password = String(body?.password || "");
 
     if (!host) badRequest("Vui lòng nhập máy chủ SMTP");
@@ -50,9 +48,6 @@ export async function PUT(req: Request) {
       badRequest("Cổng SMTP phải là số từ 1 đến 65535");
     }
     if (!from) badRequest("Vui lòng nhập địa chỉ người gửi");
-    if (appUrl && !/^https?:\/\/[^\s/]+/.test(appUrl)) {
-      badRequest("Địa chỉ web phải bắt đầu bằng http:// hoặc https://");
-    }
 
     const config: EmailConfig = {
       host,
@@ -61,7 +56,6 @@ export async function PUT(req: Request) {
       user: String(body?.user || "").trim(),
       password: password || existing?.password || "",
       from,
-      appUrl,
       reminderEnabled:
         body?.reminderEnabled === undefined
           ? (existing?.reminderEnabled ?? true)

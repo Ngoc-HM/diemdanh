@@ -548,9 +548,9 @@ check("đổi ca được duyệt: nêu ca mới", shiftRequestNotice({ date: "2
 const otNotice = overtimeNotice({ date: "2026-10-04", action: "approve", plannedStart: "08:00", plannedEnd: "12:00", hours: "3,5", code: "T1", rate: 200, adminNote: null });
 check("OT duyệt: số giờ + hệ số", otNotice.subject === "Phiếu OT ngày 04/10 đã được duyệt" && otNotice.lines.includes("Số giờ tính lương: 3,5 giờ, loại T1 hệ số 200%."));
 check("OT sửa giờ: tiêu đề riêng", overtimeNotice({ date: "2026-10-04", action: "update", plannedStart: "08:00", plannedEnd: "12:00", hours: "4", code: "T1", rate: 200, adminNote: null }).subject === "Số giờ OT ngày 04/10 đã được điều chỉnh");
-const composed = composeNoticeEmail(editNotice, { name: "An", appUrl: "https://cc.example.vn", companyName: "Sao Mộc" });
-check("email: tiền tố + lời chào + link", composed.subject.startsWith("[Chấm công] ") && composed.text.startsWith("Chào An,") && composed.text.includes("Xem chi tiết: https://cc.example.vn/dashboard/history"));
-check("email: chưa khai địa chỉ web thì không có link", !composeNoticeEmail(editNotice, { name: "An", appUrl: "", companyName: "" }).text.includes("Xem chi tiết"));
+const composed = composeNoticeEmail(editNotice, { name: "An", companyName: "Sao Mộc" });
+check("email: tiền tố + lời chào + chỉ chỗ xem lại", composed.subject.startsWith("[Chấm công] ") && composed.text.startsWith("Chào An,") && composed.text.includes('mục "Lịch sử chấm công"'));
+check("email: không có đường link nào", !/https?:|www\.|\/dashboard/i.test(composed.text), composed.text);
 
 console.log(`\n===== ${pass} đạt / ${fail} hỏng =====`);
 if (bad.length) bad.forEach((f) => console.log(" -", f));

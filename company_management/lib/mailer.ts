@@ -20,8 +20,6 @@ export type EmailConfig = {
   password: string;
   /// Địa chỉ người gửi, vd `Chấm công <noreply@congty.vn>`.
   from: string;
-  /// Địa chỉ web của hệ thống để tạo link trong email.
-  appUrl: string;
   reminderEnabled: boolean;
   /// Email báo cho nhân viên khi admin sửa công / duyệt đổi ca / duyệt OT.
   notifyEnabled: boolean;
@@ -85,7 +83,6 @@ export async function getEmailConfig(): Promise<EmailConfig | null> {
       user: stored.user ?? "",
       password: stored.password ? (decryptSecret(stored.password) ?? "") : "",
       from: stored.from ?? "",
-      appUrl: stored.appUrl ?? "",
       reminderEnabled: Boolean(stored.reminderEnabled),
       // Cấu hình lưu trước khi có tuỳ chọn này thì mặc định bật.
       notifyEnabled: stored.notifyEnabled !== false,
@@ -130,17 +127,6 @@ export async function sendMail(
     text: message.text,
     html: message.html,
   });
-}
-
-/// Địa chỉ web dùng trong link email: ưu tiên cấu hình của admin, không có
-/// thì lấy origin của request đang xử lý (nếu có).
-export function resolveAppUrl(
-  config: EmailConfig | null,
-  requestUrl?: string
-): string {
-  if (config?.appUrl) return config.appUrl.replace(/\/+$/, "");
-  if (requestUrl) return new URL(requestUrl).origin;
-  return "";
 }
 
 /// Mã đặt lại mật khẩu: 8 chữ số, sống 15 phút, sai quá 5 lần thì huỷ.

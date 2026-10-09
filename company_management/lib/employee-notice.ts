@@ -6,8 +6,9 @@ export type Notice = {
   subject: string;
   /// Các đoạn nội dung, mỗi phần tử một dòng (chuỗi rỗng = dòng trống).
   lines: string[];
-  /// Đường dẫn trong web để nhân viên xem lại, vd "/dashboard/history".
-  link: string;
+  /// Mục trong menu của web để nhân viên tự vào xem lại, vd "Lịch sử chấm
+  /// công". Chỉ là chữ: email không chứa đường link nào.
+  where: string;
 };
 
 export type NoticePunch = { type: string; time: string };
@@ -52,7 +53,7 @@ export function attendanceEditNotice(input: {
       `Sau: ${describePunches(input.after)}`,
       ...noteLines(input.note),
     ],
-    link: "/dashboard/history",
+    where: "Lịch sử chấm công",
   };
 }
 
@@ -76,7 +77,7 @@ export function dayMarkNotice(input: {
   return {
     subject: `Bảng chấm công ngày ${shortDate(input.date)} đã được điều chỉnh`,
     lines: ["Quản trị viên đã chấm lại bảng công của bạn.", "", change],
-    link: "/dashboard/history",
+    where: "Lịch sử chấm công",
   };
 }
 
@@ -95,7 +96,7 @@ export function dayReviewNotice(input: {
   return {
     subject: `Ngày ${shortDate(input.date)} làm thiếu giờ đã được xem lại`,
     lines: [`Ngày ${day} bạn làm chưa đủ giờ tối thiểu của ca. Quản trị viên ${outcome}`],
-    link: "/dashboard/history",
+    where: "Lịch sử chấm công",
   };
 }
 
@@ -119,7 +120,7 @@ export function shiftRequestNotice(input: {
         : `Yêu cầu ${what} bị từ chối. Lịch giữ nguyên như cũ.`,
       ...noteLines(input.adminNote),
     ],
-    link: "/dashboard/shift-requests",
+    where: "Chỉnh sửa ca",
   };
 }
 
@@ -143,7 +144,7 @@ export function overtimeNotice(input: {
     return {
       subject: `Phiếu OT ngày ${short} bị từ chối`,
       lines: [`Phiếu làm thêm giờ ngày ${day} (${plan}) bị từ chối.`, ...noteLines(input.adminNote)],
-      link: "/dashboard/overtime",
+      where: "Làm thêm giờ",
     };
   }
   if (input.action === "update") {
@@ -155,27 +156,28 @@ export function overtimeNotice(input: {
         pay,
         ...noteLines(input.adminNote),
       ],
-      link: "/dashboard/overtime",
+      where: "Làm thêm giờ",
     };
   }
   return {
     subject: `Phiếu OT ngày ${short} đã được duyệt`,
     lines: [`Phiếu làm thêm giờ ngày ${day} (${plan}) đã được duyệt.`, "", pay, ...noteLines(input.adminNote)],
-    link: "/dashboard/overtime",
+    where: "Làm thêm giờ",
   };
 }
 
-/// Ghép thành email hoàn chỉnh.
+/// Ghép thành email hoàn chỉnh. Chỉ có nội dung, không có đường link hay nút
+/// bấm nào (chủ dự án yêu cầu): nhân viên tự mở web chấm công để xem lại.
 export function composeNoticeEmail(
   notice: Notice,
-  options: { name: string; appUrl: string; companyName: string }
+  options: { name: string; companyName: string }
 ): { subject: string; text: string } {
   const lines = [
     `Chào ${options.name},`,
     "",
     ...notice.lines,
     "",
-    ...(options.appUrl ? [`Xem chi tiết: ${options.appUrl}${notice.link}`, ""] : []),
+    `Bạn có thể xem lại ở mục "${notice.where}" trên trang chấm công.`,
     "Nếu có gì chưa đúng, vui lòng liên hệ quản trị viên.",
     "",
     `— Hệ thống chấm công ${options.companyName}`.trimEnd(),

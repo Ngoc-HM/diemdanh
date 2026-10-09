@@ -961,7 +961,6 @@ async function main() {
       port: sink.port,
       secure: false,
       from: "Chấm công <noreply@example.test>",
-      appUrl: "https://cham-cong.example.test",
       reminderEnabled: false,
     };
     r = await call(admin, "PUT", "/api/admin/email-settings", { ...sinkConfig, notifyEnabled: true });
@@ -983,7 +982,7 @@ async function main() {
     check("sửa giờ thì nhân viên nhận email", Boolean(mail), `(${sink.messages.length} thư)`);
     check("email có giờ trước / sau", mail?.text.includes("Trước: không có giờ chấm công") && mail?.text.includes("Sau: Vào 08:00 · Ra 12:00 · Ra 17:00"), mail?.text);
     check("email có ghi chú của admin", mail?.text.includes("Ghi chú của quản trị viên: __smoketest bổ sung công"));
-    check("email có link xem lại", mail?.text.includes("https://cham-cong.example.test/dashboard/history"));
+    check("email chỉ chỗ xem lại, không có link", mail?.text.includes('mục "Lịch sử chấm công"') && !/https?:|www\./i.test(mail?.text ?? ""), mail?.text);
     check("tiêu đề email có tiền tố [Chấm công]", mail?.subject.startsWith("[Chấm công] "), `(${mail?.subject})`);
     r = await call(admin, "PUT", `/api/admin/attendance/user/${employeeId}`, editDay);
     await new Promise((resolve) => setTimeout(resolve, 1500));

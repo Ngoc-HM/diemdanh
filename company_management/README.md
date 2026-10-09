@@ -304,7 +304,9 @@ cài gì thêm trên server, không gọi dịch vụ ngoài (`lib/totp.ts`, `li
 
 Admin cấu hình SMTP ở `/admin/email`. Cấu hình lưu trong bảng `Settings`, mật
 khẩu SMTP mã hoá bằng khoá dẫn xuất từ `AUTH_SECRET` (đổi `AUTH_SECRET` thì
-phải nhập lại mật khẩu SMTP). Email dùng cho ba việc:
+phải nhập lại mật khẩu SMTP). **Mọi email chỉ có nội dung, không chứa đường link
+hay nút bấm nào** (chủ dự án yêu cầu) — nhân viên tự mở web để xem. Email dùng
+cho ba việc:
 
 - **Quên mật khẩu**: nhân viên nhập email ở `/forgot-password`, nhận **mã 8 số**
   qua email rồi nhập thẳng mã đó kèm mật khẩu mới ngay trên trang. Mã sống 15
@@ -321,7 +323,7 @@ phải nhập lại mật khẩu SMTP). Email dùng cho ba việc:
   quên checkout), chấm lại ô ngày (đổi ca, N, O, xoá đánh dấu), quyết định ngày
   thiếu giờ, duyệt / từ chối đổi ca hoặc xin nghỉ, duyệt / từ chối / sửa giờ
   OT, nhân viên đó nhận một email nêu rõ thay đổi (giờ trước / sau, ghi chú của
-  admin, link xem lại nếu đã khai "Địa chỉ web"). Lưu lại y hệt thì không gửi.
+  admin, mục nào trên web để xem lại). Lưu lại y hệt thì không gửi.
   Gửi nền: admin không phải chờ, SMTP lỗi chỉ ghi log `[notify]`, không làm hỏng
   thao tác. Tắt được ở thẻ "Thông báo cho nhân viên" trang Email (mặc định bật).
 
@@ -587,10 +589,8 @@ cham-cong.congty.vn {
    vào → ra **trừ phần rơi vào nghỉ trưa**, nên nghỉ trưa kéo dài chồng lên giờ
    vào ca chiều sẽ khiến ai cũng thiếu giờ. Đặt `minHours` thấp hơn giờ làm thực
    khoảng 30 phút để ra sớm một chút vẫn đủ công.
-2. **`/admin/email`** — điền **Đường dẫn ứng dụng** (ví dụ `https://cham-cong.congty.vn`).
-   Bỏ trống thì email nhắc đăng ký lịch không kèm được link (gửi từ bộ đếm nền,
-   không có request để suy ra tên miền). Sau đó bấm **Gửi thử** và thử luôn luồng
-   quên mật khẩu (mã 8 số) bằng một hộp thư thật.
+2. **`/admin/email`** — nhập SMTP, bấm **Gửi thử** và thử luôn luồng quên mật
+   khẩu (mã 8 số) bằng một hộp thư thật.
 3. **`/admin/company`** — upload lại logo. Logo và ảnh đại diện nằm ở
    `UPLOAD_DIR` (không commit), nên máy chủ mới sẽ không có; deploy dạng
    container cần gắn volume cho thư mục này, nếu không mất sau mỗi lần deploy.

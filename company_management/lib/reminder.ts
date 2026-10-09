@@ -5,7 +5,6 @@ import { getRegistrationWindowConfig } from "@/lib/attendance-service";
 import {
   getEmailConfig,
   isEmailReady,
-  resolveAppUrl,
   sendMail,
 } from "@/lib/mailer";
 
@@ -65,7 +64,6 @@ export async function sendScheduleReminder(
   );
 
   const window = registrationWindow(month, windowConfig);
-  const appUrl = resolveAppUrl(config);
   const label = formatMonthLabel(month);
   const deadline = formatDateVN(window.closesOn);
 
@@ -76,7 +74,7 @@ export async function sendScheduleReminder(
       "",
       `Cửa sổ đăng ký lịch làm việc ${label} đã mở. Vui lòng đăng ký ca trước hết ngày ${deadline}.`,
       "",
-      appUrl ? `Đăng ký tại: ${appUrl}/dashboard/schedule` : "",
+      `Đăng ký ở mục "Đăng ký lịch" trên trang chấm công.`,
       "",
       "Sau hạn trên hệ thống sẽ khoá lịch, muốn thay đổi phải liên hệ quản trị viên.",
     ];

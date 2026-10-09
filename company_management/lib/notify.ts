@@ -2,7 +2,7 @@
 /// Gửi nền: không bắt admin chờ SMTP, và lỗi gửi (chưa cấu hình, máy chủ mail
 /// trục trặc) chỉ ghi log — thao tác của admin không bao giờ hỏng vì email.
 import { queryOne } from "@/lib/db";
-import { getEmailConfig, isEmailReady, resolveAppUrl, sendMail } from "@/lib/mailer";
+import { getEmailConfig, isEmailReady, sendMail } from "@/lib/mailer";
 import { composeNoticeEmail, Notice } from "@/lib/employee-notice";
 
 async function deliver(userId: string, notice: Notice) {
@@ -20,9 +20,6 @@ async function deliver(userId: string, notice: Notice) {
   );
   const email = composeNoticeEmail(notice, {
     name: user.name,
-    // Chỉ dùng địa chỉ admin khai ở trang Email: URL của request sau Caddy là
-    // http nội bộ, đưa vào email thì nhân viên bấm không mở được.
-    appUrl: resolveAppUrl(config),
     companyName: company?.value ?? "",
   });
   await sendMail(config, { to: user.email, ...email });

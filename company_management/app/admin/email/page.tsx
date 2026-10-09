@@ -17,7 +17,6 @@ type ConfigView = {
   user: string;
   hasPassword: boolean;
   from: string;
-  appUrl: string;
   reminderEnabled: boolean;
   notifyEnabled: boolean;
 };
@@ -31,7 +30,6 @@ const EMPTY_FORM = {
   user: "",
   password: "",
   from: "",
-  appUrl: "",
   reminderEnabled: true,
   notifyEnabled: true,
 };
@@ -66,7 +64,6 @@ export default function EmailSettingsPage() {
         user: payload.config.user,
         password: "",
         from: payload.config.from,
-        appUrl: payload.config.appUrl,
         reminderEnabled: payload.config.reminderEnabled,
         notifyEnabled: payload.config.notifyEnabled,
       });
@@ -249,16 +246,6 @@ export default function EmailSettingsPage() {
                   onChange={(event) => setForm({ ...form, from: event.target.value })}
                   placeholder="Chấm công <noreply@congty.vn>"
                   required
-                />
-              </Field>
-              <Field
-                label="Địa chỉ web của hệ thống"
-                hint="Dùng để tạo đường link trong email, ví dụ https://chamcong.congty.vn"
-              >
-                <Input
-                  value={form.appUrl}
-                  onChange={(event) => setForm({ ...form, appUrl: event.target.value })}
-                  placeholder="https://chamcong.congty.vn"
                 />
               </Field>
 
