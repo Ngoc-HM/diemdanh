@@ -218,25 +218,32 @@ function SecurityLog() {
   const [tab, setTab] = useState<"punch" | "login">("punch");
   const [days, setDays] = useState("7");
   const [suspicious, setSuspicious] = useState(false);
-  const [rows, setRows] = useState<PunchRow[] | LoginRow[] | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const query = new URLSearchParams({
+    tab,
+    days,
+    ...(suspicious ? { only: "suspicious" } : {}),
+  }).toString();
+  /// Kết quả gắn với đúng bộ lọc đã tải nó. Đổi tab thì lần vẽ đầu tiên vẫn
+  /// còn dữ liệu của tab cũ (dòng đăng nhập không có `flags`), nên chỉ dùng
+  /// dữ liệu khi khớp bộ lọc hiện tại, không thì hiện khung đang tải.
+  const [result, setResult] = useState<{
+    query: string;
+    rows?: PunchRow[] | LoginRow[];
+    error?: string;
+  } | null>(null);
+  const current = result?.query === query ? result : null;
+  const rows = current?.rows ?? null;
+  const error = current?.error ?? null;
 
   useEffect(() => {
     let cancelled = false;
-    setRows(null);
-    setError(null);
-    const params = new URLSearchParams({
-      tab,
-      days,
-      ...(suspicious ? { only: "suspicious" } : {}),
-    });
-    requestJson(`/api/admin/security/log?${params}`)
-      .then((payload) => !cancelled && setRows(payload.rows))
-      .catch((err) => !cancelled && setError(err.message));
+    requestJson(`/api/admin/security/log?${query}`)
+      .then((payload) => !cancelled && setResult({ query, rows: payload.rows }))
+      .catch((err) => !cancelled && setResult({ query, error: err.message }));
     return () => {
       cancelled = true;
     };
-  }, [tab, days, suspicious]);
+  }, [query]);
 
   const tabClass = (active: boolean) =>
     `h-10 rounded-lg px-4 text-sm font-medium ${
