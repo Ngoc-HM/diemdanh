@@ -8,12 +8,13 @@ import {
   type VerifiedSession,
 } from "@/lib/session-token";
 import { clientIp } from "@/lib/request-meta";
-import { findMatchingCidr } from "@/lib/ip-match";
+import { findMatchingCidr, isLoopbackIp } from "@/lib/ip-match";
 import {
   BLOCKED_IP_HEADER,
   BLOCKED_MESSAGE,
-  getBlockedRanges,
+  getAccessRules,
   lockEmployee,
+  OUTSIDE_NETWORK_MESSAGE,
 } from "@/lib/ip-policy";
 
 /// Hai route đăng nhập vẫn được đi tiếp (kèm header) khi IP bị chặn: chỉ ở đó
@@ -30,7 +31,19 @@ const PAGE_PATHS = new Set([
   "/canh-bao",
 ]);
 
-const BLOCKED_PAGE = `<!doctype html><html lang="vi"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Truy cập bị chặn</title></head><body style="margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;background:#0f172a;color:#e2e8f0;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif"><main style="max-width:480px;padding:32px;text-align:center"><h1 style="font-size:28px;margin:0 0 12px;color:#fff">Truy cập bị chặn</h1><p style="font-size:16px;line-height:1.6;margin:0">${BLOCKED_MESSAGE} Lần truy cập này đã được ghi lại. Nếu bạn cho rằng có nhầm lẫn, hãy liên hệ quản trị viên.</p></main></body></html>`;
+function blockedPage(message: string) {
+  return `<!doctype html><html lang="vi"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Truy cập bị chặn</title></head><body style="margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;background:#0f172a;color:#e2e8f0;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif"><main style="max-width:480px;padding:32px;text-align:center"><h1 style="font-size:28px;margin:0 0 12px;color:#fff">Truy cập bị chặn</h1><p style="font-size:16px;line-height:1.6;margin:0">${message} Nếu bạn cho rằng có nhầm lẫn, hãy liên hệ quản trị viên.</p></main></body></html>`;
+}
+
+/// Trả 403: API nhận JSON, trang nhận HTML.
+function forbidden(req: NextRequest, message: string) {
+  return req.nextUrl.pathname.startsWith("/api/")
+    ? NextResponse.json({ error: message }, { status: 403 })
+    : new NextResponse(blockedPage(message), {
+        status: 403,
+        headers: { "content-type": "text/html; charset=utf-8" },
+      });
+}
 
 /// IP nằm trong blacklist: chặn mọi trang và API. Nếu request mang phiên của
 /// một nhân viên thì khoá luôn tài khoản đó (admin thì chỉ chặn, không khoá,
@@ -40,15 +53,17 @@ async function blockRequest(req: NextRequest, ip: string, cidr: string) {
   const session = token ? await verifySession(token) : null;
   const lockAccount = session?.role === "employee";
   if (lockAccount) {
-    await lockEmployee(req, session.userId, `truy cập từ IP bị chặn ${ip} (${cidr})`);
+    await lockEmployee(
+      req,
+      session.userId,
+      `truy cập từ IP bị chặn ${ip} (${cidr})`,
+    );
   }
 
-  const response = req.nextUrl.pathname.startsWith("/api/")
-    ? NextResponse.json({ error: BLOCKED_MESSAGE }, { status: 403 })
-    : new NextResponse(BLOCKED_PAGE, {
-        status: 403,
-        headers: { "content-type": "text/html; charset=utf-8" },
-      });
+  const response = forbidden(
+    req,
+    `${BLOCKED_MESSAGE} Lần truy cập này đã được ghi lại.`,
+  );
   // Phiên nhân viên vừa bị khoá thì xoá cookie luôn; admin chỉ bị chặn ở IP này.
   if (lockAccount) response.cookies.delete(SESSION_COOKIE);
   return response;
@@ -82,10 +97,24 @@ function redirectTo(req: NextRequest, pathname: string) {
 export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
 
-  const ip = clientIp(req);
-  const blockedBy = ip ? findMatchingCidr(ip, await getBlockedRanges()) : null;
+  // Request từ chính máy chủ (127.0.0.1 / ::1 — vd healthcheck của Docker) không
+  // bị chặn: app chỉ nghe 127.0.0.1, mọi truy cập khác đều đi qua Caddy và
+  // mang IP thật của máy kết nối (Caddy bỏ giá trị client tự gửi).
+  const rawIp = clientIp(req);
+  const ip = rawIp && !isLoopbackIp(rawIp) ? rawIp : null;
+  const rules = ip ? await getAccessRules() : null;
+  const blockedBy = ip && rules ? findMatchingCidr(ip, rules.blocked) : null;
   if (blockedBy && !(LOGIN_ROUTES.has(pathname) && req.method === "POST")) {
     return await blockRequest(req, ip!, blockedBy);
+  }
+  // Ngoài dải mạng văn phòng (ở nhà, qua Tailscale, VPN…): không vào được web.
+  if (
+    !blockedBy &&
+    ip &&
+    rules?.network.enabled &&
+    !findMatchingCidr(ip, rules.network.ranges)
+  ) {
+    return forbidden(req, OUTSIDE_NETWORK_MESSAGE);
   }
   if (blockedBy || req.headers.has(BLOCKED_IP_HEADER)) {
     const headers = new Headers(req.headers);

@@ -1,5 +1,6 @@
-/// Chặn theo IP: blacklist chặn cả web (middleware), và dải mạng văn phòng
-/// được phép chấm công (route chấm công). Kèm khoá / mở khoá tài khoản.
+/// Chặn theo IP, áp ở middleware cho toàn bộ web: blacklist (chặn + khoá tài
+/// khoản nhân viên dùng IP đó) và dải mạng văn phòng (ngoài dải thì không vào
+/// được web). Kèm khoá / mở khoá tài khoản.
 import { query, queryOne } from "@/lib/db";
 import { parsePunchNetwork, PunchNetwork } from "@/lib/ip-match";
 import { logLoginEvent } from "@/lib/security-log";
@@ -11,22 +12,27 @@ export type BlockedIpRow = {
   createdAt: Date;
 };
 
-/// Middleware tra blacklist ở mọi request nên giữ bản sao trong bộ nhớ vài
-/// giây; admin thêm / xoá IP thì xoá bản sao để có hiệu lực ngay.
-const CACHE_MS = 5_000;
-const cache = globalThis as unknown as { blockedIps?: { at: number; ranges: string[] } };
+export type AccessRules = { blocked: string[]; network: PunchNetwork };
 
-export async function getBlockedRanges(): Promise<string[]> {
-  const cached = cache.blockedIps;
-  if (cached && Date.now() - cached.at < CACHE_MS) return cached.ranges;
-  const rows = await query<{ cidr: string }>(`SELECT "cidr" FROM "BlockedIp"`);
-  const ranges = rows.map((row) => row.cidr);
-  cache.blockedIps = { at: Date.now(), ranges };
-  return ranges;
+/// Middleware tra luật ở mọi request nên giữ bản sao trong bộ nhớ vài giây;
+/// admin đổi blacklist / dải mạng thì xoá bản sao để có hiệu lực ngay.
+const CACHE_MS = 5_000;
+const cache = globalThis as unknown as { accessRules?: { at: number; rules: AccessRules } };
+
+export async function getAccessRules(): Promise<AccessRules> {
+  const cached = cache.accessRules;
+  if (cached && Date.now() - cached.at < CACHE_MS) return cached.rules;
+  const [rows, network] = await Promise.all([
+    query<{ cidr: string }>(`SELECT "cidr" FROM "BlockedIp"`),
+    getPunchNetwork(),
+  ]);
+  const rules = { blocked: rows.map((row) => row.cidr), network };
+  cache.accessRules = { at: Date.now(), rules };
+  return rules;
 }
 
-export function invalidateBlockedRanges() {
-  cache.blockedIps = undefined;
+export function invalidateAccessRules() {
+  cache.accessRules = undefined;
 }
 
 export async function listBlockedIps(): Promise<BlockedIpRow[]> {
@@ -49,6 +55,7 @@ export async function savePunchNetwork(network: PunchNetwork): Promise<PunchNetw
      ON CONFLICT ("key") DO UPDATE SET "value" = EXCLUDED."value" RETURNING "key"`,
     [value]
   );
+  invalidateAccessRules();
   return parsePunchNetwork(value);
 }
 
@@ -102,6 +109,7 @@ export function lockedMessage(reason: string | null): string {
 }
 
 export const BLOCKED_MESSAGE = "Truy cập từ địa chỉ mạng này đã bị chặn.";
+export const OUTSIDE_NETWORK_MESSAGE = "Hệ thống chỉ truy cập được từ mạng của văn phòng.";
 
 /// Header middleware gắn cho hai route đăng nhập khi IP nằm trong blacklist, để
 /// route kiểm mật khẩu rồi khoá đúng tài khoản. Middleware luôn xoá giá trị

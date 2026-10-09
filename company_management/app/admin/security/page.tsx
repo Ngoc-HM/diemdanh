@@ -398,12 +398,11 @@ function NetworkCard({
               />
               <span>
                 <span className="block text-sm font-medium text-slate-900">
-                  Chỉ nhận chấm công từ mạng văn phòng
+                  Chỉ cho vào web từ mạng văn phòng
                 </span>
                 <span className="block text-sm text-slate-600">
                   Máy không nằm trong các dải dưới đây (ở nhà, vào qua
-                  Tailscale, VPN…) bấm Vào / Ra ca sẽ bị từ chối và ghi vào nhật
-                  ký.
+                  Tailscale, VPN…) không mở được web, kể cả trang đăng nhập.
                 </span>
               </span>
             </label>

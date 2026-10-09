@@ -12,7 +12,10 @@ export async function GET(req: Request) {
     await requireAdmin();
     const url = new URL(req.url);
     const tab = url.searchParams.get("tab") === "login" ? "login" : "punch";
-    const days = Math.min(90, Math.max(1, Number(url.searchParams.get("days")) || 7));
+    const days = Math.min(
+      90,
+      Math.max(1, Number(url.searchParams.get("days")) || 7),
+    );
     const suspicious = url.searchParams.get("only") === "suspicious";
 
     if (tab === "login") {
@@ -25,7 +28,7 @@ export async function GET(req: Request) {
             ${suspicious ? `AND e."event" IN ('login_failed', '2fa_failed')` : ""}
           ORDER BY e."createdAt" DESC
           LIMIT ${MAX_ROWS}`,
-        [String(days)]
+        [String(days)],
       );
       return { tab, rows };
     }
@@ -41,7 +44,7 @@ export async function GET(req: Request) {
           ${suspicious ? `AND (p."result" = 'rejected' OR cardinality(p."flags") > 0)` : ""}
         ORDER BY p."createdAt" DESC
         LIMIT ${MAX_ROWS}`,
-      [String(days)]
+      [String(days)],
     );
     return { tab, rows };
   }, "Security log read error");

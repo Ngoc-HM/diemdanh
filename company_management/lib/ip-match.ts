@@ -46,6 +46,13 @@ export function ipInCidr(ip: string | null | undefined, cidr: string): boolean {
   return value >= base && value < base + size;
 }
 
+/// Địa chỉ của chính máy chủ (127.x.x.x, ::1): request không đi qua Caddy,
+/// vd healthcheck của Docker. Next tự gắn X-Forwarded-For bằng địa chỉ này.
+export function isLoopbackIp(ip: string | null | undefined): boolean {
+  const value = String(ip ?? "").trim();
+  return value === "::1" || ipInCidr(value, "127.0.0.0/8");
+}
+
 /// Dải đầu tiên chứa IP, hoặc null.
 export function findMatchingCidr(ip: string | null | undefined, ranges: string[]): string | null {
   return ranges.find((range) => ipInCidr(ip, range)) ?? null;

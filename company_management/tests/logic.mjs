@@ -47,7 +47,7 @@ import {
   verifyTotp,
 } from "../lib/totp.ts";
 import { summarizeUserAgent } from "../lib/security-labels.ts";
-import { findMatchingCidr, ipInCidr, normalizeCidr, parseIpv4, parsePunchNetwork } from "../lib/ip-match.ts";
+import { findMatchingCidr, ipInCidr, isLoopbackIp, normalizeCidr, parseIpv4, parsePunchNetwork } from "../lib/ip-match.ts";
 import {
   attendanceEditNotice,
   composeNoticeEmail,
@@ -565,6 +565,7 @@ check("một IP chỉ khớp đúng nó", ipInCidr("192.168.1.26", "192.168.1.26
 check("dải lớn /1", ipInCidr("255.255.255.255", "128.0.0.0/1") && !ipInCidr("127.255.255.255", "128.0.0.0/1"));
 check("tìm dải khớp đầu tiên", findMatchingCidr("10.0.0.5", ["192.168.1.26", "10.0.0.0/8"]) === "10.0.0.0/8" && findMatchingCidr(null, ["0.0.0.0/1"]) === null);
 check("cấu hình mạng chấm công mặc định", JSON.stringify(parsePunchNetwork('{"enabled":true,"ranges":["192.168.1.0/24"]}')) === JSON.stringify({ enabled: true, ranges: ["192.168.1.0/24"] }));
+check("loopback là chính máy chủ", isLoopbackIp("127.0.0.1") && isLoopbackIp("::1") && !isLoopbackIp("192.168.1.28") && !isLoopbackIp(null));
 check("bật mà không có dải hợp lệ thì coi như tắt", parsePunchNetwork('{"enabled":true,"ranges":["bừa"]}').enabled === false);
 
 console.log(`\n===== ${pass} đạt / ${fail} hỏng =====`);

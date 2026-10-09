@@ -79,10 +79,12 @@ Caddy thì cột IP trống.
 Hai lớp, cấu hình ở `/admin/security` (`lib/ip-policy.ts`, `lib/ip-match.ts`,
 migration 022):
 
-- **Mạng chấm công**: chỉ nhận bấm Vào / Ra ca từ các dải IP văn phòng (mặc định
-  `192.168.1.0/24`, đang bật). Ngoài dải — ở nhà, vào qua Tailscale (hiện IP
-  `172.19.0.1`), VPN — bị từ chối và ghi nhật ký lý do "Ngoài mạng văn phòng".
-  Không xác định được IP cũng từ chối.
+- **Mạng văn phòng**: bật thì máy ngoài các dải IP văn phòng (mặc định
+  `192.168.1.0/24`, đang bật) **không mở được web**, kể cả trang đăng nhập — ở
+  nhà, vào qua Tailscale (hiện IP `172.19.0.1`), VPN đều bị chặn, admin cũng
+  vậy. Route chấm công kiểm thêm một lần nữa. Không cho lưu dải không chứa IP
+  admin đang dùng (kẻo tự khoá mình). Request từ chính máy chủ (127.0.0.1 / ::1,
+  vd healthcheck Docker) không bị chặn.
 - **Blacklist**: IP / dải IP admin thêm bị chặn khỏi **toàn bộ web** (mọi trang,
   API, ảnh) ngay ở middleware — trả trang "Truy cập bị chặn". Nhân viên nào dùng
   IP đó, đang đăng nhập sẵn hoặc đăng nhập đúng mật khẩu, bị **khoá tài khoản
@@ -93,9 +95,19 @@ migration 022):
   `192.168.1.26`): IP cấp động có thể rơi vào máy người khác.
 
 Middleware chạy runtime **Node** (không phải edge) để đọc blacklist trong
-database, giữ bản sao 5 giây; thêm / xoá IP có hiệu lực ngay. Lỡ chặn nhầm khiến
-không vào được: xoá trên server bằng
-`docker compose -p company_management exec -T db psql -U postgres -d company_mana -c 'DELETE FROM "BlockedIp";'`.
+database, giữ bản sao 5 giây; đổi luật có hiệu lực ngay. Lỡ chặn nhầm khiến
+không vào được web (vd đang ở ngoài văn phòng): SSH vào server rồi chạy
+
+```bash
+cd ~/diemdanh/company_management
+# Tắt "chỉ cho vào từ mạng văn phòng"
+docker compose -p company_management exec -T db psql -U postgres -d company_mana -c \
+  "UPDATE \"Settings\" SET \"value\" = jsonb_set(\"value\"::jsonb, '{enabled}', 'false')::text WHERE \"key\" = 'punch_network';"
+# Xoá toàn bộ blacklist
+docker compose -p company_management exec -T db psql -U postgres -d company_mana -c 'DELETE FROM "BlockedIp";'
+```
+
+(có hiệu lực sau tối đa 5 giây).
 
 ### Bảng chấm công gửi kế toán
 

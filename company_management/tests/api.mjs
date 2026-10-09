@@ -972,6 +972,8 @@ async function main() {
     check("chặn dải IP sai định dạng", r.status === 400, `(${r.status})`);
     r = await call(admin, "PUT", "/api/admin/security/network", { enabled: true, ranges: [] });
     check("bật mà không có dải nào thì chặn", r.status === 400, `(${r.status})`);
+    r = await call(admin, "PUT", "/api/admin/security/network", { enabled: true, ranges: ["10.77.0.0/16"] }, fromIp("10.99.0.1"));
+    check("không cho admin bật dải không chứa IP mình đang dùng", r.status === 400 && /không vào được web/.test(r.json.error ?? ""), `(${r.status} ${r.json.error})`);
     r = await call(admin, "PUT", "/api/admin/security/network", { enabled: true, ranges: ["10.77.9.9/16"] });
     check("bật chỉ chấm công từ mạng văn phòng (dải được chuẩn hoá)", r.status === 200 && r.json.network?.enabled === true && r.json.network?.ranges?.[0] === "10.77.0.0/16", JSON.stringify(r.json.network));
     r = await call(emp, "GET", "/api/admin/security/network");
@@ -979,14 +981,22 @@ async function main() {
     r = await punchFrom(fromIp("10.77.3.4"));
     check("máy trong mạng văn phòng chấm công được", r.status === 200, `(${r.status} ${r.json.error ?? ""})`);
     r = await punchFrom(fromIp("172.19.0.1"));
-    check("máy ngoài mạng (vd vào qua Tailscale) bị từ chối", r.status === 400 && /mạng của văn phòng/.test(r.json.error ?? ""), `(${r.status} ${r.json.error})`);
+    check("máy ngoài mạng (vd vào qua Tailscale) không chấm công được", r.status === 403 && /mạng của văn phòng/.test(r.json.error ?? ""), `(${r.status} ${r.json.error})`);
+    const outsidePage = await fetch(BASE + "/login", { headers: fromIp("172.19.0.1") });
+    check("máy ngoài mạng không mở được cả trang đăng nhập", outsidePage.status === 403 && (await outsidePage.text()).includes("chỉ truy cập được từ mạng của văn phòng"), `(${outsidePage.status})`);
+    const insidePage = await fetch(BASE + "/login", { headers: fromIp("10.77.200.1") });
+    check("máy trong mạng văn phòng mở web bình thường", insidePage.status === 200, `(${insidePage.status})`);
+    r = await call(admin, "GET", "/api/users", undefined, fromIp("100.64.1.2"));
+    check("admin ở ngoài mạng cũng không vào được", r.status === 403, `(${r.status})`);
+    r = await call(makeJar(), "POST", "/api/auth/login", { email: EMP_EMAIL, password: EMP_PASS }, fromIp("172.19.0.1"));
+    check("ngoài mạng không đăng nhập được", r.status === 403, `(${r.status})`);
     r = await punchFrom({});
-    check("không xác định được IP cũng bị từ chối", r.status === 400, `(${r.status})`);
+    check("không xác định được IP thì vẫn không chấm công được", r.status === 400 && /mạng của văn phòng/.test(r.json.error ?? ""), `(${r.status})`);
     const networkRejects = await client.query(
       `SELECT count(*)::int AS n FROM "PunchAttempt" WHERE "userId" = $1 AND "reason" = 'outside_network'`,
       [employeeId]
     );
-    check("lần bị từ chối vì ngoài mạng có trong nhật ký", networkRejects.rows[0].n >= 2, `(${networkRejects.rows[0].n})`);
+    check("lần bị từ chối vì ngoài mạng có trong nhật ký", networkRejects.rows[0].n >= 1, `(${networkRejects.rows[0].n})`);
     r = await call(admin, "PUT", "/api/admin/security/network", { enabled: false, ranges: ["10.77.0.0/16"] });
     check("tắt lại chặn theo mạng", r.status === 200 && r.json.network?.enabled === false, `(${r.status})`);
 
