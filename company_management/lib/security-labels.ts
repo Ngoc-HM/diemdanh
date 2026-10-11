@@ -12,7 +12,8 @@ export type LoginEventType =
   | "password_reset"
   | "account_locked"
   | "account_unlocked"
-  | "blocked_ip";
+  | "blocked_ip"
+  | "outside_network_login";
 
 export const LOGIN_EVENT_LABELS: Record<LoginEventType, string> = {
   login: "Đăng nhập",
@@ -26,6 +27,7 @@ export const LOGIN_EVENT_LABELS: Record<LoginEventType, string> = {
   account_locked: "Khoá tài khoản",
   account_unlocked: "Mở khoá tài khoản",
   blocked_ip: "Đăng nhập từ IP bị chặn",
+  outside_network_login: "Đăng nhập ngoài mạng văn phòng",
 };
 
 export type PunchFlag = "low_accuracy" | "no_accuracy" | "shared_ip";

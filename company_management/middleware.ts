@@ -14,12 +14,25 @@ import {
   BLOCKED_MESSAGE,
   getAccessRules,
   lockEmployee,
+  OUTSIDE_NETWORK_HEADER,
   OUTSIDE_NETWORK_MESSAGE,
 } from "@/lib/ip-policy";
 
 /// Hai route đăng nhập vẫn được đi tiếp (kèm header) khi IP bị chặn: chỉ ở đó
 /// mới biết người đang dùng IP này là tài khoản nào để khoá.
 const LOGIN_ROUTES = new Set(["/api/auth/login", "/api/auth/login/2fa"]);
+
+/// Ngoài mạng văn phòng (ở nhà, qua Tailscale…) người chưa có phiên admin chỉ
+/// mở được trang đăng nhập và những thứ trang đó cần, để admin vẫn vào được.
+/// Nhân viên đăng nhập từ ngoài bị route đăng nhập từ chối.
+const OUTSIDE_OPEN_PATHS = new Set([
+  "/login",
+  "/api/auth/login",
+  "/api/auth/login/2fa",
+  "/api/auth/logout",
+  "/api/settings/company",
+]);
+const COMPANY_LOGO_PATH = /^\/uploads\/logo\.[a-z]+$/;
 
 /// Các đường dẫn giao diện cần chặn điện thoại / kiểm tra phiên như trước.
 const PAGE_PATHS = new Set([
@@ -107,19 +120,35 @@ export async function middleware(req: NextRequest) {
   if (blockedBy && !(LOGIN_ROUTES.has(pathname) && req.method === "POST")) {
     return await blockRequest(req, ip!, blockedBy);
   }
-  // Ngoài dải mạng văn phòng (ở nhà, qua Tailscale, VPN…): không vào được web.
-  if (
+  // Ngoài dải mạng văn phòng (ở nhà, qua Tailscale, VPN…): chỉ admin vào
+  // được. Tailscale nào cũng hiện chung một IP nên phân biệt theo tài khoản.
+  const outside = Boolean(
     !blockedBy &&
     ip &&
     rules?.network.enabled &&
-    !findMatchingCidr(ip, rules.network.ranges)
-  ) {
-    return forbidden(req, OUTSIDE_NETWORK_MESSAGE);
+    !findMatchingCidr(ip, rules.network.ranges),
+  );
+  if (outside) {
+    const token = req.cookies.get(SESSION_COOKIE)?.value;
+    const session = token ? await verifySession(token) : null;
+    if (session?.role !== "admin") {
+      if (pathname === "/") return redirectTo(req, "/login");
+      if (
+        !OUTSIDE_OPEN_PATHS.has(pathname) &&
+        !COMPANY_LOGO_PATH.test(pathname)
+      ) {
+        return forbidden(req, OUTSIDE_NETWORK_MESSAGE);
+      }
+    }
   }
-  if (blockedBy || req.headers.has(BLOCKED_IP_HEADER)) {
+  // Hai route đăng nhập nhận header do chính middleware gắn (đã xoá giá trị
+  // client tự gửi): IP bị chặn thì khoá tài khoản, ngoài mạng thì chỉ cho admin.
+  if (LOGIN_ROUTES.has(pathname)) {
     const headers = new Headers(req.headers);
     headers.delete(BLOCKED_IP_HEADER);
+    headers.delete(OUTSIDE_NETWORK_HEADER);
     if (blockedBy) headers.set(BLOCKED_IP_HEADER, `${ip} (${blockedBy})`);
+    if (outside) headers.set(OUTSIDE_NETWORK_HEADER, ip!);
     return NextResponse.next({ request: { headers } });
   }
 

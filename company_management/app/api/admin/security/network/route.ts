@@ -1,10 +1,10 @@
 import { badRequest, handle, requireAdmin } from "@/lib/auth-guard";
-import { findMatchingCidr, isLoopbackIp, normalizeCidr } from "@/lib/ip-match";
+import { normalizeCidr } from "@/lib/ip-match";
 import { getPunchNetwork, savePunchNetwork } from "@/lib/ip-policy";
 import { clientIp } from "@/lib/request-meta";
 
-/// Dải mạng văn phòng: bật thì máy ngoài các dải này không vào được web (và
-/// không chấm công được). Kèm IP của chính admin để dễ khai.
+/// Dải mạng văn phòng: bật thì máy ngoài các dải này không vào được web (trừ
+/// tài khoản admin) và không chấm công được. Kèm IP của chính admin để dễ khai.
 export async function GET(req: Request) {
   return handle(async () => {
     await requireAdmin();
@@ -32,18 +32,6 @@ export async function PUT(req: Request) {
     const enabled = body?.enabled === true;
     if (enabled && ranges.length === 0)
       badRequest("Cần ít nhất một dải mạng khi bật");
-    // Không để admin tự khoá mình ngoài web: IP đang dùng phải nằm trong dải.
-    const currentIp = clientIp(req);
-    if (
-      enabled &&
-      currentIp &&
-      !isLoopbackIp(currentIp) &&
-      !findMatchingCidr(currentIp, ranges)
-    ) {
-      badRequest(
-        `Bạn đang truy cập từ IP ${currentIp}, không nằm trong các dải trên — lưu xong bạn sẽ không vào được web. Thêm dải chứa IP này trước.`,
-      );
-    }
     return {
       network: await savePunchNetwork({ enabled, ranges }),
       currentIp: clientIp(req),

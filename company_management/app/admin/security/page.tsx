@@ -398,11 +398,13 @@ function NetworkCard({
               />
               <span>
                 <span className="block text-sm font-medium text-slate-900">
-                  Chỉ cho vào web từ mạng văn phòng
+                  Chỉ cho vào web từ mạng văn phòng (trừ admin)
                 </span>
                 <span className="block text-sm text-slate-600">
                   Máy không nằm trong các dải dưới đây (ở nhà, vào qua
-                  Tailscale, VPN…) không mở được web, kể cả trang đăng nhập.
+                  Tailscale, VPN…) chỉ thấy trang đăng nhập: nhân viên không
+                  đăng nhập được, chỉ tài khoản admin vẫn vào và dùng bình
+                  thường.
                 </span>
               </span>
             </label>

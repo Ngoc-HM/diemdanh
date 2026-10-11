@@ -12,7 +12,14 @@ import {
 import { logLoginEvent } from "@/lib/security-log";
 import { verifySecondFactor } from "@/lib/two-factor";
 import { HOME_BY_ROLE, MFA_COOKIE } from "@/lib/login-flow";
-import { BLOCKED_IP_HEADER, BLOCKED_MESSAGE, lockEmployee, lockedMessage } from "@/lib/ip-policy";
+import {
+  BLOCKED_IP_HEADER,
+  BLOCKED_MESSAGE,
+  lockEmployee,
+  lockedMessage,
+  OUTSIDE_NETWORK_HEADER,
+  OUTSIDE_NETWORK_MESSAGE,
+} from "@/lib/ip-policy";
 
 const EXPIRED = "Phiên xác thực đã hết hạn, vui lòng đăng nhập lại";
 
@@ -28,9 +35,19 @@ export async function POST(req: Request) {
     if (blockedIp) {
       cookieStore.delete({ name: MFA_COOKIE, path: "/api/auth/login" });
       if (pending.role === "employee") {
-        await lockEmployee(req, pending.userId, `đăng nhập từ IP bị chặn ${blockedIp}`);
+        await lockEmployee(
+          req,
+          pending.userId,
+          `đăng nhập từ IP bị chặn ${blockedIp}`,
+        );
       }
       throw new HttpError(403, BLOCKED_MESSAGE);
+    }
+    if (
+      pending.role === "employee" &&
+      req.headers.get(OUTSIDE_NETWORK_HEADER)
+    ) {
+      throw new HttpError(403, OUTSIDE_NETWORK_MESSAGE);
     }
 
     const body = await req.json().catch(() => ({}));
@@ -49,16 +66,24 @@ export async function POST(req: Request) {
       `SELECT "sessionVersion", "totpSecret" IS NOT NULL AS "twoFactor",
               ${pending.role === "admin" ? 'true AS "active", NULL::timestamptz AS "lockedAt", NULL AS "lockReason"' : '"isActive" AS "active", "lockedAt", "lockReason"'}
          FROM ${table} WHERE "id" = $1`,
-      [pending.userId]
+      [pending.userId],
     );
-    if (!account || !account.twoFactor || account.sessionVersion !== (pending.sv ?? 0)) {
+    if (
+      !account ||
+      !account.twoFactor ||
+      account.sessionVersion !== (pending.sv ?? 0)
+    ) {
       cookieStore.delete({ name: MFA_COOKIE, path: "/api/auth/login" });
       throw new HttpError(401, EXPIRED);
     }
     if (!account.active) {
-      throw new HttpError(403, "Tài khoản đã ngừng hoạt động. Liên hệ quản trị viên.");
+      throw new HttpError(
+        403,
+        "Tài khoản đã ngừng hoạt động. Liên hệ quản trị viên.",
+      );
     }
-    if (account.lockedAt) throw new HttpError(403, lockedMessage(account.lockReason));
+    if (account.lockedAt)
+      throw new HttpError(403, lockedMessage(account.lockReason));
 
     const throttleKey = throttleKeyFor(pending);
     await assertLoginAllowed(throttleKey);
@@ -67,7 +92,10 @@ export async function POST(req: Request) {
     const method = await verifySecondFactor(target, code);
     if (!method) {
       await recordLoginFailure(throttleKey);
-      await logLoginEvent(req, "2fa_failed", { ...target, identifier: pending.email });
+      await logLoginEvent(req, "2fa_failed", {
+        ...target,
+        identifier: pending.email,
+      });
       throw new HttpError(401, "Mã xác thực không đúng");
     }
 
@@ -76,7 +104,8 @@ export async function POST(req: Request) {
     await setSessionCookie(await signSession(pending));
     await logLoginEvent(req, "login", {
       ...target,
-      identifier: method === "backup" ? `${pending.email} (mã dự phòng)` : pending.email,
+      identifier:
+        method === "backup" ? `${pending.email} (mã dự phòng)` : pending.email,
     });
 
     return {

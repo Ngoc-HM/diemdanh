@@ -111,6 +111,10 @@ export function lockedMessage(reason: string | null): string {
 export const BLOCKED_MESSAGE = "Truy cập từ địa chỉ mạng này đã bị chặn.";
 export const OUTSIDE_NETWORK_MESSAGE = "Hệ thống chỉ truy cập được từ mạng của văn phòng.";
 
+/// Header middleware gắn cho hai route đăng nhập khi máy ở ngoài mạng văn
+/// phòng: chỉ tài khoản admin được đăng nhập từ ngoài. Luôn xoá giá trị client gửi.
+export const OUTSIDE_NETWORK_HEADER = "x-outside-network";
+
 /// Header middleware gắn cho hai route đăng nhập khi IP nằm trong blacklist, để
 /// route kiểm mật khẩu rồi khoá đúng tài khoản. Middleware luôn xoá giá trị
 /// client tự gửi lên.

@@ -216,8 +216,8 @@ xoá bảng `KioskDevice` và các dòng Settings liên quan. Chặn dò mật k
 khoá theo tài khoản (5 lần sai / 15 phút), **không ban IP** — chủ dự án đồng ý.
 
 09/10 (sau): thêm chặn theo IP (migration 022) — ngoài dải `192.168.1.0/24`
-(bật sẵn; dữ liệu prod tới 09/10 đều từ dải này) **không vào được web**, kể cả
-qua Tailscale; và blacklist
+(bật sẵn; dữ liệu prod tới 09/10 đều từ dải này) chỉ tài khoản **admin** vào
+được web (chủ dự án quản trị qua Tailscale), nhân viên bị chặn; và blacklist
 IP do admin thêm: chặn cả web, nhân viên dùng IP đó bị khoá tài khoản. Middleware
 chuyển sang runtime Node để đọc DB. Đây là lớp chặn thật cho kiểu đi vòng qua
 VPS dev .26: admin thêm `192.168.1.26` vào blacklist.

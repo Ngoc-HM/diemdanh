@@ -80,11 +80,13 @@ Hai lớp, cấu hình ở `/admin/security` (`lib/ip-policy.ts`, `lib/ip-match.
 migration 022):
 
 - **Mạng văn phòng**: bật thì máy ngoài các dải IP văn phòng (mặc định
-  `192.168.1.0/24`, đang bật) **không mở được web**, kể cả trang đăng nhập — ở
-  nhà, vào qua Tailscale (hiện IP `172.19.0.1`), VPN đều bị chặn, admin cũng
-  vậy. Route chấm công kiểm thêm một lần nữa. Không cho lưu dải không chứa IP
-  admin đang dùng (kẻo tự khoá mình). Request từ chính máy chủ (127.0.0.1 / ::1,
-  vd healthcheck Docker) không bị chặn.
+  `192.168.1.0/24`, đang bật) — ở nhà, qua Tailscale (hiện IP `172.19.0.1`),
+  VPN — chỉ thấy **trang đăng nhập**: nhân viên đúng mật khẩu cũng không được
+  cấp phiên (ghi nhật ký "Đăng nhập ngoài mạng văn phòng"), phiên nhân viên mang
+  ra ngoài bị chặn, chấm công bị từ chối. **Tài khoản admin vẫn vào và dùng bình
+  thường từ ngoài** (chủ dự án quản trị qua Tailscale `https://100.116.216.43`).
+  Phân biệt theo tài khoản chứ không theo IP vì mọi máy Tailscale chung một IP.
+  Request từ chính máy chủ (127.0.0.1 / ::1, vd healthcheck Docker) không bị chặn.
 - **Blacklist**: IP / dải IP admin thêm bị chặn khỏi **toàn bộ web** (mọi trang,
   API, ảnh) ngay ở middleware — trả trang "Truy cập bị chặn". Nhân viên nào dùng
   IP đó, đang đăng nhập sẵn hoặc đăng nhập đúng mật khẩu, bị **khoá tài khoản
@@ -96,7 +98,7 @@ migration 022):
 
 Middleware chạy runtime **Node** (không phải edge) để đọc blacklist trong
 database, giữ bản sao 5 giây; đổi luật có hiệu lực ngay. Lỡ chặn nhầm khiến
-không vào được web (vd đang ở ngoài văn phòng): SSH vào server rồi chạy
+không vào được web (vd tự thêm IP của mình vào blacklist): SSH vào server rồi chạy
 
 ```bash
 cd ~/diemdanh/company_management

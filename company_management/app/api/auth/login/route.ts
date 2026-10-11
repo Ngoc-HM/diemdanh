@@ -5,7 +5,13 @@ import { signMfaChallenge } from "@/lib/session-token";
 import { login } from "@/lib/auth-login";
 import { logLoginEvent } from "@/lib/security-log";
 import { HOME_BY_ROLE, MFA_COOKIE, mfaCookieOptions } from "@/lib/login-flow";
-import { BLOCKED_IP_HEADER, BLOCKED_MESSAGE, lockEmployee } from "@/lib/ip-policy";
+import {
+  BLOCKED_IP_HEADER,
+  BLOCKED_MESSAGE,
+  lockEmployee,
+  OUTSIDE_NETWORK_HEADER,
+  OUTSIDE_NETWORK_MESSAGE,
+} from "@/lib/ip-policy";
 
 /// Đăng nhập chung cho admin và nhân viên bằng email hoặc tên đăng nhập. Trùng
 /// tài khoản admin thì vào khu quản trị, còn lại là nhân viên (lib/auth-login.ts).
@@ -16,7 +22,7 @@ export async function POST(req: Request) {
     const body = await req.json().catch(() => ({}));
     // Nhận thêm "email" / "username" của hai form cũ để tab đang mở vẫn gửi được.
     const identifier = String(
-      body?.identifier ?? body?.email ?? body?.username ?? ""
+      body?.identifier ?? body?.email ?? body?.username ?? "",
     ).trim();
     const password = String(body?.password || "");
 
@@ -35,7 +41,11 @@ export async function POST(req: Request) {
         identifier,
       });
       if (attempt?.session.role === "employee") {
-        await lockEmployee(req, attempt.session.userId, `đăng nhập từ IP bị chặn ${blockedIp}`);
+        await lockEmployee(
+          req,
+          attempt.session.userId,
+          `đăng nhập từ IP bị chặn ${blockedIp}`,
+        );
       }
       throw new HttpError(403, BLOCKED_MESSAGE);
     }
@@ -45,15 +55,36 @@ export async function POST(req: Request) {
       result = await login(identifier, password);
     } catch (error) {
       if (error instanceof HttpError && error.status === 401) {
-        await logLoginEvent(req, "login_failed", { type: "unknown", identifier });
+        await logLoginEvent(req, "login_failed", {
+          type: "unknown",
+          identifier,
+        });
       }
       throw error;
     }
     const { session, twoFactor } = result;
 
+    // Ngoài mạng văn phòng chỉ admin được đăng nhập; nhân viên đúng mật khẩu
+    // cũng không được cấp phiên, chỉ ghi nhật ký.
+    if (
+      session.role === "employee" &&
+      req.headers.get(OUTSIDE_NETWORK_HEADER)
+    ) {
+      await logLoginEvent(req, "outside_network_login", {
+        type: "employee",
+        id: session.userId,
+        identifier: session.email,
+      });
+      throw new HttpError(403, OUTSIDE_NETWORK_MESSAGE);
+    }
+
     if (twoFactor) {
       const cookieStore = await cookies();
-      cookieStore.set(MFA_COOKIE, await signMfaChallenge(session), mfaCookieOptions());
+      cookieStore.set(
+        MFA_COOKIE,
+        await signMfaChallenge(session),
+        mfaCookieOptions(),
+      );
       return { success: true, twoFactorRequired: true };
     }
 
