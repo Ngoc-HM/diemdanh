@@ -309,30 +309,15 @@ const caCN = { ...ca, code: "CN", workStart: "08:30", workEnd: "17:30", minHours
 const otLunch = parseLunchBreak("12:00-13:30");
 const ot = (dayType, scheduled, punches, extra = {}) => computeOvertimeMinutes({
   dayType, scheduled, punches, lunchBreak: otLunch, plannedStart: "18:00", plannedEnd: "21:00", ...extra });
-const otAfter = ot("weekday", [caCN], punchDay("08:30", "20:30"));
-check("ngày thường: phiếu 18:00–21:00, ra 20:30 → 18:00 → 20:30 = 2,5h", otAfter.minutes === 150 && otAfter.source === "punches", `(${otAfter.minutes}p ${otAfter.source})`);
-check("ngày thường: phiếu bắt đầu trong giờ ca thì chỉ tính từ lúc hết ca 17:30",
-  ot("weekday", [caCN], punchDay("08:30", "20:30"), { plannedStart: "16:00", plannedEnd: "21:00" }).minutes === 180);
-check("ra về trước giờ bắt đầu phiếu (làm ở nhà) thì 0 giờ",
-  ot("weekday", [caCN], punchDay("10:07", "17:40"), { plannedStart: "20:00", plannedEnd: "23:59" }).minutes === 0);
-check("ở lại quá giờ kết thúc phiếu thì chỉ tính tới giờ kết thúc phiếu",
-  ot("weekday", [caCN], punchDay("08:30", "22:00")).minutes === 180);
-check("ngày thường ra đúng giờ hết ca thì 0 phút OT", ot("weekday", [caCN], punchDay("08:30", "17:30")).minutes === 0);
-const otWeekend = ot("weekly_off", [], punchDay("08:30", "17:30", "2026-09-05"), { plannedStart: "08:00", plannedEnd: "18:00" });
-check("thứ 7 một phiếu cả ngày: giờ có mặt trong phiếu, trừ nghỉ trưa = 7,5h", otWeekend.minutes === 450, `(${otWeekend.minutes}p)`);
-const satDay = punchDay("08:00", "17:00", "2026-09-05");
-const satMorning = ot("weekly_off", [], satDay, { plannedStart: "08:00", plannedEnd: "12:00" });
-const satAfternoon = ot("weekly_off", [], satDay, { plannedStart: "13:30", plannedEnd: "17:00" });
-check("thứ 7 hai phiếu sáng + chiều: mỗi phiếu tính phần của nó (4h + 3,5h), không cộng đôi",
-  satMorning.minutes === 240 && satAfternoon.minutes === 210, `(${satMorning.minutes}p + ${satAfternoon.minutes}p)`);
-const otHoliday = ot("holiday", [caCN], punchDay("08:30", "12:00", "2026-09-02"), { plannedStart: "08:00", plannedEnd: "12:00" });
-check("ngày lễ: tính cả giờ trong phiếu dù có lịch = 3,5h", otHoliday.minutes === 210, `(${otHoliday.minutes}p)`);
-const otTrip = ot("weekday", [caCN], []);
-check("không chấm công: 0 giờ OT, không lấy giờ dự kiến", otTrip.minutes === 0 && otTrip.source === "missing");
-const otOpen = ot("weekday", [caCN], [{ type: "in", at: at("2026-09-01", "08:30"), withinRadius: true }]);
-check("quên checkout: 0 giờ OT cho tới khi bổ sung giờ ra", otOpen.minutes === 0 && otOpen.source === "missing");
-check("ca tăng ca (số công 0) không phải ca chính: OT cả giờ làm",
-  ot("weekday", [tangCa], punchDay("18:00", "21:00")).minutes === 180);
+check("số giờ OT = đúng khoảng giờ trên phiếu 18:00–21:00 = 3h",
+  ot("weekday", [caCN], punchDay("08:30", "17:30")).minutes === 180);
+check("không đọc chấm công: không bấm giờ vẫn là 3h", ot("weekday", [caCN], []).minutes === 180);
+check("phiếu 20:00–23:59 = 239 phút (3,98h) dù về lúc 17:40",
+  ot("weekday", [caCN], punchDay("10:07", "17:40"), { plannedStart: "20:00", plannedEnd: "23:59" }).minutes === 239);
+const satMorning = ot("weekly_off", [], [], { plannedStart: "08:00", plannedEnd: "12:00" });
+const satAfternoon = ot("weekly_off", [], [], { plannedStart: "13:30", plannedEnd: "17:00" });
+check("thứ 7 hai phiếu sáng + chiều: 4h + 3,5h", satMorning.minutes === 240 && satAfternoon.minutes === 210, `(${satMorning.minutes}p + ${satAfternoon.minutes}p)`);
+check("ngày lễ cũng theo giờ trên phiếu", ot("holiday", [caCN], [], { plannedStart: "08:00", plannedEnd: "12:00" }).minutes === 240);
 
 console.log("\n== bảng lương (đối chiếu file kế toán T9/2026) ==");
 const otConf = DEFAULT_OVERTIME_CONFIG;

@@ -1357,8 +1357,8 @@ async function main() {
     const weekdayOt = r.json.request;
     check("gửi phiếu OT ngày thường", r.status === 200 && weekdayOt?.status === "pending", `(${r.status})`);
     check("ngày thường tự gắn T, hệ số 150%", weekdayOt?.code === "T" && weekdayOt?.rate === 150, `(${weekdayOt?.code} ${weekdayOt?.rate})`);
-    check("ra đúng 17:00 (trước giờ hết ca) thì chấm công ra 0 giờ OT",
-      weekdayOt?.computedSource === "punches" && weekdayOt?.computedMinutes === 0, `(${weekdayOt?.computedSource} ${weekdayOt?.computedMinutes})`);
+    check("số giờ OT theo giờ trên phiếu 17:30–20:00 = 2,5h (không đọc chấm công)",
+      weekdayOt?.computedSource === "ticket" && weekdayOt?.computedMinutes === 150, `(${weekdayOt?.computedSource} ${weekdayOt?.computedMinutes})`);
     r = await call(emp, "POST", "/api/overtime", { date: "2026-09-01", plannedStart: "17:30", plannedEnd: "21:00", content: "Phiếu trùng giờ" });
     check("cùng ngày mà trùng giờ với phiếu khác thì chặn", r.status === 409 && /Trùng giờ/.test(r.json.error ?? ""), `(${r.status} ${r.json.error})`);
     r = await call(emp, "POST", "/api/overtime", { date: "2026-09-01", plannedStart: "20:00", plannedEnd: "22:00", content: "Phiếu thứ hai cùng ngày" });
@@ -1372,7 +1372,7 @@ async function main() {
     });
     const weekendOt = r.json.request;
     check("thứ 7 tự gắn T1, hệ số 200%", weekendOt?.code === "T1" && weekendOt?.rate === 200, `(${weekendOt?.code} ${weekendOt?.rate})`);
-    check("không chấm công thì 0 giờ OT (không lấy giờ dự kiến)", weekendOt?.computedSource === "missing" && weekendOt?.minutes === 0, `(${weekendOt?.computedSource} ${weekendOt?.minutes})`);
+    check("thứ 7 không chấm công vẫn tính theo phiếu 08:00–12:00 = 4h", weekendOt?.minutes === 240, `(${weekendOt?.minutes})`);
 
     r = await call(admin, "GET", "/api/admin/overtime?month=2026-09&status=pending");
     check("admin thấy phiếu đang chờ", r.json.requests?.some((item) => item.id === weekendOt?.id) && r.json.pendingTotal >= 2, `(${r.json.pendingTotal})`);
@@ -1413,7 +1413,7 @@ async function main() {
     check("chi tiết nhân viên có tổng OT", r.json.totals?.overtimeMinutes === 210, `(${r.json.totals?.overtimeMinutes})`);
 
     r = await call(admin, "PATCH", `/api/admin/overtime/${weekendOt?.id}`, { action: "update", approvedHours: null });
-    check("bỏ số giờ chốt thì quay về giờ chấm công (0h vì ngày đó không chấm công)", r.json.request?.minutes === 0 && r.json.request?.approvedMinutes === null, `(${r.json.request?.minutes})`);
+    check("bỏ số giờ chốt thì quay về giờ trên phiếu (4h)", r.json.request?.minutes === 240 && r.json.request?.approvedMinutes === null, `(${r.json.request?.minutes})`);
     r = await call(admin, "PATCH", `/api/admin/overtime/${weekendOt?.id}`, { action: "reject", adminNote: "Không cần đi" });
     check("admin từ chối phiếu", r.json.request?.status === "rejected", `(${r.json.request?.status})`);
     // Ngày 05/09 có hai phiếu bị từ chối (phiếu chiều ở trên): chờ đúng thư có lý do.

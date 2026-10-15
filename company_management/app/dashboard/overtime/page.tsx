@@ -39,7 +39,7 @@ type OvertimeView = {
   createdAt: string;
   code: string;
   rate: number;
-  computedSource: "punches" | "missing";
+  computedSource: "ticket";
   minutes: number;
 };
 

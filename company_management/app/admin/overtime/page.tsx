@@ -33,7 +33,7 @@ type OvertimeView = {
   code: string;
   rate: number;
   computedMinutes: number;
-  computedSource: "punches" | "missing";
+  computedSource: "ticket";
   approvedMinutes: number | null;
   minutes: number;
   user: { id: string; name: string; employeeCode: string | null; employmentLabel: string };
@@ -216,7 +216,7 @@ export default function AdminOvertimePage() {
     <>
       <PageHeader
         title="Làm thêm giờ (OT)"
-        description="Nhân viên làm phiếu OT, admin duyệt mới được trả. Ký hiệu tự gắn theo ngày; số giờ lấy từ chấm công (thiếu giờ vào/ra thì theo giờ dự kiến), admin chốt tay được khi duyệt."
+        description="Nhân viên làm phiếu OT, admin duyệt mới được trả. Ký hiệu tự gắn theo ngày; số giờ theo giờ ghi trên phiếu, admin chốt tay được khi duyệt."
       />
 
       <Card className="mb-6 p-5">
@@ -340,13 +340,11 @@ export default function AdminOvertimePage() {
                     <span className="font-semibold text-slate-900">
                       {formatOvertimeHours(request.minutes)}h
                     </span>
-                    <div className="text-xs text-slate-500">
-                      {request.approvedMinutes !== null
-                        ? `admin chốt (chấm công ${formatOvertimeHours(request.computedMinutes)}h)`
-                        : request.computedSource === "punches"
-                          ? "theo chấm công"
-                          : "chưa đủ giờ vào/ra"}
-                    </div>
+                    {request.approvedMinutes !== null && (
+                      <div className="text-xs text-slate-500">
+                        admin chốt (phiếu {formatOvertimeHours(request.computedMinutes)}h)
+                      </div>
+                    )}
                   </td>
                   <td className="max-w-xs px-4 py-3 text-slate-700">
                     <span className="line-clamp-2" title={request.content}>
@@ -406,20 +404,17 @@ export default function AdminOvertimePage() {
           <form onSubmit={submit} className="space-y-4">
             <p className="text-sm text-slate-600">
               <span className="font-medium text-slate-900">{editing.request.user.name}</span>{" "}
-              · {editing.request.code} ({editing.request.rate}%) · dự kiến{" "}
-              {editing.request.plannedStart}–{editing.request.plannedEnd}. Chấm công
-              tính được{" "}
+              · {editing.request.code} ({editing.request.rate}%) ·{" "}
+              {editing.request.plannedStart}–{editing.request.plannedEnd} ={" "}
               <span className="font-medium text-slate-900">
                 {formatOvertimeHours(editing.request.computedMinutes)}h
               </span>
-              {editing.request.computedSource === "missing" &&
-                " (chưa đủ giờ vào/ra ngày đó)"}
               .
             </p>
             {editing.action === "approve" && (
               <Field
                 label="Số giờ chốt"
-                hint="Bỏ trống = theo chấm công. Nhập số giờ (vd 2,5) nếu muốn chốt tay."
+                hint="Bỏ trống = theo giờ trên phiếu. Nhập số giờ (vd 2,5) nếu muốn chốt tay."
               >
                 <Input
                   type="number"

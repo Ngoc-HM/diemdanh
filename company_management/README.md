@@ -159,15 +159,12 @@ nhật, ngày lễ (full-time làm ngày nghỉ mà không có phiếu thì 0 c�
   hằng tuần **200%**, `T2` ngày lễ **300%** (lễ rơi vào CN vẫn là T2). Admin sửa
   hệ số và số giờ chuẩn một ngày (mặc định 8) ở `/admin/overtime` — Settings
   `overtime_config`.
-- **Số giờ OT** (`computeOvertimeMinutes` trong `lib/overtime.ts`) — **chỉ theo
-  chấm công**: mỗi phiếu = phần thời gian có mặt (vào đầu → ra cuối) nằm trong
-  khoảng "Từ giờ – Đến giờ" của phiếu, trừ nghỉ trưa. Ngày có ca chính (không
-  phải lễ) chỉ tính phần sau giờ hết ca chính. Không có đủ giờ vào và giờ ra thì
-  **0 giờ** (không lấy giờ trên phiếu). Ngày có nhiều phiếu đã duyệt thì cộng dồn
-  vào bảng công / bảng lương. Ngày thường đi không đủ giờ không trừ vào OT; admin
-  xử lý ngày đó riêng (chấm nghỉ / không tính công).
+- **Số giờ OT** (`computeOvertimeMinutes` trong `lib/overtime.ts`) = **đúng khoảng
+  "Từ giờ – Đến giờ" ghi trên phiếu**. Phiếu OT **độc lập với chấm công**: không
+  đọc giờ vào / ra (vd phiếu 20:00–23:59 là 3,98h dù đã về lúc 17:40). Ngày có
+  nhiều phiếu đã duyệt thì cộng dồn vào bảng công / bảng lương.
 - Admin duyệt ở `/admin/overtime`, có thể **chốt tay số giờ** (bỏ trống = theo
-  chấm công), sửa giờ hoặc từ chối cả sau khi đã duyệt.
+  giờ trên phiếu), sửa giờ hoặc từ chối cả sau khi đã duyệt.
 - Ngày không có ca mà có phiếu OT được duyệt là ngày OT: không cộng thêm công
   "ngoài lịch", chỉ trả theo giờ OT.
 - Bảng công: ô ngày thêm ký hiệu (`x+T`, `T1`, `L+T2`); Excel cả công ty có thêm

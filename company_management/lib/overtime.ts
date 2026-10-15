@@ -1,10 +1,5 @@
-import {
-  LunchBreak,
-  pairPunches,
-  PunchInput,
-  SessionRule,
-} from "@/lib/attendance-rules";
-import { parseTimeToMinutes, minutesOfDayVN } from "@/lib/datetime";
+import { LunchBreak, PunchInput, SessionRule } from "@/lib/attendance-rules";
+import { parseTimeToMinutes } from "@/lib/datetime";
 
 /// Loại ngày quyết định ký hiệu và hệ số OT.
 export type OvertimeDayType = "weekday" | "weekly_off" | "holiday";
@@ -106,21 +101,15 @@ export function plannedMinutes(start: string, end: string): number {
 
 export type OvertimeMinutes = {
   minutes: number;
-  /// "punches" = tính từ chấm công; "missing" = chưa đủ giờ vào/ra nên chưa
-  /// có giờ OT (không lấy giờ dự kiến trên phiếu — OT chỉ tính theo chấm công,
-  /// admin muốn trả khác thì chốt tay số giờ).
-  source: "punches" | "missing";
+  /// Luôn "ticket": số giờ lấy đúng khoảng "Từ giờ – Đến giờ" ghi trên phiếu.
+  source: "ticket";
 };
 
-/// Số phút OT của một phiếu, chưa tính phần admin chốt tay. Chỉ tính theo
-/// chấm công: phần thời gian có mặt (lần vào đầu → lần ra cuối) nằm trong
-/// khoảng "Từ giờ – Đến giờ" của phiếu, trừ giờ nghỉ trưa.
-///  - Ngày có ca chính (số công > 0, không phải ngày lễ): chỉ tính phần sau giờ
-///    hết ca chính muộn nhất — giờ trong ca đã trả bằng lương.
-///  - Ngày lễ, ngày nghỉ, ngày không có ca chính: tính cả phần trong khoảng.
-/// Một ngày có nhiều phiếu thì mỗi phiếu tính phần của nó (khoảng giờ các phiếu
-/// không trùng nhau). Không có đủ giờ vào và giờ ra thì 0 phút. Ngày thường đi
-/// không đủ giờ không trừ vào OT — admin xử lý ngày đó riêng.
+/// Số phút OT của một phiếu, chưa tính phần admin chốt tay: đúng khoảng
+/// "Từ giờ – Đến giờ" ghi trên phiếu. Phiếu OT độc lập với chấm công — không
+/// đọc giờ vào / ra. Một ngày có nhiều phiếu (vd thứ 7 phiếu sáng + phiếu
+/// chiều) thì mỗi phiếu tính khoảng của nó; API chặn khoảng giờ trùng nhau.
+/// Các tham số ngày / lịch / chấm công giữ lại cho nơi gọi, không dùng tới.
 export function computeOvertimeMinutes(input: {
   dayType: OvertimeDayType;
   scheduled: SessionRule[];
@@ -129,26 +118,7 @@ export function computeOvertimeMinutes(input: {
   plannedStart: string;
   plannedEnd: string;
 }): OvertimeMinutes {
-  const { dayType, scheduled, punches, lunchBreak = null } = input;
-  const paired = pairPunches(punches, lunchBreak);
-  if (!paired.firstIn || !paired.lastOut || paired.openSince) {
-    return { minutes: 0, source: "missing" };
-  }
-
-  const regular = scheduled.filter((rule) => (rule.workdayValue ?? 1) > 0);
-  let from = Math.max(
-    parseTimeToMinutes(input.plannedStart),
-    minutesOfDayVN(paired.firstIn)
-  );
-  if (dayType !== "holiday" && regular.length > 0) {
-    from = Math.max(from, ...regular.map((rule) => parseTimeToMinutes(rule.workEnd)));
-  }
-  const to = Math.min(parseTimeToMinutes(input.plannedEnd), minutesOfDayVN(paired.lastOut));
-  if (to <= from) return { minutes: 0, source: "punches" };
-  const lunch = lunchBreak
-    ? Math.max(0, Math.min(to, lunchBreak.end) - Math.max(from, lunchBreak.start))
-    : 0;
-  return { minutes: Math.max(0, to - from - lunch), source: "punches" };
+  return { minutes: plannedMinutes(input.plannedStart, input.plannedEnd), source: "ticket" };
 }
 
 /// Hiển thị số phút OT dạng giờ: 210 -> "3,5".
