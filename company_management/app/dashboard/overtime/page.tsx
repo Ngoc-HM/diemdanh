@@ -154,10 +154,7 @@ export default function OvertimePage() {
       />
 
       <Message type="info">
-        OT chỉ được trả khi có phiếu được admin duyệt — kể cả đi làm thứ 7, chủ
-        nhật hay ngày lễ. Hệ thống tự gắn ký hiệu theo ngày: T ngày thường, T1
-        ngày nghỉ hằng tuần, T2 ngày lễ. Số giờ lấy theo giờ chấm công thực tế;
-        đi công tác không chấm công được thì lấy giờ dự kiến trên phiếu.
+        OT cần admin duyệt mới được trả. T: ngày thường · T1: ngày nghỉ · T2: ngày lễ.
       </Message>
 
       {feedback && (
@@ -179,7 +176,7 @@ export default function OvertimePage() {
                 required
               />
             </Field>
-            <Field label="Từ giờ (dự kiến)" required>
+            <Field label="Từ giờ" required>
               <Input
                 type="time"
                 value={plannedStart}
@@ -187,7 +184,7 @@ export default function OvertimePage() {
                 required
               />
             </Field>
-            <Field label="Đến giờ (dự kiến)" required>
+            <Field label="Đến giờ" required>
               <Input
                 type="time"
                 value={plannedEnd}
@@ -259,7 +256,7 @@ export default function OvertimePage() {
                 <tr className="border-b border-slate-200 bg-slate-50 text-left">
                   <th className="px-4 py-2 font-semibold text-slate-900">Ngày</th>
                   <th className="px-4 py-2 font-semibold text-slate-900">Loại</th>
-                  <th className="px-4 py-2 font-semibold text-slate-900">Dự kiến</th>
+                  <th className="px-4 py-2 font-semibold text-slate-900">Thời gian</th>
                   <th className="px-4 py-2 font-semibold text-slate-900">Số giờ</th>
                   <th className="px-4 py-2 font-semibold text-slate-900">Nội dung</th>
                   <th className="px-4 py-2 font-semibold text-slate-900">Trạng thái</th>
@@ -286,9 +283,6 @@ export default function OvertimePage() {
                     </td>
                     <td className="px-4 py-2 whitespace-nowrap tabular-nums text-slate-900">
                       {formatOvertimeHours(request.minutes)}h
-                      <div className="text-xs text-slate-500">
-                        {request.computedSource === "punches" ? "theo chấm công" : "chưa đủ giờ vào/ra"}
-                      </div>
                     </td>
                     <td className="max-w-xs px-4 py-2 text-slate-700">
                       <span className="line-clamp-2" title={request.content}>
