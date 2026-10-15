@@ -1,4 +1,4 @@
-import { isUniqueViolation, query, queryOne } from "@/lib/db";
+import { query, queryOne } from "@/lib/db";
 import { badRequest, conflict, handle, requireEmployee } from "@/lib/auth-guard";
 import { getMonthRange, isValidDateKey, isValidMonth, monthKeyVN } from "@/lib/datetime";
 import {
@@ -33,8 +33,8 @@ export async function GET(req: Request) {
   }, "Overtime list error");
 }
 
-/// Nhân viên làm phiếu OT cho một ngày. Ngày đó đã có phiếu đang chờ thì ghi
-/// đè nội dung; đã có phiếu được duyệt thì không cho làm phiếu thứ hai.
+/// Nhân viên làm phiếu OT cho một ngày. Mỗi lần gửi là một phiếu mới; một ngày
+/// có thể có nhiều phiếu miễn khoảng giờ không trùng nhau.
 export async function POST(req: Request) {
   return handle(async () => {
     const session = await requireEmployee();
@@ -57,41 +57,29 @@ export async function POST(req: Request) {
       );
     }
 
-    const existing = await queryOne<{ id: string; status: string }>(
-      `SELECT "id", "status" FROM "OvertimeRequest"
+    // Một ngày được nhiều phiếu (vd thứ 7 phiếu sáng + phiếu chiều). Mỗi phiếu
+    // chỉ tính giờ chấm công nằm trong khoảng giờ của nó, nên khoảng giờ không
+    // được chồng lên phiếu khác (đang chờ hoặc đã duyệt) của cùng ngày.
+    const others = await query<{ plannedStart: string; plannedEnd: string }>(
+      `SELECT "plannedStart", "plannedEnd" FROM "OvertimeRequest"
         WHERE "userId" = $1 AND "date" = $2 AND "status" <> 'rejected'`,
       [session.userId, date]
     );
-    if (existing?.status === "approved") {
-      conflict("Ngày này đã có phiếu OT được duyệt");
+    const clash = others.find(
+      (other) => plannedStart < other.plannedEnd && other.plannedStart < plannedEnd
+    );
+    if (clash) {
+      conflict(`Trùng giờ với phiếu ${clash.plannedStart}–${clash.plannedEnd} của ngày này`);
     }
 
-    let id: string;
-    try {
-      const saved = existing
-        ? await queryOne<{ id: string }>(
-            `UPDATE "OvertimeRequest"
-                SET "plannedStart" = $2, "plannedEnd" = $3, "place" = $4,
-                    "content" = $5, "updatedAt" = now()
-              WHERE "id" = $1 AND "status" = 'pending'
-              RETURNING "id"`,
-            [existing.id, plannedStart, plannedEnd, place, content]
-          )
-        : await queryOne<{ id: string }>(
-            `INSERT INTO "OvertimeRequest"
-               ("userId", "date", "plannedStart", "plannedEnd", "place", "content")
-             VALUES ($1, $2, $3, $4, $5, $6)
-             RETURNING "id"`,
-            [session.userId, date, plannedStart, plannedEnd, place, content]
-          );
-      // Phiếu vừa được duyệt giữa lúc đọc và lúc ghi.
-      if (!saved) conflict("Ngày này đã có phiếu OT được duyệt");
-      id = saved!.id;
-    } catch (error) {
-      // Bấm gửi hai lần cùng lúc: lần sau đụng chỉ mục một phiếu mỗi ngày.
-      if (isUniqueViolation(error)) conflict("Ngày này đã có phiếu OT");
-      throw error;
-    }
+    const saved = await queryOne<{ id: string }>(
+      `INSERT INTO "OvertimeRequest"
+         ("userId", "date", "plannedStart", "plannedEnd", "place", "content")
+       VALUES ($1, $2, $3, $4, $5, $6)
+       RETURNING "id"`,
+      [session.userId, date, plannedStart, plannedEnd, place, content]
+    );
+    const id = saved!.id;
 
     const row = await queryOne<OvertimeRow>(`${OVERTIME_SELECT} WHERE o."id" = $1`, [id]);
     const [request] = await buildOvertimeViews([row!]);

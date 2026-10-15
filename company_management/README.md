@@ -152,18 +152,20 @@ OT chỉ được trả khi có **phiếu OT được admin duyệt** — kể c
 nhật, ngày lễ (full-time làm ngày nghỉ mà không có phiếu thì 0 công).
 
 - Nhân viên làm phiếu ở `/dashboard/overtime`: ngày, giờ dự kiến (không qua nửa
-  đêm), nơi đi / nơi đến, nội dung. Mỗi ngày một phiếu còn hiệu lực; gửi lại khi
-  đang chờ là sửa phiếu; phiếu bị từ chối không chặn làm phiếu mới.
+  đêm), nơi đi / nơi đến, nội dung. **Một ngày được nhiều phiếu** (vd thứ 7 phiếu
+  sáng + phiếu chiều), mỗi lần gửi là một phiếu mới; chỉ chặn khoảng giờ trùng với
+  phiếu khác (đang chờ / đã duyệt) cùng ngày. Phiếu đang chờ thì nhân viên tự huỷ được.
 - Ký hiệu và hệ số **tự gắn theo ngày**: `T` ngày thường **150%**, `T1` ngày nghỉ
   hằng tuần **200%**, `T2` ngày lễ **300%** (lễ rơi vào CN vẫn là T2). Admin sửa
   hệ số và số giờ chuẩn một ngày (mặc định 8) ở `/admin/overtime` — Settings
   `overtime_config`.
-- **Số giờ OT** (`computeOvertimeMinutes` trong `lib/overtime.ts`), đã trừ nghỉ trưa:
-  ngày có ca chính (số công > 0) thì là phần làm **sau giờ hết ca chính**; ngày lễ
-  hoặc ngày không có ca chính thì là **toàn bộ giờ làm**. **Chỉ tính theo chấm
-  công**: không có đủ giờ vào và giờ ra (không chấm công, quên checkout) thì
-  **0 giờ** — không lấy giờ dự kiến trên phiếu. Ngày thường đi không đủ giờ không
-  trừ vào OT; admin xử lý ngày đó riêng (chấm nghỉ / không tính công).
+- **Số giờ OT** (`computeOvertimeMinutes` trong `lib/overtime.ts`) — **chỉ theo
+  chấm công**: mỗi phiếu = phần thời gian có mặt (vào đầu → ra cuối) nằm trong
+  khoảng "Từ giờ – Đến giờ" của phiếu, trừ nghỉ trưa. Ngày có ca chính (không
+  phải lễ) chỉ tính phần sau giờ hết ca chính. Không có đủ giờ vào và giờ ra thì
+  **0 giờ** (không lấy giờ trên phiếu). Ngày có nhiều phiếu đã duyệt thì cộng dồn
+  vào bảng công / bảng lương. Ngày thường đi không đủ giờ không trừ vào OT; admin
+  xử lý ngày đó riêng (chấm nghỉ / không tính công).
 - Admin duyệt ở `/admin/overtime`, có thể **chốt tay số giờ** (bỏ trống = theo
   chấm công), sửa giờ hoặc từ chối cả sau khi đã duyệt.
 - Ngày không có ca mà có phiếu OT được duyệt là ngày OT: không cộng thêm công

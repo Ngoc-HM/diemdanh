@@ -1359,8 +1359,12 @@ async function main() {
     check("ngày thường tự gắn T, hệ số 150%", weekdayOt?.code === "T" && weekdayOt?.rate === 150, `(${weekdayOt?.code} ${weekdayOt?.rate})`);
     check("ra đúng 17:00 (trước giờ hết ca) thì chấm công ra 0 giờ OT",
       weekdayOt?.computedSource === "punches" && weekdayOt?.computedMinutes === 0, `(${weekdayOt?.computedSource} ${weekdayOt?.computedMinutes})`);
-    r = await call(emp, "POST", "/api/overtime", { date: "2026-09-01", plannedStart: "17:30", plannedEnd: "21:00", content: "Sửa lại giờ dự kiến" });
-    check("gửi lại cùng ngày thì sửa phiếu đang chờ", r.status === 200 && r.json.request?.id === weekdayOt?.id && r.json.request?.plannedEnd === "21:00");
+    r = await call(emp, "POST", "/api/overtime", { date: "2026-09-01", plannedStart: "17:30", plannedEnd: "21:00", content: "Phiếu trùng giờ" });
+    check("cùng ngày mà trùng giờ với phiếu khác thì chặn", r.status === 409 && /Trùng giờ/.test(r.json.error ?? ""), `(${r.status} ${r.json.error})`);
+    r = await call(emp, "POST", "/api/overtime", { date: "2026-09-01", plannedStart: "20:00", plannedEnd: "22:00", content: "Phiếu thứ hai cùng ngày" });
+    check("một ngày được gửi thêm phiếu khác giờ", r.status === 200 && r.json.request?.id && r.json.request.id !== weekdayOt?.id, `(${r.status} ${r.json.error ?? ""})`);
+    r = await call(emp, "DELETE", `/api/overtime/${r.json.request?.id}`);
+    check("huỷ phiếu thứ hai đang chờ", r.status === 200, `(${r.status})`);
 
     r = await call(emp, "POST", "/api/overtime", {
       date: "2026-09-05", plannedStart: "08:00", plannedEnd: "12:00",
@@ -1383,8 +1387,19 @@ async function main() {
     mail = await waitForMail(sink, EMP_EMAIL, "Phiếu OT ngày 05/09 đã được duyệt");
     check("duyệt OT thì báo nhân viên kèm số giờ", mail?.text.includes("3,5 giờ, loại T1"), mail?.text);
 
-    r = await call(emp, "POST", "/api/overtime", { date: "2026-09-05", plannedStart: "08:00", plannedEnd: "17:00", content: "Muốn sửa phiếu đã duyệt" });
-    check("ngày đã có phiếu duyệt thì không làm phiếu mới", r.status === 409, `(${r.status})`);
+    r = await call(emp, "POST", "/api/overtime", { date: "2026-09-05", plannedStart: "08:00", plannedEnd: "17:00", content: "Trùng phiếu đã duyệt" });
+    check("trùng giờ với phiếu đã duyệt thì chặn", r.status === 409, `(${r.status})`);
+    r = await call(emp, "POST", "/api/overtime", { date: "2026-09-05", plannedStart: "13:30", plannedEnd: "17:00", content: "Phiếu buổi chiều thứ 7" });
+    const afternoonOt = r.json.request;
+    check("thứ 7 gửi thêm phiếu buổi chiều", r.status === 200 && afternoonOt?.code === "T1", `(${r.status} ${r.json.error ?? ""})`);
+    r = await call(admin, "PATCH", `/api/admin/overtime/${afternoonOt?.id}`, { action: "approve", approvedHours: 2 });
+    r = await call(admin, "GET", "/api/admin/attendance/monthly?month=2026-09");
+    check(
+      "hai phiếu đã duyệt cùng ngày được cộng dồn (3,5h + 2h)",
+      r.json.summary?.find((item) => item.user.id === employeeId)?.overtimeMinutes?.T1 === 330,
+      JSON.stringify(r.json.summary?.find((item) => item.user.id === employeeId)?.overtimeMinutes)
+    );
+    r = await call(admin, "PATCH", `/api/admin/overtime/${afternoonOt?.id}`, { action: "reject", adminNote: "__smoketest bỏ phiếu chiều" });
     r = await call(emp, "DELETE", `/api/overtime/${weekendOt?.id}`);
     check("không huỷ được phiếu đã duyệt", r.status === 409, `(${r.status})`);
     r = await call(emp, "DELETE", `/api/overtime/${weekdayOt?.id}`);
@@ -1401,8 +1416,12 @@ async function main() {
     check("bỏ số giờ chốt thì quay về giờ chấm công (0h vì ngày đó không chấm công)", r.json.request?.minutes === 0 && r.json.request?.approvedMinutes === null, `(${r.json.request?.minutes})`);
     r = await call(admin, "PATCH", `/api/admin/overtime/${weekendOt?.id}`, { action: "reject", adminNote: "Không cần đi" });
     check("admin từ chối phiếu", r.json.request?.status === "rejected", `(${r.json.request?.status})`);
-    mail = await waitForMail(sink, EMP_EMAIL, "Phiếu OT ngày 05/09 bị từ chối");
-    check("từ chối OT thì báo nhân viên kèm lý do", mail?.text.includes("Không cần đi"), mail?.text);
+    // Ngày 05/09 có hai phiếu bị từ chối (phiếu chiều ở trên): chờ đúng thư có lý do.
+    for (let waited = 0; waited < 6000 && !mailsTo(sink, EMP_EMAIL, "Phiếu OT ngày 05/09 bị từ chối").some((item) => item.text.includes("Không cần đi")); waited += 150) {
+      await new Promise((resolve) => setTimeout(resolve, 150));
+    }
+    mail = mailsTo(sink, EMP_EMAIL, "Phiếu OT ngày 05/09 bị từ chối").find((item) => item.text.includes("Không cần đi"));
+    check("từ chối OT thì báo nhân viên kèm lý do", Boolean(mail), `(${mailsTo(sink, EMP_EMAIL, "Phiếu OT ngày 05/09 bị từ chối").length} thư)`);
     r = await call(admin, "GET", "/api/admin/attendance/monthly?month=2026-09");
     otSummary = r.json.summary?.find((item) => item.user.id === employeeId);
     check("phiếu bị từ chối không còn tính giờ OT", (otSummary?.overtimeMinutes?.T1 ?? 0) === 0, JSON.stringify(otSummary?.overtimeMinutes));

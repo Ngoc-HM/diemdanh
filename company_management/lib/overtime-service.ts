@@ -217,7 +217,19 @@ export async function getApprovedOvertime(
     [userIds, startDate, endDate]
   );
   const views = await buildOvertimeViews(rows);
-  return new Map(
-    views.map((view) => [`${view.user.id}|${view.date}`, view])
-  );
+  // Một ngày có thể có nhiều phiếu đã duyệt: cộng dồn số giờ thành một mục
+  // của ngày (ký hiệu và hệ số theo ngày nên giống nhau).
+  const byDay = new Map<string, OvertimeView>();
+  for (const view of views) {
+    const key = `${view.user.id}|${view.date}`;
+    const day = byDay.get(key);
+    if (!day) {
+      byDay.set(key, { ...view });
+      continue;
+    }
+    day.minutes += view.minutes;
+    day.computedMinutes += view.computedMinutes;
+    if (view.place) day.place = day.place ? `${day.place}; ${view.place}` : view.place;
+  }
+  return byDay;
 }

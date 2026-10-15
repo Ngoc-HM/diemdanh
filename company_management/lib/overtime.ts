@@ -112,13 +112,15 @@ export type OvertimeMinutes = {
   source: "punches" | "missing";
 };
 
-/// Số phút OT của một phiếu, chưa tính phần admin chốt tay.
-///  - Ngày lễ: cả thời gian làm trong ngày (công ngày lễ đã trả riêng).
-///  - Ngày có ca chính (số công > 0): phần làm sau giờ hết ca chính muộn nhất.
-///  - Ngày không có ca chính (ngày nghỉ, hoặc không đăng ký): cả thời gian làm.
-/// Đều đã trừ giờ nghỉ trưa. Chỉ tính theo chấm công: không có đủ giờ vào và
-/// giờ ra thì 0 phút. Ngày thường đi không đủ giờ không trừ vào OT — admin xử
-/// lý ngày đó riêng (chấm nghỉ / không tính công).
+/// Số phút OT của một phiếu, chưa tính phần admin chốt tay. Chỉ tính theo
+/// chấm công: phần thời gian có mặt (lần vào đầu → lần ra cuối) nằm trong
+/// khoảng "Từ giờ – Đến giờ" của phiếu, trừ giờ nghỉ trưa.
+///  - Ngày có ca chính (số công > 0, không phải ngày lễ): chỉ tính phần sau giờ
+///    hết ca chính muộn nhất — giờ trong ca đã trả bằng lương.
+///  - Ngày lễ, ngày nghỉ, ngày không có ca chính: tính cả phần trong khoảng.
+/// Một ngày có nhiều phiếu thì mỗi phiếu tính phần của nó (khoảng giờ các phiếu
+/// không trùng nhau). Không có đủ giờ vào và giờ ra thì 0 phút. Ngày thường đi
+/// không đủ giờ không trừ vào OT — admin xử lý ngày đó riêng.
 export function computeOvertimeMinutes(input: {
   dayType: OvertimeDayType;
   scheduled: SessionRule[];
@@ -134,13 +136,14 @@ export function computeOvertimeMinutes(input: {
   }
 
   const regular = scheduled.filter((rule) => (rule.workdayValue ?? 1) > 0);
-  if (dayType === "holiday" || regular.length === 0) {
-    return { minutes: Math.round(paired.workedMinutes), source: "punches" };
+  let from = Math.max(
+    parseTimeToMinutes(input.plannedStart),
+    minutesOfDayVN(paired.firstIn)
+  );
+  if (dayType !== "holiday" && regular.length > 0) {
+    from = Math.max(from, ...regular.map((rule) => parseTimeToMinutes(rule.workEnd)));
   }
-
-  const regularEnd = Math.max(...regular.map((rule) => parseTimeToMinutes(rule.workEnd)));
-  const from = Math.max(regularEnd, minutesOfDayVN(paired.firstIn));
-  const to = minutesOfDayVN(paired.lastOut);
+  const to = Math.min(parseTimeToMinutes(input.plannedEnd), minutesOfDayVN(paired.lastOut));
   if (to <= from) return { minutes: 0, source: "punches" };
   const lunch = lunchBreak
     ? Math.max(0, Math.min(to, lunchBreak.end) - Math.max(from, lunchBreak.start))
