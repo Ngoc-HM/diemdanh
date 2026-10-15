@@ -39,7 +39,7 @@ type OvertimeView = {
   createdAt: string;
   code: string;
   rate: number;
-  computedSource: "punches" | "planned";
+  computedSource: "punches" | "missing";
   minutes: number;
 };
 
@@ -287,7 +287,7 @@ export default function OvertimePage() {
                     <td className="px-4 py-2 whitespace-nowrap tabular-nums text-slate-900">
                       {formatOvertimeHours(request.minutes)}h
                       <div className="text-xs text-slate-500">
-                        {request.computedSource === "punches" ? "theo chấm công" : "theo dự kiến"}
+                        {request.computedSource === "punches" ? "theo chấm công" : "chưa đủ giờ vào/ra"}
                       </div>
                     </td>
                     <td className="max-w-xs px-4 py-2 text-slate-700">

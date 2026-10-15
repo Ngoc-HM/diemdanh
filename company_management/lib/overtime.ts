@@ -100,22 +100,21 @@ export function validatePlannedTimes(start: string, end: string): string | null 
   return null;
 }
 
-export function plannedMinutes(start: string, end: string): number {
-  return Math.max(0, parseTimeToMinutes(end) - parseTimeToMinutes(start));
-}
-
 export type OvertimeMinutes = {
   minutes: number;
-  /// "punches" = tính từ chấm công; "planned" = không đủ giờ vào/ra nên lấy
-  /// giờ dự kiến trên phiếu.
-  source: "punches" | "planned";
+  /// "punches" = tính từ chấm công; "missing" = chưa đủ giờ vào/ra nên chưa
+  /// có giờ OT (không lấy giờ dự kiến trên phiếu — OT chỉ tính theo chấm công,
+  /// admin muốn trả khác thì chốt tay số giờ).
+  source: "punches" | "missing";
 };
 
 /// Số phút OT của một phiếu, chưa tính phần admin chốt tay.
 ///  - Ngày lễ: cả thời gian làm trong ngày (công ngày lễ đã trả riêng).
 ///  - Ngày có ca chính (số công > 0): phần làm sau giờ hết ca chính muộn nhất.
 ///  - Ngày không có ca chính (ngày nghỉ, hoặc không đăng ký): cả thời gian làm.
-/// Đều đã trừ giờ nghỉ trưa. Không có đủ giờ vào và giờ ra thì lấy giờ dự kiến.
+/// Đều đã trừ giờ nghỉ trưa. Chỉ tính theo chấm công: không có đủ giờ vào và
+/// giờ ra thì 0 phút. Ngày thường đi không đủ giờ không trừ vào OT — admin xử
+/// lý ngày đó riêng (chấm nghỉ / không tính công).
 export function computeOvertimeMinutes(input: {
   dayType: OvertimeDayType;
   scheduled: SessionRule[];
@@ -127,10 +126,7 @@ export function computeOvertimeMinutes(input: {
   const { dayType, scheduled, punches, lunchBreak = null } = input;
   const paired = pairPunches(punches, lunchBreak);
   if (!paired.firstIn || !paired.lastOut || paired.openSince) {
-    return {
-      minutes: plannedMinutes(input.plannedStart, input.plannedEnd),
-      source: "planned",
-    };
+    return { minutes: 0, source: "missing" };
   }
 
   const regular = scheduled.filter((rule) => (rule.workdayValue ?? 1) > 0);

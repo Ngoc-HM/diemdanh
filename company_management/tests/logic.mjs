@@ -317,9 +317,9 @@ check("thứ 7 không có ca: OT cả ngày, trừ nghỉ trưa = 7,5h", otWeeke
 const otHoliday = ot("holiday", [caCN], punchDay("08:30", "12:00", "2026-09-02"));
 check("ngày lễ: OT toàn bộ giờ làm dù có lịch = 3,5h", otHoliday.minutes === 210, `(${otHoliday.minutes}p)`);
 const otTrip = ot("weekday", [caCN], []);
-check("đi công tác không chấm công: lấy giờ dự kiến 18–21 = 3h", otTrip.minutes === 180 && otTrip.source === "planned");
+check("không chấm công: 0 giờ OT, không lấy giờ dự kiến", otTrip.minutes === 0 && otTrip.source === "missing");
 const otOpen = ot("weekday", [caCN], [{ type: "in", at: at("2026-09-01", "08:30"), withinRadius: true }]);
-check("quên checkout: lấy giờ dự kiến", otOpen.source === "planned");
+check("quên checkout: 0 giờ OT cho tới khi bổ sung giờ ra", otOpen.minutes === 0 && otOpen.source === "missing");
 check("ca tăng ca (số công 0) không phải ca chính: OT cả giờ làm",
   ot("weekday", [tangCa], punchDay("18:00", "21:00")).minutes === 180);
 

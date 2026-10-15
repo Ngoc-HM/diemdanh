@@ -33,7 +33,7 @@ type OvertimeView = {
   code: string;
   rate: number;
   computedMinutes: number;
-  computedSource: "punches" | "planned";
+  computedSource: "punches" | "missing";
   approvedMinutes: number | null;
   minutes: number;
   user: { id: string; name: string; employeeCode: string | null; employmentLabel: string };
@@ -345,7 +345,7 @@ export default function AdminOvertimePage() {
                         ? `admin chốt (chấm công ${formatOvertimeHours(request.computedMinutes)}h)`
                         : request.computedSource === "punches"
                           ? "theo chấm công"
-                          : "theo dự kiến"}
+                          : "chưa đủ giờ vào/ra"}
                     </div>
                   </td>
                   <td className="max-w-xs px-4 py-3 text-slate-700">
@@ -412,8 +412,8 @@ export default function AdminOvertimePage() {
               <span className="font-medium text-slate-900">
                 {formatOvertimeHours(editing.request.computedMinutes)}h
               </span>
-              {editing.request.computedSource === "planned" &&
-                " (thiếu giờ vào/ra nên lấy theo giờ dự kiến)"}
+              {editing.request.computedSource === "missing" &&
+                " (chưa đủ giờ vào/ra ngày đó)"}
               .
             </p>
             {editing.action === "approve" && (

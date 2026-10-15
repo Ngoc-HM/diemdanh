@@ -160,10 +160,12 @@ nhật, ngày lễ (full-time làm ngày nghỉ mà không có phiếu thì 0 c�
   `overtime_config`.
 - **Số giờ OT** (`computeOvertimeMinutes` trong `lib/overtime.ts`), đã trừ nghỉ trưa:
   ngày có ca chính (số công > 0) thì là phần làm **sau giờ hết ca chính**; ngày lễ
-  hoặc ngày không có ca chính thì là **toàn bộ giờ làm**. Không có đủ giờ vào và
-  giờ ra (đi công tác, quên checkout) thì lấy **giờ dự kiến** trên phiếu.
+  hoặc ngày không có ca chính thì là **toàn bộ giờ làm**. **Chỉ tính theo chấm
+  công**: không có đủ giờ vào và giờ ra (không chấm công, quên checkout) thì
+  **0 giờ** — không lấy giờ dự kiến trên phiếu. Ngày thường đi không đủ giờ không
+  trừ vào OT; admin xử lý ngày đó riêng (chấm nghỉ / không tính công).
 - Admin duyệt ở `/admin/overtime`, có thể **chốt tay số giờ** (bỏ trống = theo
-  cách tính trên), sửa giờ hoặc từ chối cả sau khi đã duyệt.
+  chấm công), sửa giờ hoặc từ chối cả sau khi đã duyệt.
 - Ngày không có ca mà có phiếu OT được duyệt là ngày OT: không cộng thêm công
   "ngoài lịch", chỉ trả theo giờ OT.
 - Bảng công: ô ngày thêm ký hiệu (`x+T`, `T1`, `L+T2`); Excel cả công ty có thêm

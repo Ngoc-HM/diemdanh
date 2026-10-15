@@ -1368,7 +1368,7 @@ async function main() {
     });
     const weekendOt = r.json.request;
     check("thứ 7 tự gắn T1, hệ số 200%", weekendOt?.code === "T1" && weekendOt?.rate === 200, `(${weekendOt?.code} ${weekendOt?.rate})`);
-    check("không chấm công thì lấy giờ dự kiến 4h", weekendOt?.computedSource === "planned" && weekendOt?.minutes === 240, `(${weekendOt?.computedSource} ${weekendOt?.minutes})`);
+    check("không chấm công thì 0 giờ OT (không lấy giờ dự kiến)", weekendOt?.computedSource === "missing" && weekendOt?.minutes === 0, `(${weekendOt?.computedSource} ${weekendOt?.minutes})`);
 
     r = await call(admin, "GET", "/api/admin/overtime?month=2026-09&status=pending");
     check("admin thấy phiếu đang chờ", r.json.requests?.some((item) => item.id === weekendOt?.id) && r.json.pendingTotal >= 2, `(${r.json.pendingTotal})`);
@@ -1398,7 +1398,7 @@ async function main() {
     check("chi tiết nhân viên có tổng OT", r.json.totals?.overtimeMinutes === 210, `(${r.json.totals?.overtimeMinutes})`);
 
     r = await call(admin, "PATCH", `/api/admin/overtime/${weekendOt?.id}`, { action: "update", approvedHours: null });
-    check("bỏ số giờ chốt thì quay về giờ tính được (4h)", r.json.request?.minutes === 240 && r.json.request?.approvedMinutes === null, `(${r.json.request?.minutes})`);
+    check("bỏ số giờ chốt thì quay về giờ chấm công (0h vì ngày đó không chấm công)", r.json.request?.minutes === 0 && r.json.request?.approvedMinutes === null, `(${r.json.request?.minutes})`);
     r = await call(admin, "PATCH", `/api/admin/overtime/${weekendOt?.id}`, { action: "reject", adminNote: "Không cần đi" });
     check("admin từ chối phiếu", r.json.request?.status === "rejected", `(${r.json.request?.status})`);
     mail = await waitForMail(sink, EMP_EMAIL, "Phiếu OT ngày 05/09 bị từ chối");

@@ -72,7 +72,7 @@ export type OvertimeView = {
   rate: number;
   /// Số phút tính từ chấm công (hoặc giờ dự kiến nếu thiếu giờ vào/ra).
   computedMinutes: number;
-  computedSource: "punches" | "planned";
+  computedSource: "punches" | "missing";
   /// Số phút admin chốt tay, null = theo computedMinutes.
   approvedMinutes: number | null;
   /// Số phút dùng để trả lương.
