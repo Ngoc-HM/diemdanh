@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import PageHeader from "../_components/page-header";
 import {
@@ -81,21 +81,27 @@ export default function AdminOvertimePage() {
   const [note, setNote] = useState("");
   const [acting, setActing] = useState(false);
 
+  /// Bấm đổi tab / tháng nhanh thì nhiều lần tải chạy song song; chỉ nhận kết
+  /// quả của lần mới nhất, kẻo lần cũ về muộn đè lên (vd đang ở "Tất cả" mà
+  /// hiện danh sách rỗng của "Đã duyệt").
+  const latestLoad = useRef(0);
   const load = useCallback(async (target: Filter, targetMonth: string) => {
+    const requestId = ++latestLoad.current;
     setLoading(true);
     try {
       const status = target === "all" ? "" : `&status=${target}`;
       const response = await fetch(`/api/admin/overtime?month=${targetMonth}${status}`);
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error || "Không tải được phiếu OT");
-      setData(payload);
+      if (requestId === latestLoad.current) setData(payload);
     } catch (error) {
+      if (requestId !== latestLoad.current) return;
       setMessage({
         type: "error",
         text: error instanceof Error ? error.message : "Không tải được phiếu OT",
       });
     } finally {
-      setLoading(false);
+      if (requestId === latestLoad.current) setLoading(false);
     }
   }, []);
 
