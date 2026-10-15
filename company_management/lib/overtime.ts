@@ -100,6 +100,10 @@ export function validatePlannedTimes(start: string, end: string): string | null 
   return null;
 }
 
+export function plannedMinutes(start: string, end: string): number {
+  return Math.max(0, parseTimeToMinutes(end) - parseTimeToMinutes(start));
+}
+
 export type OvertimeMinutes = {
   minutes: number;
   /// "punches" = tính từ chấm công; "missing" = chưa đủ giờ vào/ra nên chưa
