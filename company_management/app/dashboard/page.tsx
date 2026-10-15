@@ -42,6 +42,7 @@ const STATUS_TEXT: Record<DayStatus, string> = {
   leave: "Hôm nay bạn đăng ký nghỉ",
   sick: "Hôm nay được chấm nghỉ ốm",
   absent: "Chưa chấm công",
+  upcoming: "Chưa chấm công",
   unscheduled: "Đang làm ngoài lịch đăng ký",
   holiday: "Hôm nay là ngày nghỉ lễ",
   off: "Hôm nay bạn không có lịch làm",

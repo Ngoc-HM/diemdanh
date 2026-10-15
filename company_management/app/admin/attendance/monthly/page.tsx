@@ -17,10 +17,18 @@ import {
   Message,
   TableSkeleton,
 } from "@/app/_components/ui";
-import { addMonths, formatMonthLabel, monthKeyVN, weekdayLabel } from "@/lib/datetime";
+import {
+  addMonths,
+  formatMonthLabel,
+  monthKeyVN,
+  weekdayLabel,
+} from "@/lib/datetime";
 import { formatWorkdays, type DayStatus } from "@/lib/attendance-rules";
 import { DAY_STATUS_CELL, LEGEND } from "@/app/_components/status-styles";
-import DayMarkMenu, { type MarkChoice } from "./day-mark-menu";
+import DayMarkMenu, { type MarkChoice } from "../../_components/day-mark-menu";
+import CheckoutDialog, {
+  type CheckoutTarget,
+} from "../../_components/checkout-dialog";
 
 type DayCell = {
   status: DayStatus;
@@ -80,16 +88,18 @@ export default function MonthlyAttendancePage() {
     anchor: HTMLElement;
   } | null>(null);
   const [saving, setSaving] = useState(false);
+  const [fixing, setFixing] = useState<CheckoutTarget | null>(null);
 
   const load = useCallback(async (target: string) => {
     setLoading(true);
     setError(null);
     try {
       const response = await fetch(
-        `/api/admin/attendance/monthly?month=${target}`
+        `/api/admin/attendance/monthly?month=${target}`,
       );
       const payload = await response.json();
-      if (!response.ok) throw new Error(payload.error || "Không tải được dữ liệu");
+      if (!response.ok)
+        throw new Error(payload.error || "Không tải được dữ liệu");
       setData(payload);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Lỗi không xác định");
@@ -139,7 +149,7 @@ export default function MonthlyAttendancePage() {
       missedCheckout: acc.missedCheckout + row.missedCheckoutDays,
       hours: acc.hours + row.totalHours,
     }),
-    { workdays: 0, review: 0, late: 0, absent: 0, missedCheckout: 0, hours: 0 }
+    { workdays: 0, review: 0, late: 0, absent: 0, missedCheckout: 0, hours: 0 },
   );
 
   /// Số ô đang chờ duyệt đổi ca trong tháng, để nhắc admin sang trang duyệt.
@@ -148,7 +158,7 @@ export default function MonthlyAttendancePage() {
       (count, row) =>
         count +
         Object.values(row.days).filter((cell) => cell.pendingRequest).length,
-      0
+      0,
     ) ?? 0;
 
   return (
@@ -162,7 +172,7 @@ export default function MonthlyAttendancePage() {
             onClick={() =>
               window.open(
                 `/api/admin/attendance/monthly?month=${month}&export=xlsx`,
-                "_blank"
+                "_blank",
               )
             }
             disabled={!data || data.summary.length === 0}
@@ -181,8 +191,8 @@ export default function MonthlyAttendancePage() {
           <span className="flex items-center gap-2">
             <AlarmClockOff size={16} aria-hidden="true" />
             <span>
-              <span className="font-semibold">{totals.missedCheckout}</span> ca quên
-              checkout trong {formatMonthLabel(month)}
+              <span className="font-semibold">{totals.missedCheckout}</span> ca
+              quên checkout trong {formatMonthLabel(month)}
             </span>
           </span>
           <span className="font-medium">Xem danh sách</span>
@@ -193,9 +203,9 @@ export default function MonthlyAttendancePage() {
         <div className="mb-4 flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
           <AlarmClockOff size={16} aria-hidden="true" />
           <span>
-            <span className="font-semibold">{totals.review}</span> ngày làm thiếu
-            giờ chờ xem lại (ô có dấu !). Chưa quyết định thì vẫn tính đủ công; mở
-            chi tiết nhân viên để chọn không tính.
+            <span className="font-semibold">{totals.review}</span> ngày làm
+            thiếu giờ chờ xem lại (ô có dấu !). Chưa quyết định thì vẫn tính đủ
+            công; mở chi tiết nhân viên để chọn không tính.
           </span>
         </div>
       )}
@@ -208,8 +218,8 @@ export default function MonthlyAttendancePage() {
           <span className="flex items-center gap-2">
             <ClipboardCheck size={16} aria-hidden="true" />
             <span>
-              <span className="font-semibold">{pendingRequests}</span> yêu cầu đổi
-              ca đang chờ duyệt trong {formatMonthLabel(month)}
+              <span className="font-semibold">{pendingRequests}</span> yêu cầu
+              đổi ca đang chờ duyệt trong {formatMonthLabel(month)}
             </span>
           </span>
           <span className="font-medium">Duyệt ngay</span>
@@ -245,24 +255,24 @@ export default function MonthlyAttendancePage() {
       )}
 
       {!loading && data && data.summary.length > 0 && totals && (
-            <div className="mb-6 grid grid-cols-2 gap-4 sm:grid-cols-4">
-              <StatTile label="Nhân viên" value={String(data.summary.length)} />
-              <StatTile
-                label="Tổng ngày công"
-                value={formatWorkdays(totals.workdays)}
-                tone="text-emerald-700"
-              />
-              <StatTile
-                label="Lượt đi muộn"
-                value={String(totals.late)}
-                tone="text-amber-700"
-              />
-              <StatTile
-                label="Tổng giờ làm"
-                value={`${Math.round(totals.hours * 10) / 10}h`}
-              />
-            </div>
-          )}
+        <div className="mb-6 grid grid-cols-2 gap-4 sm:grid-cols-4">
+          <StatTile label="Nhân viên" value={String(data.summary.length)} />
+          <StatTile
+            label="Tổng ngày công"
+            value={formatWorkdays(totals.workdays)}
+            tone="text-emerald-700"
+          />
+          <StatTile
+            label="Lượt đi muộn"
+            value={String(totals.late)}
+            tone="text-amber-700"
+          />
+          <StatTile
+            label="Tổng giờ làm"
+            value={`${Math.round(totals.hours * 10) / 10}h`}
+          />
+        </div>
+      )}
 
       <div className="mb-4 flex flex-wrap gap-x-5 gap-y-2 text-xs">
         {LEGEND.map((item) => (
@@ -338,7 +348,10 @@ export default function MonthlyAttendancePage() {
               </thead>
               <tbody>
                 {data.summary.map((row) => (
-                  <tr key={row.user.id} className="border-b border-slate-100 last:border-0">
+                  <tr
+                    key={row.user.id}
+                    className="border-b border-slate-100 last:border-0"
+                  >
                     <td className="sticky left-0 z-10 bg-white px-3 py-2">
                       <Link
                         href={`/admin/attendance/user/${row.user.id}`}
@@ -357,13 +370,16 @@ export default function MonthlyAttendancePage() {
                       const cell = row.days[date];
                       const status: DayStatus = cell?.status ?? "off";
                       const open =
-                        editing?.userId === row.user.id && editing?.date === date;
+                        editing?.userId === row.user.id &&
+                        editing?.date === date;
                       const edited = cell?.adminEdited ?? false;
                       const pending = cell?.pendingRequest ?? false;
                       // Admin đã sửa hoặc đang chờ duyệt đều tô vàng "cần để ý",
                       // đè lên màu trạng thái thường của ô.
                       const cellClass =
-                        edited || pending ? "bg-amber-100" : DAY_STATUS_CELL[status];
+                        edited || pending
+                          ? "bg-amber-100"
+                          : DAY_STATUS_CELL[status];
                       return (
                         <td
                           key={date}
@@ -375,7 +391,11 @@ export default function MonthlyAttendancePage() {
                               setEditing(
                                 open
                                   ? null
-                                  : { userId: row.user.id, date, anchor: event.currentTarget }
+                                  : {
+                                      userId: row.user.id,
+                                      date,
+                                      anchor: event.currentTarget,
+                                    },
                               )
                             }
                             aria-haspopup="menu"
@@ -388,7 +408,9 @@ export default function MonthlyAttendancePage() {
                                       : ""
                                   }${cell.outsideRadius ? " · ngoài bán kính" : ""}`
                                 : date) +
-                              (cell?.needsReview ? " · thiếu giờ, chờ xem lại" : "") +
+                              (cell?.needsReview
+                                ? " · thiếu giờ, chờ xem lại"
+                                : "") +
                               (edited ? " · admin đã sửa" : "") +
                               (pending ? " · chờ duyệt đổi ca" : "")
                             }
@@ -407,6 +429,19 @@ export default function MonthlyAttendancePage() {
                                 markDay(row.user.id, date, choice)
                               }
                               onClose={() => setEditing(null)}
+                              onAddCheckout={
+                                status === "missed_out"
+                                  ? () => {
+                                      setEditing(null);
+                                      setFixing({
+                                        userId: row.user.id,
+                                        userName: row.user.name,
+                                        date,
+                                        checkInAt: null,
+                                      });
+                                    }
+                                  : undefined
+                              }
                             />
                           )}
                         </td>
@@ -429,9 +464,16 @@ export default function MonthlyAttendancePage() {
               </tbody>
             </table>
           </Card>
-
         </>
       )}
+      <CheckoutDialog
+        target={fixing}
+        onClose={() => setFixing(null)}
+        onSaved={() => {
+          setFixing(null);
+          load(month);
+        }}
+      />
     </>
   );
 }

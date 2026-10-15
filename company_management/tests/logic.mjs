@@ -10,7 +10,7 @@ import {
   parseRegistrationWindow,
   validateRegistrationWindow,
 } from "../lib/schedule.ts";
-import { evaluateDay, pairPunches, parseLunchBreak } from "../lib/attendance-rules.ts";
+import { dayCellLabel, evaluateDay, pairPunches, parseLunchBreak } from "../lib/attendance-rules.ts";
 import { accountingCellLabel } from "../lib/attendance-export.ts";
 import {
   computeOvertimeMinutes,
@@ -206,6 +206,14 @@ check("ngày lễ không chấm = holiday", day([], { isHoliday: true }).status 
 check("ngày lễ không bị tính thiếu công", day([], { isHoliday: true }).missingMinutes === 0);
 check("không lịch, không chấm = off",
   evaluateDay({ scheduled: [], punches: [] }).status === "off");
+check("có lịch, chưa chấm công, ngày đã qua = vắng",
+  evaluateDay({ scheduled: [ca], punches: [], isPast: true }).status === "absent");
+const notYet = evaluateDay({ scheduled: [ca], punches: [], notYetDue: true });
+check("có lịch, chưa chấm công, hôm nay / ngày sau = chưa tới (không tính vắng)",
+  notYet.status === "upcoming" && notYet.workdayValue === 0 && notYet.missingMinutes === 0, `(${notYet.status})`);
+check("ngày chưa tới để trống ô trong lưới", dayCellLabel(notYet) === "", `(${dayCellLabel(notYet)})`);
+check("ngày lễ chưa tới vẫn là ngày lễ",
+  evaluateDay({ scheduled: [ca], punches: [], notYetDue: true, isHoliday: true }).status === "holiday");
 const unscheduled = evaluateDay({ scheduled: [], punches: [
     { type: "in", at: at("2026-09-01", "08:00"), withinRadius: true },
     { type: "out", at: at("2026-09-01", "17:00"), withinRadius: true }] });

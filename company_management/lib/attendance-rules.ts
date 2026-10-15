@@ -82,6 +82,9 @@ export type DayStatus =
   | "leave"
   | "sick"
   | "absent"
+  /// Có lịch, chưa chấm công, nhưng ngày chưa qua (hôm nay hoặc sắp tới): chưa
+  /// được coi là vắng.
+  | "upcoming"
   | "unscheduled"
   | "holiday"
   | "off";
@@ -95,6 +98,7 @@ export const DAY_STATUS_LABELS: Record<DayStatus, string> = {
   leave: "Nghỉ",
   sick: "Ốm",
   absent: "Vắng",
+  upcoming: "Chưa tới",
   unscheduled: "Ngoài lịch",
   holiday: "Nghỉ lễ",
   off: "Không có lịch",
@@ -203,6 +207,9 @@ export function evaluateDay(input: {
   /// Ngày đã kết thúc (trước hôm nay theo giờ VN). Ca còn mở của ngày đã qua
   /// là quên checkout, còn của hôm nay thì vẫn đang làm.
   isPast?: boolean;
+  /// Hôm nay hoặc ngày sau: có lịch mà chưa chấm công thì là "chưa tới", chưa
+  /// tính vắng (ngày chưa hết thì chưa biết người đó có đi hay không).
+  notYetDue?: boolean;
   /// N = nhân viên đăng ký nghỉ, O = admin chấm ốm. Cả hai đều không yêu cầu
   /// giờ công và không được tính là một ngày công.
   leaveCode?: LeaveCode | null;
@@ -222,6 +229,7 @@ export function evaluateDay(input: {
     punches,
     isHoliday = false,
     isPast = false,
+    notYetDue = false,
     leaveCode = null,
     lunchBreak = null,
     isRestDay = false,
@@ -306,8 +314,15 @@ export function evaluateDay(input: {
   if (punches.length === 0) {
     return finish({
       ...base,
-      status: isHoliday ? "holiday" : scheduled.length > 0 ? "absent" : "off",
-      missingMinutes: scheduled.length > 0 && !isHoliday ? requiredMinutes : 0,
+      status: isHoliday
+        ? "holiday"
+        : scheduled.length === 0
+          ? "off"
+          : notYetDue
+            ? "upcoming"
+            : "absent",
+      missingMinutes:
+        scheduled.length > 0 && !isHoliday && !notYetDue ? requiredMinutes : 0,
       lateMinutes: 0,
       earlyLeaveMinutes: 0,
     });
@@ -406,6 +421,8 @@ export function dayCellLabel(evaluation: DayEvaluation): string {
       return "O";
     case "absent":
       return "V";
+    case "upcoming":
+      return "";
     case "unscheduled":
       return "NL";
     case "holiday":

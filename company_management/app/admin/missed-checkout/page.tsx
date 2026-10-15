@@ -2,8 +2,11 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { AlarmClockOff, ChevronLeft, ChevronRight } from "lucide-react";
 import PageHeader from "../_components/page-header";
+import CheckoutDialog, {
+  type CheckoutTarget,
+} from "../_components/checkout-dialog";
 import {
   Badge,
   Button,
@@ -31,16 +34,19 @@ export default function MissedCheckoutPage() {
   const [data, setData] = useState<Payload | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [fixing, setFixing] = useState<CheckoutTarget | null>(null);
+  const [saved, setSaved] = useState<string | null>(null);
 
   const load = useCallback(async (target: string) => {
     setLoading(true);
     setError(null);
     try {
       const response = await fetch(
-        `/api/admin/attendance/missed-checkout?month=${target}`
+        `/api/admin/attendance/missed-checkout?month=${target}`,
       );
       const payload = await response.json();
-      if (!response.ok) throw new Error(payload.error || "Không tải được dữ liệu");
+      if (!response.ok)
+        throw new Error(payload.error || "Không tải được dữ liệu");
       setData(payload);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Lỗi không xác định");
@@ -57,7 +63,7 @@ export default function MissedCheckoutPage() {
     <>
       <PageHeader
         title="Quên checkout"
-        description="Ngày đã check-in nhưng hết ngày không có lần check-out nào. Giờ công tính 0 cho tới khi bổ sung giờ ra."
+        description="Ngày đã check-in nhưng hết ngày không có lần check-out nào. Giờ công tính 0 cho tới khi bổ sung giờ ra; nhân viên nhận email khi admin bổ sung."
         actions={
           <div className="flex items-center gap-2">
             <Button
@@ -84,6 +90,13 @@ export default function MissedCheckoutPage() {
       />
 
       {error && <Message type="error">{error}</Message>}
+      {saved && (
+        <div className="mb-4">
+          <Message type="success" onDismiss={() => setSaved(null)}>
+            {saved}
+          </Message>
+        </div>
+      )}
 
       {loading ? (
         <TableSkeleton rows={6} />
@@ -93,7 +106,9 @@ export default function MissedCheckoutPage() {
             <thead>
               <tr className="border-b border-slate-200 bg-slate-50 text-left">
                 <th className="px-4 py-2 font-semibold text-slate-900">Ngày</th>
-                <th className="px-4 py-2 font-semibold text-slate-900">Nhân viên</th>
+                <th className="px-4 py-2 font-semibold text-slate-900">
+                  Nhân viên
+                </th>
                 <th className="hidden px-4 py-2 font-semibold text-slate-900 md:table-cell">
                   Phòng ban
                 </th>
@@ -115,9 +130,16 @@ export default function MissedCheckoutPage() {
                     <span className="text-slate-400">{item.weekday}</span>
                   </td>
                   <td className="px-4 py-2">
-                    <div className="font-medium text-slate-900">{item.userName}</div>
+                    <Link
+                      href={`/admin/attendance/user/${item.userId}?month=${item.date.slice(0, 7)}`}
+                      className="font-medium text-slate-900 hover:text-sky-700 hover:underline"
+                    >
+                      {item.userName}
+                    </Link>
                     {item.employeeCode && (
-                      <div className="text-xs text-slate-500">{item.employeeCode}</div>
+                      <div className="text-xs text-slate-500">
+                        {item.employeeCode}
+                      </div>
                     )}
                   </td>
                   <td className="hidden px-4 py-2 text-slate-600 md:table-cell">
@@ -127,12 +149,21 @@ export default function MissedCheckoutPage() {
                     <Badge tone="warning">{item.checkInAt}</Badge>
                   </td>
                   <td className="px-4 py-2 text-right">
-                    <Link
-                      href={`/admin/attendance/user/${item.userId}?month=${item.date.slice(0, 7)}`}
-                      className="inline-flex h-8 items-center rounded-lg border border-slate-300 bg-white px-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      onClick={() =>
+                        setFixing({
+                          userId: item.userId,
+                          userName: item.userName,
+                          date: item.date,
+                          checkInAt: item.checkInAt,
+                        })
+                      }
                     >
+                      <AlarmClockOff size={14} aria-hidden="true" />
                       Bổ sung giờ ra
-                    </Link>
+                    </Button>
                   </td>
                 </tr>
               ))}
@@ -140,8 +171,22 @@ export default function MissedCheckoutPage() {
           </table>
         </Card>
       ) : (
-        <EmptyState title={`Không có ca nào quên checkout trong ${formatMonthLabel(month)}`} />
+        <EmptyState
+          title={`Không có ca nào quên checkout trong ${formatMonthLabel(month)}`}
+        />
       )}
+
+      <CheckoutDialog
+        target={fixing}
+        onClose={() => setFixing(null)}
+        onSaved={(target, time) => {
+          setFixing(null);
+          setSaved(
+            `Đã bổ sung giờ ra ${time} ngày ${target.date.slice(8, 10)}/${target.date.slice(5, 7)} cho ${target.userName}`,
+          );
+          load(month);
+        }}
+      />
     </>
   );
 }

@@ -175,6 +175,7 @@ export async function computeMonthAttendance(
         punches,
         isHoliday,
         isPast: date < today,
+        notYetDue: date >= today,
         leaveCode: mark?.leaveCode ?? null,
         lunchBreak,
         // Ngày không có ca mà có phiếu OT đã duyệt là ngày làm thêm: trả

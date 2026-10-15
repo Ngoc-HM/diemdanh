@@ -216,7 +216,8 @@ bảng chấm công), phiếu OT đã duyệt, hồ sơ lương và khoản hỗ
 | Thiếu giờ | Có lịch, giờ làm chưa đạt tổng `minHours` của các ca đăng ký |
 | Đang làm | Hôm nay đã check-in, chưa có lần check-out nào |
 | Quên checkout | Ngày đã qua mà chỉ có `in`, không có `out` — không tính giờ công, chờ admin bổ sung giờ ra |
-| Vắng | Có lịch nhưng không có lần bấm giờ nào — tô **đỏ** ở mọi bảng để phân biệt với nghỉ N đã xin |
+| Vắng | Ngày đã qua, có lịch nhưng không có lần bấm giờ nào — tô **đỏ** ở mọi bảng để phân biệt với nghỉ N đã xin |
+| Chưa tới | Hôm nay hoặc ngày sau, có lịch nhưng chưa bấm giờ — ô để trống, không đếm vào cột Vắng (bảng lương chốt sớm vẫn coi như đi đủ) |
 | Nghỉ | Nhân viên tự chọn `N` khi đăng ký lịch, hoặc admin đánh dấu `N` — không đòi giờ công, không tính là ngày công |
 | Ốm | Admin đánh dấu `O` — xử lý như ngày nghỉ |
 | Ngoài lịch | Quên đăng ký nhưng vẫn đi làm, có cả giờ vào lẫn giờ ra — tính 1 hoặc 0,5 công theo giờ thực tế (xem "Ngày công"), tô **vàng** để admin để ý; admin muốn có mã ca thì bấm vào ô để gán ca |
@@ -225,6 +226,19 @@ bảng chấm công), phiếu OT đã duyệt, hồ sơ lương và khoản hỗ
 
 Mọi chỗ cộng "ngày công" dùng `workdayValue` của `evaluateDay`, không so sánh
 trạng thái bằng tay.
+
+**Ca tính công do admin chọn.** Ở trang chi tiết nhân viên (`/admin/attendance/user/[id]`)
+cột "Ca tính công" là nút chọn ca của từng ngày (S / C / CN / T, Nghỉ, Ốm, hoặc
+"Xoá đánh dấu" để trả về lịch đăng ký) — cùng menu với ô của bảng chấm công
+tháng, ghi vào `DayMark`. Ví dụ đăng ký CN nhưng chỉ làm buổi chiều 4 tiếng:
+chọn C là ngày được tính lại thành nửa công đúng giờ, thay vì phải chọn "tính /
+không tính" cả ngày công CN.
+
+**Bổ sung giờ ra tại chỗ.** Ngày quên checkout sửa ngay ở nơi admin đang xem:
+nút "Bổ sung giờ ra" ở trang Quên checkout và ở dòng ngày trong trang chi tiết,
+mục "Bổ sung giờ ra" trong menu ô "?" của bảng tháng
+(`POST /api/admin/attendance/missed-checkout`: chỉ thêm một lần ra, phải sau giờ
+vào, ngày phải đang thiếu giờ ra; nhân viên nhận email).
 
 Múi giờ chốt cứng ở `Asia/Ho_Chi_Minh` (`lib/datetime.ts`), không phụ thuộc giờ
 máy chủ — đây là lý do mọi khoá ngày đều đi qua `dateKeyVN()`.

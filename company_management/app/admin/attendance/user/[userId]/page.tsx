@@ -3,19 +3,22 @@
 import { Suspense, useCallback, useEffect, useState } from "react";
 import { useParams, useSearchParams } from "next/navigation";
 import {
-  Check,
+  ChevronDown,
   ChevronLeft,
   ChevronRight,
   Download,
-  LogIn,
-  LogOut,
   NotebookText,
   Pencil,
   Plus,
   Trash2,
-  X,
 } from "lucide-react";
 import PageHeader from "../../../_components/page-header";
+import DayMarkMenu, {
+  type MarkChoice,
+} from "../../../_components/day-mark-menu";
+import CheckoutDialog, {
+  type CheckoutTarget,
+} from "../../../_components/checkout-dialog";
 import {
   Badge,
   Button,
@@ -30,7 +33,10 @@ import {
 import { addMonths, formatMonthLabel, monthKeyVN } from "@/lib/datetime";
 import { formatDuration } from "@/lib/work-reports";
 import { formatWorkdays, type DayStatus } from "@/lib/attendance-rules";
-import { DAY_STATUS_TONE, ROW_HIGHLIGHT } from "@/app/_components/status-styles";
+import {
+  DAY_STATUS_TONE,
+  ROW_HIGHLIGHT,
+} from "@/app/_components/status-styles";
 
 type Punch = {
   id: string;
@@ -55,7 +61,12 @@ type Day = {
   date: string;
   weekday: string;
   holidayName: string | null;
-  scheduled: { code: string; name: string; workStart: string; workEnd: string }[];
+  scheduled: {
+    code: string;
+    name: string;
+    workStart: string;
+    workEnd: string;
+  }[];
   status: DayStatus;
   /// Ngày được tính công (kể cả "ngoài lịch" có đủ giờ vào/ra).
   countsAsWorkDay: boolean;
@@ -84,6 +95,7 @@ type Day = {
 };
 
 type Payload = {
+  sessions: { id: string; code: string; name: string }[];
   user: {
     id: string;
     name: string;
@@ -110,7 +122,10 @@ type DraftPunch = { type: "in" | "out"; time: string };
 /// Nền và chú thích của một dòng ngày: đỏ = có lịch mà không đi (khác nghỉ N
 /// đã xin); vàng = có gì đó admin cần để ý (đã sửa, đang chờ duyệt, làm ngoài
 /// lịch). Vắng ưu tiên hơn vì là lỗi thật, còn vàng chỉ là nhắc nhở.
-function rowHighlight(day: Day): { className: string; title: string | undefined } {
+function rowHighlight(day: Day): {
+  className: string;
+  title: string | undefined;
+} {
   if (day.status === "absent") {
     return {
       className: ROW_HIGHLIGHT.absent,
@@ -118,7 +133,8 @@ function rowHighlight(day: Day): { className: string; title: string | undefined 
     };
   }
   const notes: string[] = [];
-  if (day.needsReview) notes.push("Thiếu giờ, chờ admin xem lại (đang tính đủ công)");
+  if (day.needsReview)
+    notes.push("Thiếu giờ, chờ admin xem lại (đang tính đủ công)");
   if (day.adminEdited) notes.push("Admin đã sửa ngày này");
   if (day.pendingRequest) notes.push("Đang chờ duyệt đổi ca");
   if (day.status === "unscheduled") {
@@ -126,6 +142,47 @@ function rowHighlight(day: Day): { className: string; title: string | undefined 
   }
   if (notes.length === 0) return { className: "", title: undefined };
   return { className: ROW_HIGHLIGHT.attention, title: notes.join(" · ") };
+}
+
+/// Ca tính công đang áp cho ngày: mã ca, hoặc N / O khi đã đánh dấu nghỉ / ốm.
+function shiftLabel(day: Day): { code: string; detail: string } | null {
+  if (day.status === "leave") return { code: "N", detail: "Nghỉ" };
+  if (day.status === "sick") return { code: "O", detail: "Ốm" };
+  if (day.scheduled.length === 0) return null;
+  const sorted = [...day.scheduled];
+  return {
+    code: sorted.map((rule) => rule.code).join(" + "),
+    detail: `${sorted[0].workStart}–${sorted[sorted.length - 1].workEnd}`,
+  };
+}
+
+/// Chi tiết phụ của trạng thái, gom thành một dòng chữ nhỏ thay vì nhiều nhãn.
+function statusNotes(day: Day): string[] {
+  const notes: string[] = [];
+  if (day.lateMinutes > 0)
+    notes.push(`muộn ${formatDuration(day.lateMinutes)}`);
+  if (day.earlyLeaveMinutes > 0 && day.status !== "missed_out") {
+    notes.push(`về sớm ${formatDuration(day.earlyLeaveMinutes)}`);
+  }
+  if (day.outsideRadius) notes.push("ngoài bán kính");
+  if (day.editedAt) notes.push("admin sửa giờ");
+  if (day.pendingRequest) notes.push("chờ duyệt đổi ca");
+  return notes;
+}
+
+/// Nhãn chính của dòng: ngày thiếu giờ gộp luôn quyết định của admin vào nhãn.
+function statusBadge(day: Day): {
+  text: string;
+  tone: Parameters<typeof Badge>[0]["tone"];
+} {
+  if (day.status === "insufficient") {
+    if (day.reviewDecision === "exclude")
+      return { text: "Không tính công", tone: "danger" };
+    if (day.reviewDecision === "count")
+      return { text: "Thiếu giờ · đã tính", tone: "success" };
+    return { text: "Thiếu giờ · chờ duyệt", tone: "warning" };
+  }
+  return { text: day.statusLabel, tone: DAY_STATUS_TONE[day.status] };
 }
 
 /// Link từ trang "Quên checkout" mang theo ?month= để mở đúng tháng có sự cố.
@@ -146,7 +203,7 @@ function UserAttendanceDetail() {
   const [month, setMonth] = useState(() =>
     requestedMonth && /^\d{4}-\d{2}$/.test(requestedMonth)
       ? requestedMonth
-      : monthKeyVN()
+      : monthKeyVN(),
   );
   const [data, setData] = useState<Payload | null>(null);
   const [loading, setLoading] = useState(true);
@@ -160,16 +217,24 @@ function UserAttendanceDetail() {
   const [draft, setDraft] = useState<DraftPunch[]>([]);
   const [note, setNote] = useState("");
   const [saving, setSaving] = useState(false);
+  /// Ngày đang mở menu chọn ca, kèm nút để menu định vị theo.
+  const [picking, setPicking] = useState<{
+    day: Day;
+    anchor: HTMLElement;
+  } | null>(null);
+  const [marking, setMarking] = useState(false);
+  const [fixing, setFixing] = useState<CheckoutTarget | null>(null);
 
   const load = useCallback(
     async (target: string) => {
       setLoading(true);
       try {
         const response = await fetch(
-          `/api/admin/attendance/user/${userId}?month=${target}`
+          `/api/admin/attendance/user/${userId}?month=${target}`,
         );
         const payload = await response.json();
-        if (!response.ok) throw new Error(payload.error || "Không tải được dữ liệu");
+        if (!response.ok)
+          throw new Error(payload.error || "Không tải được dữ liệu");
         setData(payload);
       } catch (error) {
         setMessage({
@@ -180,7 +245,7 @@ function UserAttendanceDetail() {
         setLoading(false);
       }
     },
-    [userId]
+    [userId],
   );
 
   useEffect(() => {
@@ -193,9 +258,50 @@ function UserAttendanceDetail() {
       day.punches.map((punch) => ({
         type: punch.type === "in" ? "in" : "out",
         time: punch.time,
-      }))
+      })),
     );
     setNote(day.note ?? "");
+  }
+
+  /// Admin chọn ca tính công cho một ngày (S / C / CN…, nghỉ, ốm, hoặc trả về
+  /// theo lịch đăng ký). Ngày được tính lại ngay theo ca mới.
+  async function markDay(day: Day, choice: MarkChoice) {
+    setMarking(true);
+    setMessage(null);
+    try {
+      const body =
+        choice.kind === "session"
+          ? {
+              userId,
+              date: day.date,
+              leaveCode: null,
+              sessionIds: [choice.sessionId],
+            }
+          : choice.kind === "leave"
+            ? {
+                userId,
+                date: day.date,
+                leaveCode: choice.code,
+                sessionIds: null,
+              }
+            : { userId, date: day.date, leaveCode: null, sessionIds: null };
+      const response = await fetch("/api/admin/attendance/day-mark", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || "Không lưu được");
+      setPicking(null);
+      await load(month);
+    } catch (error) {
+      setMessage({
+        type: "error",
+        text: error instanceof Error ? error.message : "Không lưu được",
+      });
+    } finally {
+      setMarking(false);
+    }
   }
 
   /// Quyết định cho ngày thiếu giờ; bấm lại nút đang chọn là bỏ quyết định.
@@ -271,7 +377,7 @@ function UserAttendanceDetail() {
             onClick={() =>
               window.open(
                 `/api/admin/attendance/user/${userId}?month=${month}&export=xlsx`,
-                "_blank"
+                "_blank",
               )
             }
             disabled={!data}
@@ -315,9 +421,10 @@ function UserAttendanceDetail() {
       {data && data.totals.reviewDays > 0 && (
         <div className="mb-4">
           <Message type="info">
-            {data.totals.reviewDays} ngày làm thiếu giờ đang chờ xem lại. Chưa
-            quyết định thì hết tháng vẫn tính đủ công; bấm “Không tính” ở dòng
-            đó nếu không trả công ngày ấy.
+            {data.totals.reviewDays} ngày làm thiếu giờ chờ duyệt. Bấm ô{" "}
+            <b>Ca tính công</b> để chọn đúng ca theo giờ thực làm (vd chỉ làm
+            chiều thì chọn C), hoặc bấm “Tính công” / “Không tính”. Chưa quyết
+            thì hết tháng vẫn tính đủ công.
           </Message>
         </div>
       )}
@@ -328,7 +435,8 @@ function UserAttendanceDetail() {
             <div className="text-2xl font-semibold text-emerald-700">
               {formatWorkdays(data.totals.workdays)}
               <span className="text-base font-normal text-slate-500">
-                {" "}/ {data.totals.standardWorkdays}
+                {" "}
+                / {data.totals.standardWorkdays}
               </span>
             </div>
             <div className="mt-0.5 text-sm text-slate-600">
@@ -361,172 +469,247 @@ function UserAttendanceDetail() {
       ) : (
         data && (
           <Card className="overflow-x-auto">
-            <table className="w-full min-w-[860px] text-sm">
+            <table className="w-full min-w-[960px] text-sm">
               <thead>
                 <tr className="border-b border-slate-200 bg-slate-50 text-left">
-                  <th className="px-4 py-3 font-semibold text-slate-900">Ngày</th>
-                  <th className="px-4 py-3 font-semibold text-slate-900">Lịch</th>
-                  <th className="px-4 py-3 font-semibold text-slate-900">
-                    Giờ vào / ra
+                  <th className="w-24 px-4 py-3 font-semibold text-slate-900">
+                    Ngày
                   </th>
-                  <th className="px-4 py-3 font-semibold text-slate-900">Giờ làm</th>
-                  <th className="px-4 py-3 text-center font-semibold text-slate-900">
+                  <th className="w-44 px-4 py-3 font-semibold text-slate-900">
+                    Ca tính công
+                  </th>
+                  <th className="px-4 py-3 font-semibold text-slate-900">
+                    Vào → Ra
+                  </th>
+                  <th className="w-28 px-4 py-3 font-semibold text-slate-900">
+                    Giờ làm
+                  </th>
+                  <th className="w-20 px-4 py-3 text-center font-semibold text-slate-900">
                     Công
                   </th>
                   <th className="px-4 py-3 font-semibold text-slate-900">
                     Trạng thái
                   </th>
-                  <th className="w-40 px-4 py-3" />
+                  <th className="px-4 py-3" />
                 </tr>
               </thead>
               <tbody>
                 {data.days.map((day) => {
                   const highlight = rowHighlight(day);
+                  const shift = shiftLabel(day);
+                  const badge = statusBadge(day);
+                  const notes = statusNotes(day);
+                  const firstIn = day.punches.find(
+                    (punch) => punch.type === "in",
+                  );
+                  const outs = day.punches.filter(
+                    (punch) => punch.type === "out",
+                  );
+                  const lastOut = outs[outs.length - 1];
+                  const open = picking?.day.date === day.date;
                   return (
                     <tr
                       key={day.date}
                       title={highlight.title}
                       className={`border-b border-slate-100 last:border-0 ${highlight.className}`}
                     >
-                      <td className="px-4 py-3">
-                        <div className="font-medium text-slate-900">
+                      <td className="px-4 py-2.5 align-middle">
+                        <span className="font-medium tabular-nums text-slate-900">
                           {day.date.slice(8, 10)}/{day.date.slice(5, 7)}
-                        </div>
-                        <div className="text-xs text-slate-500">{day.weekday}</div>
+                        </span>
+                        <span className="ml-1.5 text-xs text-slate-500">
+                          {day.weekday}
+                        </span>
                         {day.holidayName && (
-                          <div className="mt-1 text-xs text-sky-700">
+                          <div className="text-xs text-sky-700">
                             {day.holidayName}
                           </div>
                         )}
                       </td>
-                      <td className="px-4 py-3">
-                        {day.scheduled.length === 0 ? (
-                          <span className="text-slate-400">—</span>
-                        ) : (
-                          <div className="flex flex-wrap gap-1">
-                            {day.scheduled.map((rule) => (
-                              <Badge key={rule.code} tone="brand">
-                                {rule.code} {rule.workStart}–{rule.workEnd}
-                              </Badge>
-                            ))}
-                          </div>
+                      <td className="px-4 py-2.5">
+                        <button
+                          type="button"
+                          onClick={(event) =>
+                            setPicking(
+                              open
+                                ? null
+                                : { day, anchor: event.currentTarget },
+                            )
+                          }
+                          aria-haspopup="menu"
+                          aria-expanded={open}
+                          aria-label={`Chọn ca tính công ngày ${day.date}`}
+                          title={
+                            day.adminEdited
+                              ? "Admin đã chọn ca cho ngày này"
+                              : "Theo lịch đăng ký — bấm để đổi"
+                          }
+                          className={`inline-flex h-8 min-w-28 items-center justify-between gap-2 rounded-lg border px-2.5 text-left hover:border-sky-500 ${
+                            open
+                              ? "border-sky-600 ring-1 ring-sky-600"
+                              : "border-slate-300"
+                          } ${day.adminEdited ? "bg-amber-50" : "bg-white"}`}
+                        >
+                          {shift ? (
+                            <span className="truncate">
+                              <span className="font-semibold text-slate-900">
+                                {shift.code}
+                              </span>
+                              <span className="ml-1.5 text-xs text-slate-500">
+                                {shift.detail}
+                              </span>
+                            </span>
+                          ) : (
+                            <span className="text-slate-400">Chọn ca</span>
+                          )}
+                          <ChevronDown
+                            size={14}
+                            className="shrink-0 text-slate-400"
+                            aria-hidden="true"
+                          />
+                        </button>
+                        {open && picking && (
+                          <DayMarkMenu
+                            anchor={picking.anchor}
+                            sessions={data.sessions}
+                            saving={marking}
+                            onPick={(choice) => markDay(day, choice)}
+                            onClose={() => setPicking(null)}
+                            onAddCheckout={
+                              day.status === "missed_out"
+                                ? () => {
+                                    setPicking(null);
+                                    setFixing({
+                                      userId,
+                                      userName: data.user.name,
+                                      date: day.date,
+                                      checkInAt: firstIn?.time ?? null,
+                                    });
+                                  }
+                                : undefined
+                            }
+                          />
                         )}
                       </td>
-                      <td className="px-4 py-3">
+                      <td className="px-4 py-2.5 tabular-nums">
                         {day.punches.length === 0 ? (
                           <span className="text-slate-400">—</span>
                         ) : (
-                          <div className="flex flex-wrap gap-1.5">
-                            {day.punches.map((punch) => (
-                              <span
-                                key={punch.id}
-                                title={
-                                  punch.isManual
-                                    ? "Do admin nhập"
-                                    : `${punch.locationName ?? ""} ${
-                                        punch.distance != null
-                                          ? `· ${Math.round(punch.distance)}m`
-                                          : ""
-                                      }`
-                                }
-                                className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${
-                                  punch.type === "in"
-                                    ? "bg-emerald-50 text-emerald-700"
-                                    : "bg-slate-100 text-slate-700"
-                                }`}
-                              >
-                                {punch.type === "in" ? (
-                                  <LogIn size={11} aria-hidden="true" />
-                                ) : (
-                                  <LogOut size={11} aria-hidden="true" />
-                                )}
-                                {punch.time}
-                                {punch.isManual && (
-                                  <Pencil size={10} aria-hidden="true" className="text-slate-400" />
-                                )}
+                          <span
+                            title={day.punches
+                              .map(
+                                (punch) =>
+                                  `${punch.type === "in" ? "Vào" : "Ra"} ${punch.time}${
+                                    punch.isManual ? " (admin nhập)" : ""
+                                  }`,
+                              )
+                              .join(" · ")}
+                            className="text-slate-900"
+                          >
+                            {firstIn?.time ?? "—"}
+                            <span className="mx-1.5 text-slate-400">→</span>
+                            {lastOut ? (
+                              lastOut.time
+                            ) : (
+                              <span className="font-semibold text-amber-700">
+                                ?
                               </span>
-                            ))}
-                          </div>
+                            )}
+                            {outs.length > 1 && (
+                              <span className="ml-1.5 text-xs text-slate-500">
+                                ({outs.length} lần ra)
+                              </span>
+                            )}
+                          </span>
                         )}
                       </td>
-                      <td className="px-4 py-3 text-slate-700">
-                        {day.workedHours}h
-                        {day.requiredHours > 0 && (
-                          <span className="text-slate-400"> / {day.requiredHours}h</span>
+                      <td className="px-4 py-2.5 tabular-nums text-slate-700">
+                        {day.status === "upcoming" ? (
+                          <span className="text-slate-400">—</span>
+                        ) : (
+                          <>
+                            {day.workedHours}h
+                            {day.requiredHours > 0 && (
+                              <span className="text-slate-400">
+                                {" "}
+                                / {day.requiredHours}h
+                              </span>
+                            )}
+                          </>
                         )}
                       </td>
-                      <td className="px-4 py-3 text-center font-medium tabular-nums text-slate-900">
+                      <td className="px-4 py-2.5 text-center font-medium tabular-nums text-slate-900">
                         {day.workdayValue > 0 ? (
                           formatWorkdays(day.workdayValue)
                         ) : (
                           <span className="text-slate-400">—</span>
                         )}
                       </td>
-                      <td className="px-4 py-3">
-                        <div className="flex flex-wrap gap-1.5">
-                          <Badge tone={DAY_STATUS_TONE[day.status]}>
-                            {day.statusLabel}
-                          </Badge>
-                          {day.lateMinutes > 0 && (
-                            <Badge tone="warning">Muộn {day.lateMinutes}′</Badge>
-                          )}
-                          {day.outsideRadius && (
-                            <Badge tone="danger">Ngoài bán kính</Badge>
-                          )}
-                          {day.editedAt && <Badge>Sửa tay</Badge>}
-                          {day.adminEdited && (
-                            <Badge tone="warning">Admin đổi lịch</Badge>
-                          )}
-                          {day.pendingRequest && (
-                            <Badge tone="warning">Chờ duyệt đổi ca</Badge>
-                          )}
-                          {day.needsReview && (
-                            <Badge tone="warning">Chờ xem lại</Badge>
-                          )}
-                          {day.reviewDecision === "count" && (
-                            <Badge tone="success">Đã duyệt tính công</Badge>
-                          )}
-                          {day.reviewDecision === "exclude" && (
-                            <Badge tone="danger">Không tính công</Badge>
-                          )}
-                        </div>
-                        {day.note && (
-                          <div className="mt-1 text-xs text-slate-500">{day.note}</div>
+                      <td className="px-4 py-2.5">
+                        <Badge tone={badge.tone}>{badge.text}</Badge>
+                        {(notes.length > 0 || day.note) && (
+                          <div className="mt-0.5 text-xs text-slate-500">
+                            {[
+                              ...notes,
+                              ...(day.note ? [`“${day.note}”`] : []),
+                            ].join(" · ")}
+                          </div>
                         )}
                       </td>
-                      <td className="px-4 py-3 text-right">
-                        <div className="flex justify-end gap-1.5">
+                      <td className="px-4 py-2.5">
+                        <div className="flex items-center justify-end gap-1.5">
+                          {day.status === "missed_out" && (
+                            <Button
+                              className="whitespace-nowrap"
+                              variant="secondary"
+                              size="sm"
+                              onClick={() =>
+                                setFixing({
+                                  userId,
+                                  userName: data.user.name,
+                                  date: day.date,
+                                  checkInAt: firstIn?.time ?? null,
+                                })
+                              }
+                            >
+                              Bổ sung giờ ra
+                            </Button>
+                          )}
                           {day.status === "insufficient" && (
                             <>
                               <Button
+                                className="whitespace-nowrap"
                                 variant={
-                                  day.reviewDecision === "count" ? "primary" : "secondary"
+                                  day.reviewDecision === "count"
+                                    ? "primary"
+                                    : "secondary"
                                 }
                                 size="sm"
                                 onClick={() => reviewDay(day, "count")}
                                 title="Vẫn tính đủ công (bấm lại để bỏ chọn)"
-                                aria-label={`Tính công ngày ${day.date}`}
                                 aria-pressed={day.reviewDecision === "count"}
                               >
-                                <Check size={14} aria-hidden="true" />
+                                Tính công
                               </Button>
                               <Button
+                                className="whitespace-nowrap"
                                 variant={
-                                  day.reviewDecision === "exclude" ? "danger" : "secondary"
+                                  day.reviewDecision === "exclude"
+                                    ? "danger"
+                                    : "secondary"
                                 }
                                 size="sm"
                                 onClick={() => reviewDay(day, "exclude")}
                                 title="Không tính công ngày này (bấm lại để bỏ chọn)"
-                                aria-label={`Không tính công ngày ${day.date}`}
                                 aria-pressed={day.reviewDecision === "exclude"}
                               >
-                                <X size={14} aria-hidden="true" />
+                                Không tính
                               </Button>
                             </>
                           )}
                           {day.reports.length > 0 && (
                             <Button
-                              variant="secondary"
+                              variant="ghost"
                               size="sm"
                               onClick={() => setReportDay(day)}
                               title={`Nội dung công việc · ${formatDuration(day.reportMinutes)}`}
@@ -536,10 +719,11 @@ function UserAttendanceDetail() {
                             </Button>
                           )}
                           <Button
-                            variant="secondary"
+                            variant="ghost"
                             size="sm"
                             onClick={() => openEdit(day)}
-                            aria-label={`Sửa công ngày ${day.date}`}
+                            title="Sửa giờ vào / ra"
+                            aria-label={`Sửa giờ ngày ${day.date}`}
                           >
                             <Pencil size={14} aria-hidden="true" />
                           </Button>
@@ -560,7 +744,8 @@ function UserAttendanceDetail() {
         onClose={() => setReportDay(null)}
       >
         <p className="mb-2 text-sm text-slate-600">
-          Nhân viên tự khai, tổng {formatDuration(reportDay?.reportMinutes ?? 0)}.
+          Nhân viên tự khai, tổng{" "}
+          {formatDuration(reportDay?.reportMinutes ?? 0)}.
         </p>
         <ul className="divide-y divide-slate-100">
           {reportDay?.reports.map((report) => (
@@ -581,7 +766,7 @@ function UserAttendanceDetail() {
 
       <Modal
         open={editingDay !== null}
-        title={`Sửa công ngày ${editingDay?.date ?? ""}`}
+        title={`Sửa giờ vào / ra ngày ${editingDay?.date ?? ""}`}
         onClose={() => setEditingDay(null)}
       >
         <form onSubmit={saveDay} className="space-y-4">
@@ -599,9 +784,12 @@ function UserAttendanceDetail() {
                     setDraft((current) =>
                       current.map((item, position) =>
                         position === index
-                          ? { ...item, type: event.target.value as "in" | "out" }
-                          : item
-                      )
+                          ? {
+                              ...item,
+                              type: event.target.value as "in" | "out",
+                            }
+                          : item,
+                      ),
                     )
                   }
                   className="w-28"
@@ -617,8 +805,8 @@ function UserAttendanceDetail() {
                       current.map((item, position) =>
                         position === index
                           ? { ...item, time: event.target.value }
-                          : item
-                      )
+                          : item,
+                      ),
                     )
                   }
                   required
@@ -629,7 +817,7 @@ function UserAttendanceDetail() {
                   size="sm"
                   onClick={() =>
                     setDraft((current) =>
-                      current.filter((_, position) => position !== index)
+                      current.filter((_, position) => position !== index),
                     )
                   }
                   aria-label="Xoá dòng"
@@ -680,6 +868,19 @@ function UserAttendanceDetail() {
           </div>
         </form>
       </Modal>
+
+      <CheckoutDialog
+        target={fixing}
+        onClose={() => setFixing(null)}
+        onSaved={(target, time) => {
+          setFixing(null);
+          setMessage({
+            type: "success",
+            text: `Đã bổ sung giờ ra ${time} ngày ${target.date.slice(8, 10)}/${target.date.slice(5, 7)}`,
+          });
+          load(month);
+        }}
+      />
     </>
   );
 }

@@ -115,6 +115,7 @@ export async function GET(req: Request) {
         })),
         isHoliday: holidays.has(date),
         isPast: date < today,
+        notYetDue: date >= today,
         leaveCode: mark?.leaveCode ?? null,
         lunchBreak,
         isRestDay:

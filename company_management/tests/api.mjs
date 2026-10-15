@@ -1176,6 +1176,47 @@ async function main() {
     const day3 = r.json.days?.find((d) => d.date === ABSENT_DATE);
     check("có lịch mà không chấm công = vắng", day3?.status === "absent", `(${day3?.status})`);
 
+    console.log("\n== bổ sung giờ ra (quên checkout) ==");
+    const FORGOT_DATE = "2026-08-03";
+    r = await call(admin, "PUT", `/api/admin/attendance/user/${employeeId}`, { date: FORGOT_DATE, punches: [{ type: "in", time: "08:10" }], note: "" });
+    check("dựng ngày chỉ có giờ vào", r.status === 200, `(${r.status})`);
+    r = await call(admin, "GET", "/api/admin/attendance/missed-checkout?month=2026-08");
+    check("ngày đó nằm trong danh sách quên checkout", (r.json.items ?? []).some((item) => item.userId === employeeId && item.date === FORGOT_DATE && item.checkInAt === "08:10"), `(${r.json.count})`);
+    // Bước dựng dữ liệu cũng gửi một thư "đã điều chỉnh": chờ nó tới rồi mới đếm.
+    await waitForMail(sink, EMP_EMAIL, "ngày 03/08 đã được điều chỉnh");
+    const forgotMailsBefore = mailsTo(sink, EMP_EMAIL, "ngày 03/08 đã được điều chỉnh").length;
+    r = await call(emp, "POST", "/api/admin/attendance/missed-checkout", { userId: employeeId, date: FORGOT_DATE, time: "17:30" });
+    check("nhân viên không tự bổ sung giờ ra được", r.status === 401, `(${r.status})`);
+    r = await call(admin, "POST", "/api/admin/attendance/missed-checkout", { userId: employeeId, date: FORGOT_DATE, time: "25:00" });
+    check("giờ ra sai định dạng bị chặn", r.status === 400, `(${r.status})`);
+    r = await call(admin, "POST", "/api/admin/attendance/missed-checkout", { userId: employeeId, date: FORGOT_DATE, time: "07:00" });
+    check("giờ ra trước giờ vào bị chặn", r.status === 400 && /sau giờ vào 08:10/.test(r.json.error ?? ""), `(${r.status} ${r.json.error})`);
+    r = await call(admin, "POST", "/api/admin/attendance/missed-checkout", { userId: employeeId, date: "2026-08-04", time: "17:30" });
+    check("ngày chưa có giờ vào thì không bổ sung được", r.status === 404, `(${r.status})`);
+    r = await call(admin, "POST", "/api/admin/attendance/missed-checkout", { userId: employeeId, date: FORGOT_DATE, time: "17:30", note: "__smoketest quên checkout" });
+    check("admin bổ sung giờ ra ngay tại chỗ", r.status === 200, `(${r.status} ${r.json.error ?? ""})`);
+    r = await call(admin, "POST", "/api/admin/attendance/missed-checkout", { userId: employeeId, date: FORGOT_DATE, time: "18:00" });
+    check("đã có giờ ra thì không bổ sung lần nữa", r.status === 409, `(${r.status})`);
+    r = await call(admin, "GET", "/api/admin/attendance/missed-checkout?month=2026-08");
+    check("bổ sung xong thì hết trong danh sách quên checkout", !(r.json.items ?? []).some((item) => item.userId === employeeId && item.date === FORGOT_DATE));
+    r = await call(admin, "GET", `/api/admin/attendance/user/${employeeId}?month=2026-08`);
+    const fixedDay = r.json.days?.find((day) => day.date === FORGOT_DATE);
+    check(
+      "ngày đó có giờ vào cũ + giờ ra admin nhập, kèm ghi chú",
+      fixedDay?.punches?.length === 2 && fixedDay.punches[1].time === "17:30" && fixedDay.punches[1].isManual && fixedDay.note === "__smoketest quên checkout",
+      JSON.stringify(fixedDay?.punches)
+    );
+    check("trang chi tiết có danh mục ca cho menu chọn ca", Array.isArray(r.json.sessions) && r.json.sessions.every((rule) => rule.id && rule.code), `(${r.json.sessions?.length})`);
+    for (let waited = 0; waited < 6000 && mailsTo(sink, EMP_EMAIL, "ngày 03/08 đã được điều chỉnh").length <= forgotMailsBefore; waited += 150) {
+      await new Promise((resolve) => setTimeout(resolve, 150));
+    }
+    await new Promise((resolve) => setTimeout(resolve, 800));
+    const forgotMails = mailsTo(sink, EMP_EMAIL, "ngày 03/08 đã được điều chỉnh");
+    mail = forgotMails[forgotMails.length - 1];
+    check("bổ sung giờ ra thì nhân viên nhận email", mail?.text.includes("Trước: Vào 08:10") && mail?.text.includes("Sau: Vào 08:10 · Ra 17:30"), mail?.text);
+    check("chỉ gửi một email cho lần bổ sung", forgotMails.length - forgotMailsBefore === 1, `(${forgotMails.length - forgotMailsBefore})`);
+    await call(admin, "PUT", `/api/admin/attendance/user/${employeeId}`, { date: FORGOT_DATE, punches: [], note: "" });
+
     console.log("\n== báo cáo tháng ==");
     r = await call(admin, "GET", "/api/admin/attendance/monthly?month=2026-09");
     const summary = r.json.summary?.find((s) => s.user.id === employeeId);

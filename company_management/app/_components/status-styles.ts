@@ -10,6 +10,8 @@ export const DAY_STATUS_CELL: Record<DayStatus, string> = {
   leave: "bg-slate-100 text-slate-600",
   sick: "bg-slate-100 text-slate-600",
   absent: "bg-rose-100 text-rose-700",
+  // Có lịch nhưng ngày chưa qua: để trống, không tô đỏ như vắng.
+  upcoming: "bg-white text-slate-300",
   // Quên đăng ký nhưng vẫn đi làm: vẫn tính công, tô vàng để admin để ý.
   unscheduled: "bg-amber-100 text-amber-800",
   holiday: "bg-sky-50 text-sky-700",
@@ -36,6 +38,7 @@ export const DAY_STATUS_TONE: Record<
   leave: "neutral",
   sick: "neutral",
   absent: "danger",
+  upcoming: "neutral",
   unscheduled: "warning",
   holiday: "brand",
   off: "neutral",

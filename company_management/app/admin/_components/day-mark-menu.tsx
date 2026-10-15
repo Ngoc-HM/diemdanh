@@ -1,7 +1,14 @@
 "use client";
 
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
 import { createPortal } from "react-dom";
+import { AlarmClockOff } from "lucide-react";
 
 export type MarkChoice =
   | { kind: "session"; sessionId: string }
@@ -13,7 +20,8 @@ const GAP = 4;
 const EDGE = 8;
 
 /// Menu admin chấm lại một ô ngày: đổi ca, đánh dấu nghỉ/ốm, hoặc xoá đánh dấu
-/// để ngày trở về đúng lịch nhân viên đã đăng ký.
+/// để ngày trở về đúng lịch nhân viên đã đăng ký. Ngày quên checkout có thêm
+/// mục "Bổ sung giờ ra" để sửa ngay tại chỗ.
 ///
 /// Vẽ thẳng vào <body> và định vị `fixed` theo ô được bấm: bảng chấm công nằm
 /// trong khung cuộn ngang nên menu đặt bên trong sẽ bị khung cắt mất. Dưới ô
@@ -24,15 +32,21 @@ export default function DayMarkMenu({
   saving,
   onPick,
   onClose,
+  onAddCheckout,
 }: {
   anchor: HTMLElement;
   sessions: { id: string; code: string; name: string }[];
   saving: boolean;
   onPick: (choice: MarkChoice) => void;
   onClose: () => void;
+  /// Có thì hiện mục "Bổ sung giờ ra" ở đầu menu (ngày quên checkout).
+  onAddCheckout?: () => void;
 }) {
   const ref = useRef<HTMLDivElement>(null);
-  const [position, setPosition] = useState<{ top: number; left: number } | null>(null);
+  const [position, setPosition] = useState<{
+    top: number;
+    left: number;
+  } | null>(null);
 
   const place = useCallback(() => {
     const menu = ref.current;
@@ -46,7 +60,7 @@ export default function DayMarkMenu({
         : Math.max(EDGE, cell.top - GAP - height);
     const left = Math.min(
       Math.max(EDGE, cell.left + cell.width / 2 - MENU_WIDTH / 2),
-      window.innerWidth - MENU_WIDTH - EDGE
+      window.innerWidth - MENU_WIDTH - EDGE,
     );
     setPosition({ top, left });
   }, [anchor]);
@@ -95,6 +109,24 @@ export default function DayMarkMenu({
       }}
       className="z-50 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-md"
     >
+      {onAddCheckout && (
+        <div className="border-b border-slate-200">
+          <button
+            type="button"
+            role="menuitem"
+            disabled={saving}
+            onClick={onAddCheckout}
+            className={`${item} font-medium text-sky-700 hover:bg-sky-50`}
+          >
+            <AlarmClockOff
+              size={16}
+              className="w-7 shrink-0"
+              aria-hidden="true"
+            />
+            Bổ sung giờ ra
+          </button>
+        </div>
+      )}
       {sessions.map((session) => (
         <button
           key={session.id}
@@ -147,6 +179,6 @@ export default function DayMarkMenu({
         </button>
       </div>
     </div>,
-    document.body
+    document.body,
   );
 }
