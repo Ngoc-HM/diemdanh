@@ -99,14 +99,12 @@ export default function DeviceCard({ className = "" }: { className?: string }) {
           </Message>
         )}
         {loaded && !enabled && (
-          <Message type="info">Admin đang tắt chấm công tự động, máy đã đăng ký tạm không dùng.</Message>
+          <Message type="info">Chấm công tự động đang tắt</Message>
         )}
 
         {!loaded ? (
           <div className="h-16 animate-pulse rounded-lg bg-slate-100" />
-        ) : devices.length === 0 ? (
-          <p className="text-sm text-slate-500">Bạn chưa đăng ký máy nào.</p>
-        ) : (
+        ) : devices.length === 0 ? null : (
           <ul className="divide-y divide-slate-100 rounded-lg border border-slate-200">
             {devices.map((device) => (
               <li key={device.id} className="flex items-center gap-3 px-4 py-3">
@@ -135,8 +133,7 @@ export default function DeviceCard({ className = "" }: { className?: string }) {
           </ul>
         )}
 
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <p className="text-xs text-slate-500">Nối wifi văn phòng rồi bấm.</p>
+        <div className="flex justify-end">
           <Button type="button" onClick={register} disabled={busy || !loaded}>
             <Wifi size={16} aria-hidden="true" />
             Đăng ký máy này

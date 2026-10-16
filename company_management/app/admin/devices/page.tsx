@@ -134,10 +134,10 @@ function WifiCard({ onFeedback }: { onFeedback: (feedback: Feedback) => void }) 
               />
               <span>
                 <span className="block text-sm font-medium text-slate-900">
-                  Tự ghi giờ vào / ra khi máy đã đăng ký nối wifi văn phòng
+                  Tự ghi giờ vào / ra qua wifi
                 </span>
                 <span className="block text-sm text-slate-600">
-                  Máy quét lần cuối: {lastScan ? stamp(lastScan) : "chưa có"}
+                  Quét lần cuối: {lastScan ? stamp(lastScan) : "chưa có"}
                   {scannerStale && (
                     <>
                       {" "}
@@ -147,9 +147,7 @@ function WifiCard({ onFeedback }: { onFeedback: (feedback: Feedback) => void }) 
                 </span>
               </span>
             </label>
-            {devices.length === 0 ? (
-              <p className="text-sm text-slate-500">Chưa có nhân viên nào đăng ký máy.</p>
-            ) : (
+            {devices.length === 0 ? null : (
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead className="text-left text-xs uppercase tracking-wide text-slate-500">
