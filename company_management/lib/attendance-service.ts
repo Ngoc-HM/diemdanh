@@ -178,6 +178,15 @@ export async function getRegistrationWindowConfig(): Promise<RegistrationWindowC
   return parseRegistrationWindow(setting?.value);
 }
 
+/// Admin bật cho nhân viên bán thời gian / thực tập tự đăng ký lịch của tháng
+/// hiện tại (từ hôm nay trở đi), ngoài cửa sổ đăng ký tháng sau. Mặc định tắt.
+export async function getCurrentMonthRegistrationOpen(): Promise<boolean> {
+  const setting = await queryOne<{ value: string }>(
+    `SELECT "value" FROM "Settings" WHERE "key" = 'schedule_current_month_open'`
+  );
+  return setting?.value === "true";
+}
+
 /// Giờ nghỉ trưa chung của công ty, admin đặt ở trang Ca làm việc. Chưa đặt
 /// hoặc đã tắt thì giờ công không trừ gì.
 export async function getLunchBreak(): Promise<LunchBreak | null> {

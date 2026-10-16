@@ -35,6 +35,15 @@ Settings `schedule_registration_window` dạng `"20-31"`.
 
 Không có bước duyệt: nhân viên lưu là lịch có hiệu lực ngay.
 
+**Đăng ký lịch tháng hiện tại** (công tắc của admin ở thẻ cửa sổ đăng ký trên
+trang Lịch làm việc, Settings `schedule_current_month_open`, mặc định tắt): dùng
+cho người mới vào giữa tháng hoặc chưa kịp đăng ký. Bật thì nhân viên bán thời
+gian / thực tập sửa được lịch tháng này **từ hôm nay trở đi**; ngày đã qua khoá,
+lưu không đụng tới (không biến ngày vắng thành ngày không có lịch được).
+
+Admin xếp lịch cho nhân viên (nút sửa ở bảng Lịch làm việc) dùng **cùng kiểu lưới**
+với trang đăng ký của nhân viên: cột là ngày, hàng là ca.
+
 ### Chấm công
 
 Mỗi lần bấm giờ là một dòng `AttendancePunch` (`in` hoặc `out`). Mỗi ngày chỉ

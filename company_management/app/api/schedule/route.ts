@@ -16,6 +16,7 @@ import {
 } from "@/lib/schedule";
 import {
   getActiveSessionRules,
+  getCurrentMonthRegistrationOpen,
   getDayMarks,
   getHolidayMap,
   getPendingShiftRequestDates,
@@ -39,10 +40,11 @@ export async function GET(req: Request) {
     const windowConfig = await getRegistrationWindowConfig();
     const openMonth = openRegistrationMonth(windowConfig);
     const month = requestedMonth ?? openMonth ?? monthKeyVN();
+    const currentMonthOpen = await getCurrentMonthRegistrationOpen();
 
     const user = await queryOne<{ id: string; employmentType: string }>(
       `SELECT "id", "employmentType" FROM "User" WHERE "id" = $1`,
-      [session.userId]
+      [session.userId],
     );
     if (!user) badRequest("Không tìm thấy tài khoản");
 
@@ -67,7 +69,7 @@ export async function GET(req: Request) {
            JOIN "AttendancePunch" p ON p."attendanceId" = a."id"
           WHERE a."userId" = $1 AND a."date" BETWEEN $2 AND $3
           GROUP BY a."date"`,
-        [user!.id, startDate, endDate]
+        [user!.id, startDate, endDate],
       ),
     ]);
 
@@ -102,15 +104,27 @@ export async function GET(req: Request) {
       if (!hasShift && punched) unscheduledDates.push(date);
     }
     // Khoá của set là `userId|date`; chỉ có một nhân viên nên lấy phần ngày.
-    const pendingDates = [...pending].map((key) => key.slice(key.indexOf("|") + 1));
+    const pendingDates = [...pending].map((key) =>
+      key.slice(key.indexOf("|") + 1),
+    );
 
     const selfScheduled = isSelfScheduled(user!.employmentType);
+    // Admin mở đăng ký tháng hiện tại: chỉ sửa được từ hôm nay trở đi.
+    const currentMonthMode =
+      currentMonthOpen &&
+      month === monthKeyVN() &&
+      !isRegistrationOpen(month, windowConfig);
 
     return {
       month,
       employmentType: user!.employmentType,
       selfScheduled,
-      canEdit: selfScheduled && isRegistrationOpen(month, windowConfig),
+      canEdit:
+        selfScheduled &&
+        (isRegistrationOpen(month, windowConfig) || currentMonthMode),
+      /// Ngày đầu tiên được sửa (tháng hiện tại); null = sửa được cả tháng.
+      editableFrom: currentMonthMode ? today : null,
+      currentMonthOpen,
       openMonth,
       window: registrationWindow(month, windowConfig),
       sessions: rules,
@@ -138,11 +152,12 @@ export async function PUT(req: Request) {
     if (!days || typeof days !== "object" || Array.isArray(days)) {
       badRequest("Dữ liệu lịch không hợp lệ");
     }
-    if (!Array.isArray(rawOffDays)) badRequest("Danh sách ngày nghỉ không hợp lệ");
+    if (!Array.isArray(rawOffDays))
+      badRequest("Danh sách ngày nghỉ không hợp lệ");
 
     const user = await queryOne<{ id: string; employmentType: string }>(
       `SELECT "id", "employmentType" FROM "User" WHERE "id" = $1`,
-      [session.userId]
+      [session.userId],
     );
     if (!user) badRequest("Không tìm thấy tài khoản");
 
@@ -150,12 +165,20 @@ export async function PUT(req: Request) {
       badRequest("Lịch của nhân viên toàn thời gian do hệ thống sinh tự động");
     }
     const windowConfig = await getRegistrationWindowConfig();
-    if (!isRegistrationOpen(month, windowConfig)) {
+    // Ngoài cửa sổ tháng sau, admin có thể mở cho đăng ký tháng hiện tại: khi
+    // đó chỉ thay lịch từ hôm nay trở đi, ngày đã qua giữ nguyên.
+    const currentMonthMode =
+      !isRegistrationOpen(month, windowConfig) &&
+      month === monthKeyVN() &&
+      (await getCurrentMonthRegistrationOpen());
+    if (!isRegistrationOpen(month, windowConfig) && !currentMonthMode) {
       const window = registrationWindow(month, windowConfig);
       badRequest(
-        `Đã ngoài hạn đăng ký. Lịch tháng này chỉ nhận từ ${window.opensOn} đến ${window.closesOn}.`
+        `Đã ngoài hạn đăng ký. Lịch tháng này chỉ nhận từ ${window.opensOn} đến ${window.closesOn}.`,
       );
     }
+    const editableFrom = currentMonthMode ? dateKeyVN() : null;
+    const editable = (date: string) => !editableFrom || date >= editableFrom;
 
     const rules = await getActiveSessionRules();
     const activeIds = new Set(rules.map((rule) => rule.id));
@@ -163,7 +186,7 @@ export async function PUT(req: Request) {
 
     const entries: { date: string; sessionId: string }[] = [];
     for (const [date, sessionIds] of Object.entries(
-      days as Record<string, unknown>
+      days as Record<string, unknown>,
     )) {
       if (!isValidDateKey(date) || !validDates.has(date)) {
         badRequest(`Ngày ${date} không thuộc tháng ${month}`);
@@ -175,11 +198,11 @@ export async function PUT(req: Request) {
         if (!activeIds.has(sessionId)) {
           badRequest("Ca làm việc không tồn tại hoặc đã ngừng dùng");
         }
-        entries.push({ date, sessionId });
+        if (editable(date)) entries.push({ date, sessionId });
       }
     }
 
-    const offDays = [...new Set(rawOffDays.map(String))];
+    const offDays = [...new Set(rawOffDays.map(String))].filter(editable);
     for (const date of offDays) {
       if (!isValidDateKey(date) || !validDates.has(date)) {
         badRequest(`Ngày nghỉ ${date} không thuộc tháng ${month}`);
@@ -189,22 +212,29 @@ export async function PUT(req: Request) {
       }
     }
 
-    const { startDate, endDate } = getMonthRange(month);
+    const { startDate: monthStart, endDate } = getMonthRange(month);
+    // Chỉ xoá / ghi lại phần được sửa; tháng hiện tại thì từ hôm nay trở đi.
+    const startDate =
+      editableFrom && editableFrom > monthStart ? editableFrom : monthStart;
 
     const submittedAt = await transaction(async (client) => {
-      const registration = await client.query<{ id: string; submittedAt: Date }>(
+      const registration = await client.query<{
+        id: string;
+        submittedAt: Date;
+      }>(
         `INSERT INTO "ScheduleRegistration" ("userId", "month", "submittedAt", "updatedBy")
          VALUES ($1, $2, now(), $1)
          ON CONFLICT ("userId", "month")
          DO UPDATE SET "submittedAt" = now(), "updatedBy" = $1, "updatedAt" = now()
          RETURNING "id", "submittedAt"`,
-        [user!.id, month]
+        [user!.id, month],
       );
       const registrationId = registration.rows[0].id;
 
-      await client.query(`DELETE FROM "ScheduleDay" WHERE "registrationId" = $1`, [
-        registrationId,
-      ]);
+      await client.query(
+        `DELETE FROM "ScheduleDay" WHERE "registrationId" = $1 AND "date" >= $2`,
+        [registrationId, startDate],
+      );
 
       if (entries.length > 0) {
         // unnest cho phép chèn cả mảng trong một câu lệnh duy nhất.
@@ -216,7 +246,7 @@ export async function PUT(req: Request) {
             registrationId,
             entries.map((entry) => entry.date),
             entries.map((entry) => entry.sessionId),
-          ]
+          ],
         );
       }
 
@@ -225,7 +255,7 @@ export async function PUT(req: Request) {
         `DELETE FROM "DayMark"
           WHERE "userId" = $1 AND "date" BETWEEN $2 AND $3
             AND "isAdminEdit" = false`,
-        [user!.id, startDate, endDate]
+        [user!.id, startDate, endDate],
       );
 
       if (offDays.length > 0) {
@@ -233,7 +263,7 @@ export async function PUT(req: Request) {
           `INSERT INTO "DayMark" ("userId", "date", "leaveCode")
            SELECT $1, entry.date, 'N' FROM unnest($2::text[]) AS entry(date)
            ON CONFLICT ("userId", "date") DO NOTHING`,
-          [user!.id, offDays]
+          [user!.id, offDays],
         );
       }
 

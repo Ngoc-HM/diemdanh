@@ -29,6 +29,11 @@ type Payload = {
   selfScheduled: boolean;
   /// Nhân viên tự đăng ký và tháng này đang trong cửa sổ đăng ký.
   canEdit: boolean;
+  /// Admin mở đăng ký tháng hiện tại: ngày đầu tiên được sửa (hôm nay); null =
+  /// sửa được cả tháng.
+  editableFrom: string | null;
+  /// Admin đang cho đăng ký lịch tháng hiện tại.
+  currentMonthOpen: boolean;
   openMonth: string | null;
   window: { opensOn: string; closesOn: string };
   sessions: SessionRule[];
@@ -57,11 +62,17 @@ function readOnlyReason(data: Payload): string | null {
   if (data.canEdit) return null;
 
   const label = formatMonthLabel(data.month);
+  // Đang xem tháng khác mà tháng hiện tại đang mở: chỉ đường cho nhân viên.
+  const current = monthKeyVN();
+  const currentHint =
+    data.currentMonthOpen && data.month !== current
+      ? ` Lịch ${formatMonthLabel(current)} đang mở đăng ký — bấm mũi tên để chuyển sang tháng đó.`
+      : "";
   const range = `từ ${formatDateVN(data.window.opensOn)} đến hết ${formatDateVN(data.window.closesOn)}`;
   if (dateKeyVN() < data.window.opensOn) {
-    return `Chưa mở đăng ký. Lịch ${label} nhận đăng ký ${range}.`;
+    return `Chưa mở đăng ký. Lịch ${label} nhận đăng ký ${range}.${currentHint}`;
   }
-  return `Đã hết hạn đăng ký. Lịch ${label} chỉ nhận đăng ký ${range}; muốn đổi một ngày cụ thể thì gửi yêu cầu ở tab Chỉnh sửa ca.`;
+  return `Đã hết hạn đăng ký. Lịch ${label} chỉ nhận đăng ký ${range}; muốn đổi một ngày cụ thể thì gửi yêu cầu ở tab Chỉnh sửa ca.${currentHint}`;
 }
 
 /// Nhấn mạnh của một ô, ngoài chuyện đang có ca hay không:
@@ -78,7 +89,10 @@ const CELL_TITLES: Record<NonNullable<CellHighlight>, string> = {
 };
 
 /// Màu ô đang có ca: sky cho ca làm, slate cho N; nhạt đi khi chỉ xem.
-const ACTIVE_CELL: Record<"sky" | "slate", { editable: string; readOnly: string }> = {
+const ACTIVE_CELL: Record<
+  "sky" | "slate",
+  { editable: string; readOnly: string }
+> = {
   sky: {
     editable: "bg-sky-600 text-white hover:bg-sky-700",
     readOnly: "cursor-default bg-sky-100 text-sky-800",
@@ -167,7 +181,11 @@ export default function SchedulePage() {
     });
 
     setDraft((current) => {
-      const next = toggleSessionSelection(current[date] ?? [], rule.id, codeById);
+      const next = toggleSessionSelection(
+        current[date] ?? [],
+        rule.id,
+        codeById,
+      );
       const copy = { ...current };
       if (next.length === 0) delete copy[date];
       else copy[date] = next;
@@ -240,9 +258,12 @@ export default function SchedulePage() {
 
   const readOnly = data ? !data.canEdit : true;
   const reason = data ? readOnlyReason(data) : null;
+  /// Tháng hiện tại do admin mở: ngày đã qua chỉ xem, không sửa.
+  const isPastLocked = (date: string) =>
+    Boolean(data?.editableFrom && date < data.editableFrom);
   const totalShifts = Object.values(draft).reduce(
     (sum, ids) => sum + ids.length,
-    0
+    0,
   );
   const plannedHours =
     data?.sessions && totalShifts > 0
@@ -268,15 +289,27 @@ export default function SchedulePage() {
       )}
 
       {loading ? (
-        <div className="h-96 animate-pulse rounded-xl bg-slate-200" aria-hidden="true" />
+        <div
+          className="h-96 animate-pulse rounded-xl bg-slate-200"
+          aria-hidden="true"
+        />
       ) : data ? (
         <>
           {reason && <Message type="info">{reason}</Message>}
+          {data.editableFrom && (
+            <Message type="info">
+              Admin đang mở đăng ký lịch {formatMonthLabel(data.month)}: sửa
+              được từ hôm nay ({formatDateVN(data.editableFrom)}) trở đi, các
+              ngày đã qua giữ nguyên.
+            </Message>
+          )}
 
           <Card className="px-4 py-3">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div className="text-sm text-slate-600">
-                <span className="font-semibold text-slate-900">{totalShifts}</span>{" "}
+                <span className="font-semibold text-slate-900">
+                  {totalShifts}
+                </span>{" "}
                 ca
                 {offDraft.size > 0 && (
                   <>
@@ -316,7 +349,7 @@ export default function SchedulePage() {
             <table className="w-full border-collapse text-sm">
               <thead>
                 <tr className="border-b border-slate-200 bg-slate-50">
-                  <th className="sticky left-0 z-10 min-w-40 bg-slate-50 px-3 py-2 text-left font-semibold text-slate-900">
+                  <th className="sticky left-0 z-10 min-w-32 bg-slate-50 px-3 py-2 text-left font-semibold text-slate-900">
                     Ca
                   </th>
                   {data.dates.map((date) => {
@@ -331,7 +364,7 @@ export default function SchedulePage() {
                             ? "Đi làm không đăng ký lịch, vẫn tính công"
                             : undefined
                         }
-                        className={`min-w-12 px-1.5 py-2 text-center font-medium ${
+                        className={`min-w-10 px-0.5 py-2 text-center font-medium ${
                           weekend ? "text-rose-600" : "text-slate-500"
                         } ${unscheduled ? "bg-amber-50" : ""}`}
                       >
@@ -348,7 +381,9 @@ export default function SchedulePage() {
                 {data.sessions.map((rule) => (
                   <tr key={rule.id} className="border-b border-slate-100">
                     <td className="sticky left-0 z-10 bg-white px-3 py-2">
-                      <div className="font-medium text-slate-900">{rule.code}</div>
+                      <div className="font-medium text-slate-900">
+                        {rule.code}
+                      </div>
                       <div className="text-xs text-slate-500">
                         {rule.workStart}–{rule.workEnd} ({rule.minHours}h)
                       </div>
@@ -361,11 +396,22 @@ export default function SchedulePage() {
                           <button
                             type="button"
                             onClick={() => toggle(date, rule)}
-                            disabled={readOnly || dayHighlight(date) !== null}
+                            disabled={
+                              readOnly ||
+                              isPastLocked(date) ||
+                              dayHighlight(date) !== null
+                            }
                             aria-pressed={active}
                             aria-label={`${rule.code} ngày ${date}`}
-                            title={highlight ? CELL_TITLES[highlight] : undefined}
-                            className={cellClass({ active, highlight, readOnly, tone: "sky" })}
+                            title={
+                              highlight ? CELL_TITLES[highlight] : undefined
+                            }
+                            className={`${cellClass({
+                              active,
+                              highlight,
+                              readOnly: readOnly || isPastLocked(date),
+                              tone: "sky",
+                            })} ${isPastLocked(date) ? "opacity-50" : ""}`}
                           >
                             {active ? rule.code : ""}
                           </button>
@@ -391,11 +437,18 @@ export default function SchedulePage() {
                         <button
                           type="button"
                           onClick={() => toggleOff(date)}
-                          disabled={readOnly || highlight !== null}
+                          disabled={
+                            readOnly || isPastLocked(date) || highlight !== null
+                          }
                           aria-pressed={active}
                           aria-label={`Nghỉ ngày ${date}`}
                           title={highlight ? CELL_TITLES[highlight] : undefined}
-                          className={cellClass({ active, highlight, readOnly, tone: "slate" })}
+                          className={`${cellClass({
+                            active,
+                            highlight,
+                            readOnly: readOnly || isPastLocked(date),
+                            tone: "slate",
+                          })} ${isPastLocked(date) ? "opacity-50" : ""}`}
                         >
                           {active ? "N" : ""}
                         </button>
@@ -417,7 +470,10 @@ export default function SchedulePage() {
             ].map(([code, name], index) => (
               <span key={code}>
                 {index > 0 && <span className="mx-2 text-slate-300">·</span>}
-                <span className="font-semibold text-slate-700">{code}</span> {name}
+                <span className="font-semibold text-slate-700">
+                  {code}
+                </span>{" "}
+                {name}
               </span>
             ))}
           </p>

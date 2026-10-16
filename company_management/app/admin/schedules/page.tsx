@@ -69,7 +69,7 @@ const LEAVE_LABELS: Record<LeaveCode, string> = { N: "Nghỉ", O: "Ốm" };
 /// > chờ duyệt (đang treo) > làm ngoài lịch > có ca > nghỉ/ốm > trống.
 function scheduleCell(
   row: Row,
-  date: string
+  date: string,
 ): { text: string; className: string; title: string | undefined } {
   const codes = row.days[date];
   const leave = row.leaves[date];
@@ -96,7 +96,8 @@ function scheduleCell(
       title: "Đi làm không đăng ký lịch, vẫn tính công",
     };
   }
-  if (codes) return { text, className: "bg-sky-50 text-sky-700", title: undefined };
+  if (codes)
+    return { text, className: "bg-sky-50 text-sky-700", title: undefined };
   if (leave) {
     return {
       text,
@@ -109,8 +110,14 @@ function scheduleCell(
 
 const SCHEDULE_LEGEND = [
   { className: "bg-sky-50 ring-1 ring-sky-200", label: "Có ca" },
-  { className: "bg-amber-50 ring-1 ring-amber-200", label: "Nghỉ / ốm đã đánh dấu" },
-  { className: "bg-amber-100", label: "Chờ duyệt đổi ca hoặc làm ngoài lịch (NL)" },
+  {
+    className: "bg-amber-50 ring-1 ring-amber-200",
+    label: "Nghỉ / ốm đã đánh dấu",
+  },
+  {
+    className: "bg-amber-100",
+    label: "Chờ duyệt đổi ca hoặc làm ngoài lịch (NL)",
+  },
   { className: "bg-rose-100", label: "Có lịch mà không đi" },
 ];
 
@@ -140,13 +147,17 @@ export default function AdminSchedulesPage() {
     useState<RegistrationWindowConfig>(DEFAULT_REGISTRATION_WINDOW);
   const [windowDraft, setWindowDraft] = useState({ openDay: "", closeDay: "" });
   const [savingWindow, setSavingWindow] = useState(false);
+  // Công tắc cho nhân viên đăng ký lịch tháng hiện tại (từ hôm nay trở đi).
+  const [currentMonthOpen, setCurrentMonthOpen] = useState(false);
+  const [savingCurrentMonth, setSavingCurrentMonth] = useState(false);
 
   const load = useCallback(async (target: string) => {
     setLoading(true);
     try {
       const response = await fetch(`/api/admin/schedules?month=${target}`);
       const payload = await response.json();
-      if (!response.ok) throw new Error(payload.error || "Không tải được dữ liệu");
+      if (!response.ok)
+        throw new Error(payload.error || "Không tải được dữ liệu");
       setData(payload);
     } catch (error) {
       setMessage({
@@ -161,6 +172,46 @@ export default function AdminSchedulesPage() {
   useEffect(() => {
     load(month);
   }, [month, load]);
+
+  useEffect(() => {
+    fetch("/api/settings/schedule-current-month")
+      .then((response) => (response.ok ? response.json() : null))
+      .then(
+        (payload) => payload && setCurrentMonthOpen(Boolean(payload.enabled)),
+      )
+      .catch(() => undefined);
+  }, []);
+
+  async function toggleCurrentMonth(enabled: boolean) {
+    // Đổi ngay trên giao diện; lưu lỗi thì trả lại trạng thái cũ.
+    setCurrentMonthOpen(enabled);
+    setSavingCurrentMonth(true);
+    setMessage(null);
+    try {
+      const response = await fetch("/api/settings/schedule-current-month", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ enabled }),
+      });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error || "Không lưu được");
+      setCurrentMonthOpen(Boolean(payload.enabled));
+      setMessage({
+        type: "success",
+        text: payload.enabled
+          ? "Đã mở: nhân viên đăng ký được lịch tháng này (từ hôm nay trở đi)"
+          : "Đã tắt đăng ký lịch tháng này",
+      });
+    } catch (error) {
+      setCurrentMonthOpen(!enabled);
+      setMessage({
+        type: "error",
+        text: error instanceof Error ? error.message : "Không lưu được",
+      });
+    } finally {
+      setSavingCurrentMonth(false);
+    }
+  }
 
   useEffect(() => {
     fetch("/api/settings/schedule-window")
@@ -234,7 +285,11 @@ export default function AdminSchedulesPage() {
     if (!data) return;
     const codeById = new Map(data.sessions.map((rule) => [rule.id, rule.code]));
     setDraft((current) => {
-      const next = toggleSessionSelection(current[date] ?? [], sessionId, codeById);
+      const next = toggleSessionSelection(
+        current[date] ?? [],
+        sessionId,
+        codeById,
+      );
       const copy = { ...current };
       if (next.length === 0) delete copy[date];
       else copy[date] = next;
@@ -250,7 +305,11 @@ export default function AdminSchedulesPage() {
       const response = await fetch("/api/admin/schedules", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ userId: editingRow.user.id, month, days: draft }),
+        body: JSON.stringify({
+          userId: editingRow.user.id,
+          month,
+          days: draft,
+        }),
       });
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || "Không thể lưu");
@@ -272,7 +331,7 @@ export default function AdminSchedulesPage() {
   }
 
   const pending = data?.rows.filter(
-    (row) => row.selfScheduled && !row.registered
+    (row) => row.selfScheduled && !row.registered,
   );
 
   return (
@@ -289,9 +348,10 @@ export default function AdminSchedulesPage() {
               Cửa sổ đăng ký lịch tháng sau
             </h3>
             <p className="mt-1 max-w-xl text-sm text-slate-600">
-              Tính theo ngày của tháng trước đó. Ngày {MAX_REGISTRATION_DAY} nghĩa
-              là hết tháng; tháng ngắn hơn thì hệ thống tự lùi về ngày cuối tháng.
-              Chỉ áp cho bán thời gian và thực tập — toàn thời gian không đăng ký.
+              Tính theo ngày của tháng trước đó. Ngày {MAX_REGISTRATION_DAY}{" "}
+              nghĩa là hết tháng; tháng ngắn hơn thì hệ thống tự lùi về ngày
+              cuối tháng. Chỉ áp cho bán thời gian và thực tập — toàn thời gian
+              không đăng ký.
             </p>
           </div>
           <Field label="Mở từ ngày" required>
@@ -324,6 +384,25 @@ export default function AdminSchedulesPage() {
             {savingWindow ? "Đang lưu..." : "Lưu cửa sổ"}
           </Button>
         </form>
+        <label className="mt-4 flex items-start gap-3 border-t border-slate-200 pt-4">
+          <input
+            type="checkbox"
+            className="mt-1 h-4 w-4 rounded border-slate-300 text-sky-600"
+            checked={currentMonthOpen}
+            disabled={savingCurrentMonth}
+            onChange={(event) => toggleCurrentMonth(event.target.checked)}
+          />
+          <span>
+            <span className="block text-sm font-medium text-slate-900">
+              Cho phép nhân viên đăng ký lịch tháng này
+            </span>
+            <span className="block text-sm text-slate-600">
+              Dùng khi có người mới vào giữa tháng hoặc chưa kịp đăng ký. Nhân
+              viên chỉ sửa được từ hôm nay trở đi, ngày đã qua giữ nguyên. Tắt
+              đi là quay về như cũ.
+            </span>
+          </span>
+        </label>
       </Card>
 
       <WeeklyOffCard onSaved={() => load(month)} />
@@ -416,9 +495,14 @@ export default function AdminSchedulesPage() {
             </thead>
             <tbody>
               {data.rows.map((row) => (
-                <tr key={row.user.id} className="border-b border-slate-100 last:border-0">
+                <tr
+                  key={row.user.id}
+                  className="border-b border-slate-100 last:border-0"
+                >
                   <td className="sticky left-0 z-10 bg-white px-3 py-2">
-                    <div className="font-medium text-slate-900">{row.user.name}</div>
+                    <div className="font-medium text-slate-900">
+                      {row.user.name}
+                    </div>
                     <div className="mt-0.5 flex items-center gap-1.5">
                       {row.selfScheduled ? (
                         row.registered ? (
@@ -472,6 +556,7 @@ export default function AdminSchedulesPage() {
         open={editingRow !== null}
         title={`Lịch ${formatMonthLabel(month)} — ${editingRow?.user.name ?? ""}`}
         onClose={() => setEditingRow(null)}
+        size="large"
         footer={
           <>
             <Button variant="secondary" onClick={() => setEditingRow(null)}>
@@ -484,57 +569,107 @@ export default function AdminSchedulesPage() {
         }
       >
         {data && editingRow && (
-          <div className="space-y-1">
-            <p className="mb-3 flex items-start gap-2 text-sm text-slate-600">
-              <CalendarClock size={16} aria-hidden="true" className="mt-0.5 shrink-0" />
+          <div className="space-y-3">
+            <p className="flex items-start gap-2 text-sm text-slate-600">
+              <CalendarClock
+                size={16}
+                aria-hidden="true"
+                className="mt-0.5 shrink-0"
+              />
               <span>
-                Admin sửa được lịch bất cứ lúc nào, không phụ thuộc cửa sổ đăng ký.
+                Bấm ô để gán / bỏ ca. Admin sửa được lịch bất cứ lúc nào, không
+                phụ thuộc cửa sổ đăng ký.
                 {!editingRow.selfScheduled &&
                   " Với nhân viên toàn thời gian, lịch lưu ở đây thay cho lịch cố định của tháng này."}{" "}
                 Ngày đang nghỉ/ốm mà được gán ca thì đánh dấu nghỉ sẽ được gỡ.
               </span>
             </p>
-            {data.dates.map((date) => {
-              const leave = editingRow.leaves[date];
-              const hasSessions = (draft[date] ?? []).length > 0;
-              return (
-                <div
-                  key={date}
-                  className="flex items-center justify-between gap-3 rounded-lg px-2 py-1.5 odd:bg-slate-50"
-                >
-                  <span className="flex w-32 shrink-0 items-center gap-2 text-sm text-slate-700">
-                    <span>
-                      {date.slice(8, 10)}/{date.slice(5, 7)}{" "}
-                      <span className="text-slate-400">{weekdayLabel(date)}</span>
-                    </span>
-                    {leave && !hasSessions && (
-                      <Badge tone="warning">{leave}</Badge>
-                    )}
-                  </span>
-                  <div className="flex flex-wrap justify-end gap-1.5">
-                    {data.sessions.map((rule) => {
-                      const active = (draft[date] ?? []).includes(rule.id);
+            {/* Cùng kiểu lưới với trang đăng ký của nhân viên: cột = ngày, hàng = ca. */}
+            <div className="overflow-x-auto rounded-lg border border-slate-200">
+              <table className="w-full border-collapse text-sm">
+                <thead>
+                  <tr className="border-b border-slate-200 bg-slate-50">
+                    <th className="sticky left-0 z-10 min-w-32 bg-slate-50 px-3 py-2 text-left font-semibold text-slate-900">
+                      Ca
+                    </th>
+                    {data.dates.map((date) => {
+                      const weekend = ["T7", "CN"].includes(weekdayLabel(date));
                       return (
-                        <button
-                          key={rule.id}
-                          type="button"
-                          onClick={() => toggle(date, rule.id)}
-                          aria-pressed={active}
-                          title={`${rule.name} ${rule.workStart}–${rule.workEnd}`}
-                          className={`rounded-lg px-2 py-1 text-xs font-medium transition-colors ${
-                            active
-                              ? "bg-sky-600 text-white"
-                              : "bg-white text-slate-600 ring-1 ring-slate-200 hover:bg-slate-100"
+                        <th
+                          key={date}
+                          className={`min-w-10 px-0.5 py-2 text-center font-medium ${
+                            weekend ? "text-rose-600" : "text-slate-500"
                           }`}
                         >
-                          {rule.code}
-                        </button>
+                          <div>{date.slice(8, 10)}</div>
+                          <div className="text-xs font-normal text-slate-400">
+                            {weekdayLabel(date)}
+                          </div>
+                        </th>
                       );
                     })}
-                  </div>
-                </div>
-              );
-            })}
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.sessions.map((rule) => (
+                    <tr key={rule.id} className="border-b border-slate-100">
+                      <td className="sticky left-0 z-10 bg-white px-3 py-2">
+                        <div className="font-medium text-slate-900">
+                          {rule.code}
+                        </div>
+                        <div className="text-xs text-slate-500">
+                          {rule.workStart}–{rule.workEnd} ({rule.minHours}h)
+                        </div>
+                      </td>
+                      {data.dates.map((date) => {
+                        const active = (draft[date] ?? []).includes(rule.id);
+                        return (
+                          <td key={date} className="p-1 text-center">
+                            <button
+                              type="button"
+                              onClick={() => toggle(date, rule.id)}
+                              aria-pressed={active}
+                              aria-label={`${rule.code} ngày ${date}`}
+                              title={`${rule.name} ${rule.workStart}–${rule.workEnd}`}
+                              className={`h-8 w-full rounded-md text-xs font-medium transition-colors ${
+                                active
+                                  ? "bg-sky-600 text-white hover:bg-sky-700"
+                                  : "bg-white ring-1 ring-inset ring-slate-200 hover:bg-slate-100"
+                              }`}
+                            >
+                              {active ? rule.code : ""}
+                            </button>
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  ))}
+                  {/* Nghỉ / ốm hiện để đối chiếu; gán ca vào ngày đó là gỡ đánh dấu. */}
+                  <tr>
+                    <td className="sticky left-0 z-10 bg-white px-3 py-2">
+                      <div className="font-medium text-slate-900">N / O</div>
+                      <div className="text-xs text-slate-500">Nghỉ / ốm</div>
+                    </td>
+                    {data.dates.map((date) => {
+                      const leave = editingRow.leaves[date];
+                      const shown = leave && (draft[date] ?? []).length === 0;
+                      return (
+                        <td key={date} className="p-1 text-center">
+                          <span
+                            title={shown ? LEAVE_LABELS[leave] : undefined}
+                            className={`flex h-8 items-center justify-center rounded-md text-xs font-medium ${
+                              shown ? "bg-slate-200 text-slate-800" : ""
+                            }`}
+                          >
+                            {shown ? leave : ""}
+                          </span>
+                        </td>
+                      );
+                    })}
+                  </tr>
+                </tbody>
+              </table>
+            </div>
           </div>
         )}
       </Modal>

@@ -191,6 +191,8 @@ async function main() {
   let sink = null;
   // Dải mạng chấm công trước khi test đổi; null = chưa kịp đọc.
   let previousNetwork = null;
+  // Công tắc đăng ký lịch tháng hiện tại trước khi test đổi; null = chưa kịp đọc.
+  let previousCurrentMonth = null;
 
   try {
     console.log("\n== xác thực ==");
@@ -513,6 +515,71 @@ async function main() {
     );
     r = await call(emp, "PUT", "/api/schedule", { month: NEXT_MONTH, days: {} });
     check("ngoài cửa sổ thì không lưu được", r.status === 400, `(${r.status})`);
+
+    console.log("\n== đăng ký lịch tháng hiện tại (admin bật / tắt) ==");
+    const THIS_MONTH = TODAY_VN.slice(0, 7);
+    previousCurrentMonth = (await client.query(`SELECT "value" FROM "Settings" WHERE "key" = 'schedule_current_month_open'`)).rows[0] ?? { value: undefined };
+    r = await call(admin, "PUT", "/api/settings/schedule-current-month", { enabled: false });
+    check("admin tắt đăng ký tháng hiện tại", r.status === 200 && r.json.enabled === false, `(${r.status})`);
+    r = await call(emp, "GET", `/api/schedule?month=${THIS_MONTH}`);
+    check("tắt thì tháng hiện tại chỉ xem", r.json.canEdit === false && r.json.editableFrom === null, `(canEdit=${r.json.canEdit})`);
+    r = await call(emp, "PUT", "/api/schedule", { month: THIS_MONTH, days: {} });
+    check("tắt thì không lưu được lịch tháng hiện tại", r.status === 400, `(${r.status})`);
+    r = await call(emp, "PUT", "/api/settings/schedule-current-month", { enabled: true });
+    check("nhân viên không tự bật được", r.status === 401, `(${r.status})`);
+
+    // Dựng sẵn một ngày đã qua trong lịch tháng này để kiểm "ngày đã qua giữ nguyên".
+    const pastDate = TODAY_VN.slice(8, 10) === "01" ? null : `${THIS_MONTH}-01`;
+    if (pastDate) {
+      const registration = await client.query(
+        `INSERT INTO "ScheduleRegistration" ("userId", "month", "submittedAt", "updatedBy")
+         VALUES ($1, $2, now(), $1)
+         ON CONFLICT ("userId", "month") DO UPDATE SET "updatedAt" = now()
+         RETURNING "id"`,
+        [employeeId, THIS_MONTH]
+      );
+      await client.query(`DELETE FROM "ScheduleDay" WHERE "registrationId" = $1`, [registration.rows[0].id]);
+      await client.query(
+        `INSERT INTO "ScheduleDay" ("registrationId", "date", "sessionId") VALUES ($1, $2, $3)`,
+        [registration.rows[0].id, pastDate, morning.id]
+      );
+    }
+
+    r = await call(admin, "PUT", "/api/settings/schedule-current-month", { enabled: true });
+    check("admin bật đăng ký tháng hiện tại", r.status === 200 && r.json.enabled === true, `(${r.status})`);
+    r = await call(admin, "GET", "/api/settings/schedule-current-month");
+    check("đọc lại công tắc", r.json.enabled === true);
+    r = await call(emp, "GET", `/api/schedule?month=${THIS_MONTH}`);
+    check(
+      "bật thì sửa được tháng hiện tại, từ hôm nay trở đi",
+      r.json.canEdit === true && r.json.editableFrom === TODAY_VN && r.json.currentMonthOpen === true,
+      `(canEdit=${r.json.canEdit} từ ${r.json.editableFrom})`
+    );
+    r = await call(emp, "GET", `/api/schedule?month=${NEXT_MONTH}`);
+    check("tháng khác vẫn theo cửa sổ (đang đóng) và báo tháng này đang mở", r.json.canEdit === false && r.json.currentMonthOpen === true);
+    r = await call(emp, "PUT", "/api/schedule", {
+      month: THIS_MONTH,
+      days: { ...(pastDate ? { [pastDate]: [afternoon.id] } : {}), [TODAY_VN]: [afternoon.id] },
+      offDays: pastDate ? [] : [],
+    });
+    check("lưu được lịch tháng hiện tại", r.status === 200, `(${r.status} ${r.json.error ?? ""})`);
+    r = await call(emp, "GET", `/api/schedule?month=${THIS_MONTH}`);
+    check("ngày hôm nay lưu ca mới", (r.json.days?.[TODAY_VN] ?? []).includes(afternoon.id), JSON.stringify(r.json.days?.[TODAY_VN]));
+    if (pastDate) {
+      check(
+        "ngày đã qua giữ nguyên ca cũ dù gửi ca khác",
+        JSON.stringify(r.json.days?.[pastDate]) === JSON.stringify([morning.id]),
+        JSON.stringify(r.json.days?.[pastDate])
+      );
+    }
+    // Trả lịch tháng này về rỗng và tắt công tắc để các phần sau không bị ảnh hưởng.
+    await client.query(
+      `DELETE FROM "ScheduleDay" WHERE "registrationId" IN
+         (SELECT "id" FROM "ScheduleRegistration" WHERE "userId" = $1 AND "month" = $2)`,
+      [employeeId, THIS_MONTH]
+    );
+    await client.query(`DELETE FROM "ScheduleRegistration" WHERE "userId" = $1 AND "month" = $2`, [employeeId, THIS_MONTH]);
+    r = await call(admin, "PUT", "/api/settings/schedule-current-month", { enabled: false });
 
     console.log("\n== nhân viên đổi mật khẩu ==");
     const NEW_PASS = "MatKhauMoi123";
@@ -1827,6 +1894,13 @@ async function main() {
     }
     await client.query(`DELETE FROM "LoginEvent" WHERE "identifier" ILIKE '%@_@_smoketest%' ESCAPE '@'`);
     // Trả lại cửa sổ đăng ký lịch như trước khi test.
+    if (previousCurrentMonth) {
+      if (previousCurrentMonth.value === undefined) {
+        await client.query(`DELETE FROM "Settings" WHERE "key" = 'schedule_current_month_open'`);
+      } else {
+        await client.query(`UPDATE "Settings" SET "value" = $1 WHERE "key" = 'schedule_current_month_open'`, [previousCurrentMonth.value]);
+      }
+    }
     if (previousWindow) {
       if (previousWindow.value === undefined) {
         await client.query(`DELETE FROM "Settings" WHERE "key" = 'schedule_registration_window'`);
