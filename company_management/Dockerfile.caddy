@@ -1,0 +1,8 @@
+# Caddy kèm module DNS Cloudflare: xin chứng chỉ Let's Encrypt cho tên miền nội
+# bộ (vd nv.jupiter-ai.pro → 192.168.1.28) qua DNS-01, không cần mở cổng server
+# ra Internet. Bản caddy:2-alpine gốc không có module này.
+FROM caddy:2-builder AS builder
+RUN xcaddy build --with github.com/caddy-dns/cloudflare
+
+FROM caddy:2-alpine
+COPY --from=builder /usr/bin/caddy /usr/bin/caddy

@@ -644,6 +644,18 @@ cham-cong.congty.vn {
 }
 ```
 
+**Cách đang chạy ở prod** (`docker compose` profile `proxy`, `Caddyfile`,
+`Dockerfile.caddy`): nhân viên vào bằng **tên miền nội bộ** `APP_DOMAIN`
+(`nv.jupiter-ai.pro`), bản ghi A trên Cloudflare trỏ về IP LAN `192.168.1.28`,
+chế độ **DNS only** (mây xám, không proxy). Caddy build kèm module
+`caddy-dns/cloudflare`, xin chứng chỉ Let's Encrypt qua **DNS-01** bằng
+`CLOUDFLARE_API_TOKEN` (quyền Zone · DNS · Edit cho đúng zone), nên server không
+phải mở cổng ra Internet và ngoài mạng công ty không vào được. Trình duyệt tin
+chứng chỉ này: lưu được mật khẩu, giữ được phiên đăng nhập (với chứng chỉ tự ký
+Chrome / Cốc Cốc không lưu mật khẩu). Các IP trong `SITE_ADDRESS` vẫn chạy bằng
+chứng chỉ tự ký để dự phòng / quản trị qua Tailscale. Đổi IP server thì chỉ cần
+sửa bản ghi DNS.
+
 ### 4. Việc phải làm trong giao diện sau khi bật
 
 1. **`/admin/sessions`** — đối chiếu giờ nghỉ trưa với khung giờ ca: giờ công là

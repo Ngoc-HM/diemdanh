@@ -57,7 +57,11 @@ services:
   # .env. Chỉ mở IPv4 (LAN / Tailscale), không mở ra IPv6 công khai.
   proxy:
     profiles: ["proxy"]
-    image: caddy:2-alpine
+    # Caddy kèm module DNS Cloudflare (Dockerfile.caddy) để xin chứng chỉ cho
+    # APP_DOMAIN qua DNS-01. Cần APP_DOMAIN và CLOUDFLARE_API_TOKEN trong .env.
+    build:
+      context: .
+      dockerfile: Dockerfile.caddy
     env_file: .env
     ports:
       - "0.0.0.0:${HTTPS_PORT:-443}:443"
