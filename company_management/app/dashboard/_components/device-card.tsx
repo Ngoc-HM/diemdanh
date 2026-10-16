@@ -61,9 +61,7 @@ export default function DeviceCard({ className = "" }: { className?: string }) {
       setDevices(payload.devices);
       setFeedback({
         type: "success",
-        text: payload.alreadyRegistered
-          ? "Máy này đã được đăng ký từ trước."
-          : "Đã đăng ký. Từ giờ nối wifi văn phòng là hệ thống tự ghi giờ vào.",
+        text: payload.alreadyRegistered ? "Máy này đã đăng ký rồi." : "Đã đăng ký.",
       });
     } catch (error) {
       setFeedback({ type: "error", text: error instanceof Error ? error.message : "Không đăng ký được" });
@@ -93,11 +91,6 @@ export default function DeviceCard({ className = "" }: { className?: string }) {
             <Wifi size={18} aria-hidden="true" className="text-sky-600" />
             Chấm công tự động qua wifi
           </h2>
-          <p className="mt-1 text-sm text-slate-600">
-            Đăng ký điện thoại hoặc máy tính bạn dùng ở văn phòng. Khi máy nối wifi công
-            ty, hệ thống tự ghi giờ vào; giờ ra lấy theo lần cuối còn thấy máy hoặc lúc bạn
-            bấm ra ca, tuỳ cái nào muộn hơn.
-          </p>
         </div>
 
         {feedback && (
@@ -143,7 +136,7 @@ export default function DeviceCard({ className = "" }: { className?: string }) {
         )}
 
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <p className="text-xs text-slate-500">Phải đang nối wifi văn phòng trên chính máy này.</p>
+          <p className="text-xs text-slate-500">Nối wifi văn phòng rồi bấm.</p>
           <Button type="button" onClick={register} disabled={busy || !loaded}>
             <Wifi size={16} aria-hidden="true" />
             Đăng ký máy này

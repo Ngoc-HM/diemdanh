@@ -115,10 +115,6 @@ function WifiCard({ onFeedback }: { onFeedback: (feedback: Feedback) => void }) 
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <h3 className="text-lg font-semibold text-slate-900">Chấm công tự động qua wifi</h3>
-            <p className="text-sm text-slate-600">
-              Nhân viên tự đăng ký máy ở mục "Đăng ký thiết bị". Máy nối wifi văn phòng là hệ thống ghi giờ vào;
-              giờ ra lấy theo lần cuối còn thấy máy hoặc lúc bấm ra ca, tuỳ cái nào muộn hơn.
-            </p>
           </div>
           <Button type="button" variant="secondary" onClick={runNow} disabled={busy || !loaded}>
             Đối chiếu ngay
@@ -208,10 +204,7 @@ export default function DevicesPage() {
   const [feedback, setFeedback] = useState<Feedback | null>(null);
   return (
     <>
-      <PageHeader
-        title="Thiết bị chấm công"
-        description="Máy nhân viên đã đăng ký để chấm công tự động qua wifi văn phòng."
-      />
+      <PageHeader title="Thiết bị chấm công" />
       {feedback && (
         <div className="mb-4">
           <Message type={feedback.type} onDismiss={() => setFeedback(null)}>
