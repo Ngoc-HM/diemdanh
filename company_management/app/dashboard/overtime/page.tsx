@@ -10,6 +10,7 @@ import {
   Field,
   Input,
   Message,
+  Select,
   TableSkeleton,
   Textarea,
 } from "@/app/_components/ui";
@@ -56,6 +57,50 @@ const STATUS_BADGE: Record<
 
 function formatDayVN(dateKey: string) {
   return `${dateKey.slice(8, 10)}/${dateKey.slice(5, 7)}`;
+}
+
+const HOURS = Array.from({ length: 24 }, (_, hour) => String(hour).padStart(2, "0"));
+const MINUTES = Array.from({ length: 60 }, (_, minute) => String(minute).padStart(2, "0"));
+
+/// Chọn giờ dạng 24h (00–23 : 00–59). Không dùng ô giờ của trình duyệt vì
+/// máy cài định dạng 12 giờ sẽ hiện SA/CH, nửa đêm thành "12:00 SA".
+function TimeSelect24({
+  value,
+  onChange,
+  label,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  label: string;
+}) {
+  const [hour, minute] = value.split(":");
+  return (
+    <div className="flex items-center gap-1.5">
+      <Select
+        aria-label={`${label} (giờ)`}
+        value={hour}
+        onChange={(event) => onChange(`${event.target.value}:${minute}`)}
+      >
+        {HOURS.map((option) => (
+          <option key={option} value={option}>
+            {option}
+          </option>
+        ))}
+      </Select>
+      <span className="font-semibold text-slate-500">:</span>
+      <Select
+        aria-label={`${label} (phút)`}
+        value={minute}
+        onChange={(event) => onChange(`${hour}:${event.target.value}`)}
+      >
+        {MINUTES.map((option) => (
+          <option key={option} value={option}>
+            {option}
+          </option>
+        ))}
+      </Select>
+    </div>
+  );
 }
 
 export default function OvertimePage() {
@@ -177,20 +222,10 @@ export default function OvertimePage() {
               />
             </Field>
             <Field label="Từ giờ" required>
-              <Input
-                type="time"
-                value={plannedStart}
-                onChange={(event) => setPlannedStart(event.target.value)}
-                required
-              />
+              <TimeSelect24 label="Từ giờ" value={plannedStart} onChange={setPlannedStart} />
             </Field>
             <Field label="Đến giờ" required>
-              <Input
-                type="time"
-                value={plannedEnd}
-                onChange={(event) => setPlannedEnd(event.target.value)}
-                required
-              />
+              <TimeSelect24 label="Đến giờ" value={plannedEnd} onChange={setPlannedEnd} />
             </Field>
           </div>
           {timeError && plannedStart && plannedEnd && (
