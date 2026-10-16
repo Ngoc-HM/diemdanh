@@ -116,7 +116,7 @@ function WifiCard({ onFeedback }: { onFeedback: (feedback: Feedback) => void }) 
           <div>
             <h3 className="text-lg font-semibold text-slate-900">Chấm công tự động qua wifi</h3>
             <p className="text-sm text-slate-600">
-              Nhân viên tự đăng ký máy ở mục Cài đặt. Máy nối wifi văn phòng là hệ thống ghi giờ vào;
+              Nhân viên tự đăng ký máy ở mục "Đăng ký thiết bị". Máy nối wifi văn phòng là hệ thống ghi giờ vào;
               giờ ra lấy theo lần cuối còn thấy máy hoặc lúc bấm ra ca, tuỳ cái nào muộn hơn.
             </p>
           </div>
