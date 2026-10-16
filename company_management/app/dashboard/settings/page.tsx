@@ -5,7 +5,6 @@ import { KeyRound, Save, Trash2, Upload } from "lucide-react";
 import { Button, Card, Field, Input, Message } from "@/app/_components/ui";
 import DashboardPageHeader from "@/app/dashboard/_components/page-header";
 import TwoFactorCard from "@/app/_components/two-factor-card";
-import DeviceCard from "@/app/dashboard/_components/device-card";
 
 type Profile = {
   id: string;
@@ -297,8 +296,6 @@ export default function SettingsPage() {
           </div>
         </form>
       </Card>
-
-      <DeviceCard className="max-w-2xl" />
 
       <TwoFactorCard className="max-w-2xl" />
     </div>

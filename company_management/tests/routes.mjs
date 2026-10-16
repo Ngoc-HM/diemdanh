@@ -56,6 +56,7 @@ const ADMIN_PAGES = [
   ["/admin/change-password", "Tài khoản"],
   ["/admin/email", "Email (SMTP)"],
   ["/admin/security", "Bảo mật"],
+  ["/admin/devices", "Thiết bị chấm công"],
   ["/admin/access-violations", "Truy cập lạ"],
 ];
 
@@ -66,6 +67,7 @@ const EMPLOYEE_PAGES = [
   ["/dashboard/work-reports", "Nội dung công việc hằng ngày"],
   ["/dashboard/shift-requests", "Chỉnh sửa ca"],
   ["/dashboard/overtime", "Làm thêm giờ (OT)"],
+  ["/dashboard/devices", "Đăng ký thiết bị"],
   ["/dashboard/settings", "Cài đặt"],
 ];
 

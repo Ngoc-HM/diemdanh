@@ -13,6 +13,7 @@ import {
   LogOut,
   NotebookPen,
   Settings,
+  Wifi,
 } from "lucide-react";
 import {
   CompanyLogo,
@@ -34,6 +35,7 @@ const navItems: NavItem[] = [
   { href: "/dashboard/work-reports", label: "Nội dung công việc", icon: <NotebookPen size={18} /> },
   { href: "/dashboard/shift-requests", label: "Chỉnh sửa ca", icon: <CalendarCog size={18} /> },
   { href: "/dashboard/overtime", label: "Làm thêm giờ", icon: <Timer size={18} /> },
+  { href: "/dashboard/devices", label: "Đăng ký thiết bị", icon: <Wifi size={18} /> },
   { href: "/dashboard/settings", label: "Cài đặt", icon: <Settings size={18} /> },
   { href: "https://app.clickup.com", label: "ClickUp", icon: <ExternalLink size={18} />, external: true },
 ];

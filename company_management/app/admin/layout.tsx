@@ -22,6 +22,7 @@ import {
   ShieldCheck,
   Clock,
   Users,
+  Wifi,
 } from "lucide-react";
 import {
   CompanyLogo,
@@ -51,6 +52,7 @@ const navItems: NavItem[] = [
   { href: "/admin/company", label: "Công ty", icon: <Building2 size={18} /> },
   { href: "/admin/email", label: "Email", icon: <Mail size={18} /> },
   { href: "/admin/security", label: "Bảo mật", icon: <ShieldCheck size={18} /> },
+  { href: "/admin/devices", label: "Thiết bị", icon: <Wifi size={18} /> },
   { href: "/admin/access-violations", label: "Truy cập lạ", icon: <ShieldAlert size={18} /> },
   { href: "https://app.clickup.com", label: "ClickUp", icon: <ExternalLink size={18} />, external: true },
 ];
