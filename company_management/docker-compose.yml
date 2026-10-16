@@ -74,6 +74,24 @@ services:
     restart: unless-stopped
     logging: *logging
 
+  # Máy quét wifi văn phòng cho chấm công tự động (scripts/wifi-scan.sh). Dùng
+  # mạng của máy chủ để thấy bảng ARP; ghi vào Postgres qua cổng DB_PORT mở trên
+  # 127.0.0.1. Bật bằng COMPOSE_PROFILES="proxy,wifi"; dải quét đặt ở SCAN_SUBNET.
+  scanner:
+    profiles: ["wifi"]
+    build:
+      context: .
+      dockerfile: Dockerfile.scanner
+    network_mode: host
+    env_file: .env
+    environment:
+      DB_PORT: ${DB_PORT:-5433}
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+    logging: *logging
+
 volumes:
   db-data:
   caddy-data:

@@ -1838,6 +1838,90 @@ async function main() {
       check("CSV có nội dung đã khai", csvText.includes("__smoketest việc 1 (đã sửa)"));
     }
 
+    console.log("\n== chấm công tự động qua wifi ==");
+    // Giả máy quét: ghi một máy vào WifiPresence với IP mà test sẽ tự xưng
+    // qua X-Forwarded-For (chặn theo mạng đang tắt nên IP nào cũng được).
+    const WIFI_MAC = "02:00:00:5e:00:01";
+    const WIFI_IP = "10.99.99.9";
+    await client.query(`DELETE FROM "WifiPresence" WHERE "mac" = $1`, [WIFI_MAC]);
+
+    r = await call(emp, "POST", "/api/devices", undefined, { "x-forwarded-for": WIFI_IP });
+    check("chưa quét thấy máy thì không đăng ký được", r.status === 409, `(${r.status})`);
+
+    await client.query(
+      `INSERT INTO "WifiPresence" ("mac", "ip", "seenAt") VALUES ($1, $2, now())`,
+      [WIFI_MAC, WIFI_IP]
+    );
+    r = await call(emp, "POST", "/api/devices", undefined, { "x-forwarded-for": WIFI_IP });
+    check("đăng ký máy đang nối wifi", r.status === 200 && r.json.devices?.length === 1, `(${r.status} ${r.json.error ?? ""})`);
+    check("MAC lấy từ kết quả quét, không phải nhân viên gõ", r.json.devices?.[0]?.mac === WIFI_MAC);
+    const deviceId = r.json.devices?.[0]?.id;
+
+    r = await call(emp, "POST", "/api/devices", undefined, { "x-forwarded-for": WIFI_IP });
+    check("đăng ký lại cùng máy không tạo thêm dòng", r.status === 200 && r.json.alreadyRegistered === true && r.json.devices?.length === 1);
+
+    r = await call(emp, "GET", "/api/devices");
+    check("nhân viên xem máy của mình", r.status === 200 && r.json.devices?.length === 1 && r.json.enabled === true);
+
+    r = await call(admin, "GET", "/api/admin/security/wifi");
+    const adminDevice = r.json.devices?.find((d) => d.id === deviceId);
+    check("admin thấy máy kèm tên nhân viên", r.status === 200 && adminDevice?.userName, `(${r.status})`);
+
+    // Hôm nay nhân viên đã có giờ vào (test chấm công phía trên) → lượt đối chiếu
+    // ghi giờ ra tự động theo lần thấy máy.
+    const before = (await client.query(
+      `SELECT p."id", p."type", p."source" FROM "AttendancePunch" p
+         JOIN "Attendance" a ON a."id" = p."attendanceId"
+        WHERE a."userId" = $1 AND a."date" = $2`,
+      [employeeId, TODAY_VN]
+    )).rows;
+    r = await call(admin, "POST", "/api/admin/security/wifi/run");
+    check("đối chiếu ghi một lần vào / ra", r.status === 200 && r.json.punches === 1 && r.json.users === 1, `(${r.status} ${JSON.stringify(r.json)})`);
+    const after = (await client.query(
+      `SELECT p."id", p."type", p."source", p."at" FROM "AttendancePunch" p
+         JOIN "Attendance" a ON a."id" = p."attendanceId"
+        WHERE a."userId" = $1 AND a."date" = $2`,
+      [employeeId, TODAY_VN]
+    )).rows;
+    const wifiPunches = after.filter((p) => p.source === "wifi");
+    const hadIn = before.some((p) => p.type === "in");
+    check("thêm đúng một dòng nguồn wifi", after.length === before.length + 1 && wifiPunches.length === 1, `(${before.length} → ${after.length})`);
+    check(hadIn ? "đã có giờ vào thì ghi giờ ra" : "chưa có giờ vào thì ghi giờ vào", wifiPunches[0]?.type === (hadIn ? "out" : "in"));
+
+    r = await call(admin, "POST", "/api/admin/security/wifi/run");
+    check("quét chưa có gì mới thì không ghi lại", r.status === 200 && r.json.punches === 0, `(${JSON.stringify(r.json)})`);
+
+    // Lần quét mới hơn: giờ ra wifi dời theo, không thêm dòng.
+    await client.query(`UPDATE "WifiPresence" SET "seenAt" = now() + interval '1 minute' WHERE "mac" = $1`, [WIFI_MAC]);
+    r = await call(admin, "POST", "/api/admin/security/wifi/run");
+    const moved = (await client.query(
+      `SELECT p."id", p."type", p."source", p."at" FROM "AttendancePunch" p
+         JOIN "Attendance" a ON a."id" = p."attendanceId"
+        WHERE a."userId" = $1 AND a."date" = $2 AND p."source" = 'wifi'`,
+      [employeeId, TODAY_VN]
+    )).rows;
+    if (hadIn) {
+      check("thấy máy muộn hơn → dời giờ ra, vẫn một dòng", r.json.punches === 1 && moved.length === 1 && moved[0].at > wifiPunches[0].at, `(${JSON.stringify(r.json)} ${moved.length})`);
+    } else {
+      check("thấy máy muộn hơn → thêm giờ ra", r.json.punches === 1 && moved.length === 2, `(${JSON.stringify(r.json)} ${moved.length})`);
+    }
+
+    r = await call(emp, "GET", "/api/attendance");
+    check("lịch sử chấm công báo dòng nguồn wifi", r.json.todayEntry?.punches?.some((p) => p.source === "wifi") === true, JSON.stringify(r.json.todayEntry?.punches));
+
+    r = await call(admin, "PUT", "/api/admin/security/wifi", { enabled: false });
+    check("admin tắt chấm công qua wifi", r.status === 200 && r.json.enabled === false);
+    await client.query(`UPDATE "WifiPresence" SET "seenAt" = now() + interval '2 minute' WHERE "mac" = $1`, [WIFI_MAC]);
+    r = await call(admin, "POST", "/api/admin/security/wifi/run");
+    check("tắt rồi thì không ghi gì", r.json.punches === 0);
+    r = await call(admin, "PUT", "/api/admin/security/wifi", { enabled: true });
+
+    r = await call(emp, "DELETE", `/api/devices/${deviceId}`);
+    check("nhân viên bỏ đăng ký máy", r.status === 200);
+    r = await call(emp, "GET", "/api/devices");
+    check("danh sách trống sau khi xoá", r.json.devices?.length === 0);
+    await client.query(`DELETE FROM "WifiPresence" WHERE "mac" = $1`, [WIFI_MAC]);
+
     console.log("\n== xoá ==");
     r = await call(admin, "DELETE", `/api/holidays/${holidayId}`);
     check("xoá ngày lễ", r.status === 200);
@@ -1864,6 +1948,8 @@ async function main() {
     locationId = null;
   } finally {
     console.log("\n== dọn dẹp ==");
+    await client.query(`DELETE FROM "WifiPresence" WHERE "mac" = '02:00:00:5e:00:01'`);
+    await client.query(`DELETE FROM "Settings" WHERE "key" = 'wifi_attendance'`);
     if (employeeId) {
       // FK cascade cũng xoá theo, nhưng dọn tường minh để không phụ thuộc vào đó.
       await client.query(`DELETE FROM "ShiftChangeRequest" WHERE "userId" = $1`, [employeeId]);

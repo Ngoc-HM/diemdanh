@@ -13,6 +13,7 @@ type Punch = {
   at: string;
   distance: number | null;
   isManual: boolean;
+  source?: string;
 };
 
 type TodayEntry = {
@@ -247,6 +248,7 @@ export default function DashboardPage() {
                         )}
                         {item.type === "in" ? "Vào ca" : "Ra ca"}
                         {item.isManual && <Badge>Admin nhập</Badge>}
+                        {item.source === "wifi" && <Badge tone="brand">Tự động</Badge>}
                       </span>
                     </td>
                     <td className="px-4 py-2 text-right font-medium tabular-nums text-slate-900">

@@ -73,6 +73,8 @@ export type AttendancePunchRow = {
   locationId: string | null;
   withinRadius: boolean;
   isManual: boolean;
+  /// gps (nhân viên bấm), manual (admin nhập), wifi (tự động qua wifi văn phòng).
+  source: string;
   createdAt: Date;
 };
 

@@ -155,7 +155,7 @@ export async function POST(req: Request) {
 
     const [punches, rules, user, lunchBreak] = await Promise.all([
       query<AttendancePunchRow>(
-        `SELECT "id", "type", "at", "distance", "isManual", "withinRadius"
+        `SELECT "id", "type", "at", "distance", "isManual", "withinRadius", "source"
            FROM "AttendancePunch" WHERE "attendanceId" = $1 ORDER BY "at" ASC`,
         [attendance!.id],
       ),
@@ -202,6 +202,7 @@ export async function POST(req: Request) {
           at: punch.at.toISOString(),
           distance: punch.distance,
           isManual: punch.isManual,
+          source: punch.source,
         })),
       },
       evaluation: {

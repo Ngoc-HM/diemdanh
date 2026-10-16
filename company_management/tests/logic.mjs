@@ -21,6 +21,7 @@ import {
   validatePlannedTimes,
   DEFAULT_OVERTIME_CONFIG,
 } from "../lib/overtime.ts";
+import { planWifiPunch, MAC_PATTERN } from "../lib/wifi-rules.ts";
 import {
   annualLeaveForMonth,
   computePayroll,
@@ -571,6 +572,22 @@ check("tìm dải khớp đầu tiên", findMatchingCidr("10.0.0.5", ["192.168.1
 check("cấu hình mạng chấm công mặc định", JSON.stringify(parsePunchNetwork('{"enabled":true,"ranges":["192.168.1.0/24"]}')) === JSON.stringify({ enabled: true, ranges: ["192.168.1.0/24"] }));
 check("loopback là chính máy chủ", isLoopbackIp("127.0.0.1") && isLoopbackIp("::1") && !isLoopbackIp("192.168.1.28") && !isLoopbackIp(null));
 check("bật mà không có dải hợp lệ thì coi như tắt", parsePunchNetwork('{"enabled":true,"ranges":["bừa"]}').enabled === false);
+
+console.log("\n== chấm công tự động qua wifi ==");
+{
+  const t = (hhmm) => new Date(`2026-10-16T${hhmm}:00Z`);
+  const p = (id, type, at, source = "gps") => ({ id, type, at: t(at), source });
+  check("chưa có giờ vào → ghi giờ vào", planWifiPunch([], t("08:01")).action === "in");
+  check("thấy máy trước giờ vào đã có → bỏ qua", planWifiPunch([p("a", "in", "08:00")], t("07:59")).action === "none");
+  check("đã vào, chưa ra → thêm giờ ra wifi", planWifiPunch([p("a", "in", "08:00")], t("08:02")).action === "new_out");
+  const moved = planWifiPunch([p("a", "in", "08:00"), p("w", "out", "12:00", "wifi")], t("17:30"));
+  check("đã có giờ ra wifi → dời, không thêm dòng", moved.action === "move_out" && moved.punchId === "w");
+  check("quét cũ hơn giờ ra wifi → bỏ qua", planWifiPunch([p("a", "in", "08:00"), p("w", "out", "12:00", "wifi")], t("11:00")).action === "none");
+  check("nhân viên bấm ra 17:00, server còn thấy 17:30 → thêm giờ ra wifi", planWifiPunch([p("a", "in", "08:00"), p("m", "out", "17:00")], t("17:30")).action === "new_out");
+  check("nhân viên bấm ra 17:00, quét lúc 16:50 → giữ giờ bấm", planWifiPunch([p("a", "in", "08:00"), p("m", "out", "17:00")], t("16:50")).action === "none");
+  check("có cả ra wifi lẫn ra bấm tay → vẫn chỉ dời dòng wifi", planWifiPunch([p("a", "in", "08:00"), p("w", "out", "12:00", "wifi"), p("m", "out", "17:00")], t("17:30")).action === "move_out");
+  check("MAC hợp lệ", MAC_PATTERN.test("1c:4d:89:ab:cd:ef") && !MAC_PATTERN.test("1C:4D:89:AB:CD:EF") && !MAC_PATTERN.test("1c:4d:89:ab:cd"));
+}
 
 console.log(`\n===== ${pass} đạt / ${fail} hỏng =====`);
 if (bad.length) bad.forEach((f) => console.log(" -", f));

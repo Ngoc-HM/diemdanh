@@ -1,0 +1,5 @@
+# Máy quét wifi văn phòng (scripts/wifi-scan.sh): chỉ cần ping, ip và psql.
+FROM alpine:3.20
+RUN apk add --no-cache postgresql16-client iputils-ping iproute2-minimal
+COPY scripts/wifi-scan.sh /wifi-scan.sh
+CMD ["sh", "/wifi-scan.sh"]

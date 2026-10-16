@@ -67,6 +67,36 @@ Vị trí bắt buộc nằm trong bán kính của một `WorkLocation` đang b
 từ chối. Trường hợp sai vị trí hoặc quên bấm giờ thì admin bổ sung tay ở trang chi
 tiết nhân viên (các dòng nhập tay được đánh dấu `isManual`).
 
+Cột `source` của `AttendancePunch` ghi nguồn: `gps` (nhân viên bấm), `manual`
+(admin nhập), `wifi` (tự động, xem dưới).
+
+### Chấm công tự động qua wifi văn phòng
+
+Vị trí GPS do trình duyệt gửi lên nên không chống được giả mạo; thứ máy chủ tự
+thấy được là máy nào đang nối mạng văn phòng. Nhân viên đăng ký máy của mình ở
+trang Cài đặt (nút "Đăng ký máy này", phải đang nối wifi văn phòng: app lấy IP
+của họ rồi tra MAC trong kết quả quét, không ai phải gõ MAC; tối đa 3 máy một
+người). Từ đó:
+
+- **Giờ vào:** lần đầu máy quét thấy máy trong ngày → tự ghi, không cần bấm.
+- **Giờ ra:** nhân viên vẫn bấm ra ca; nếu sau đó máy quét còn thấy máy thì giờ
+  ra lấy theo lần cuối thấy (một dòng `out` nguồn `wifi`, được ghi đè — không
+  thêm dòng mỗi phút). `pairPunches` vẫn lấy lần ra muộn nhất của mọi nguồn.
+- Bấm tay vẫn dùng song song cho người chưa đăng ký máy hoặc quên điện thoại.
+
+Thành phần: service `scanner` (`Dockerfile.scanner`, `scripts/wifi-scan.sh`,
+profile `wifi` trong compose, `network_mode: host`) mỗi phút ping dải
+`SCAN_SUBNET` rồi ghi đè bảng `WifiPresence` — **một dòng mỗi MAC**, chỉ lần
+thấy gần nhất, dòng quá 30 ngày bị xoá. Trong app, `lib/wifi-scheduler.ts`
+mỗi phút gọi `applyWifiPresence` (`lib/wifi-attendance.ts`) đối chiếu với
+`EmployeeDevice`; phần quyết định ghi gì là `planWifiPunch` trong
+`lib/wifi-rules.ts`. Admin bật / tắt, xem máy quét chạy lần cuối lúc nào, xoá
+máy của nhân viên và bấm "Đối chiếu ngay" ở trang Bảo mật.
+
+Giới hạn: điện thoại đời mới dùng MAC riêng cho từng wifi, đổi cài đặt hoặc
+"quên mạng" là MAC đổi → nhân viên đăng ký lại. Máy quét chỉ thấy thiết bị
+trong cùng mạng LAN với server; router bật cách ly máy khách thì không dùng được.
+
 ### Nhật ký chấm công (trang Bảo mật)
 
 Mọi lần bấm Vào / Ra ca, **kể cả lần bị từ chối**, ghi một dòng `PunchAttempt`

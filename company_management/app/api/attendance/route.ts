@@ -59,7 +59,7 @@ export async function GET(req: Request) {
     const [rows, rules, holidays, lunchBreak, pending, weeklyOffDays, reviews] = await Promise.all([
       query<AttendanceWithPunch>(
         `SELECT a."id" AS "attendanceId", a."date", a."note",
-                p."id", p."type", p."at", p."distance", p."isManual"
+                p."id", p."type", p."at", p."distance", p."isManual", p."source"
            FROM "Attendance" a
            LEFT JOIN "AttendancePunch" p ON p."attendanceId" = a."id"
           WHERE a."userId" = $1 AND a."date" BETWEEN $2 AND $3
@@ -96,6 +96,7 @@ export async function GET(req: Request) {
           at: row.at,
           distance: row.distance ?? null,
           isManual: row.isManual ?? false,
+          source: row.source ?? "gps",
         } as AttendancePunchRow);
       }
       byDate.set(row.date, entry);
@@ -149,6 +150,7 @@ export async function GET(req: Request) {
           at: punch.at.toISOString(),
           distance: punch.distance,
           isManual: punch.isManual,
+          source: punch.source,
         })),
       };
     });
