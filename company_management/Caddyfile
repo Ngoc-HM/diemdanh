@@ -1,7 +1,7 @@
 # Reverse proxy HTTPS phía trước app (bật bằng COMPOSE_PROFILES=proxy trong .env).
 #
 # Hai lối vào, cùng một app:
-#  - APP_DOMAIN (vd nv.jupiter-ai.pro): tên miền trỏ về IP nội bộ của server
+#  - APP_DOMAIN (vd company.jupiter-ai.pro): tên miền trỏ về IP nội bộ của server
 #    (bản ghi DNS only, không proxy). Chứng chỉ Let's Encrypt xin qua DNS-01 của
 #    Cloudflare (CLOUDFLARE_API_TOKEN, quyền Zone · DNS · Edit) nên không phải
 #    mở cổng ra Internet; ngoài mạng công ty tra ra IP nội bộ cũng không vào

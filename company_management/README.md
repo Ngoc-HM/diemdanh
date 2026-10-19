@@ -676,7 +676,7 @@ cham-cong.congty.vn {
 
 **Cách đang chạy ở prod** (`docker compose` profile `proxy`, `Caddyfile`,
 `Dockerfile.caddy`): nhân viên vào bằng **tên miền nội bộ** `APP_DOMAIN`
-(`nv.jupiter-ai.pro`), bản ghi A trên Cloudflare trỏ về IP LAN `192.168.1.28`,
+(`company.jupiter-ai.pro`), bản ghi A trên Cloudflare trỏ về IP LAN `192.168.1.28`,
 chế độ **DNS only** (mây xám, không proxy). Caddy build kèm module
 `caddy-dns/cloudflare`, xin chứng chỉ Let's Encrypt qua **DNS-01** bằng
 `CLOUDFLARE_API_TOKEN` (quyền Zone · DNS · Edit cho đúng zone), nên server không
