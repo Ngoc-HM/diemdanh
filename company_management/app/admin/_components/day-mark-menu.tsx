@@ -8,7 +8,7 @@ import {
   useState,
 } from "react";
 import { createPortal } from "react-dom";
-import { AlarmClockOff } from "lucide-react";
+import { AlarmClockOff, Check } from "lucide-react";
 
 export type MarkChoice =
   | { kind: "session"; sessionId: string }
@@ -33,6 +33,7 @@ export default function DayMarkMenu({
   onPick,
   onClose,
   onAddCheckout,
+  review,
 }: {
   anchor: HTMLElement;
   sessions: { id: string; code: string; name: string }[];
@@ -41,6 +42,12 @@ export default function DayMarkMenu({
   onClose: () => void;
   /// Có thì hiện mục "Bổ sung giờ ra" ở đầu menu (ngày quên checkout).
   onAddCheckout?: () => void;
+  /// Ngày làm thiếu giờ: cho admin chốt tính đủ công hay không tính ngay tại
+  /// ô. `decision` là quyết định hiện tại, bấm lại mục đang chọn để bỏ.
+  review?: {
+    decision: "count" | "exclude" | null;
+    onPick: (decision: "count" | "exclude" | null) => void;
+  };
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const [position, setPosition] = useState<{
@@ -125,6 +132,35 @@ export default function DayMarkMenu({
             />
             Bổ sung giờ ra
           </button>
+        </div>
+      )}
+      {review && (
+        <div className="border-b border-slate-200">
+          {(
+            [
+              ["count", "Tính đủ công"],
+              ["exclude", "Không tính công"],
+            ] as const
+          ).map(([decision, label]) => (
+            <button
+              key={decision}
+              type="button"
+              role="menuitemradio"
+              aria-checked={review.decision === decision}
+              disabled={saving}
+              onClick={() =>
+                review.onPick(review.decision === decision ? null : decision)
+              }
+              className={`${item} font-medium ${
+                decision === "count" ? "text-emerald-700 hover:bg-emerald-50" : "text-rose-700 hover:bg-rose-50"
+              }`}
+            >
+              <span className="w-7 shrink-0" aria-hidden="true">
+                {review.decision === decision && <Check size={16} />}
+              </span>
+              {label}
+            </button>
+          ))}
         </div>
       )}
       {sessions.map((session) => (

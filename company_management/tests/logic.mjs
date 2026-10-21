@@ -231,6 +231,8 @@ check("đủ công là ngày công", day([{ type: "in", at: at("2026-09-01", "08
 check("đi muộn vẫn là ngày công", late.countsAsWorkDay === true);
 check("thiếu giờ vẫn tính đủ công khi admin chưa xem", short.workdayValue === 1 && short.countsAsWorkDay === true, `(${short.workdayValue})`);
 check("thiếu giờ được đánh dấu chờ xem lại", short.needsReview === true);
+check("thiếu giờ chưa chốt: ô có dấu !", dayCellLabel(short).endsWith("!"), `(${dayCellLabel(short)})`);
+check("admin đã chốt thì bỏ dấu !", !dayCellLabel({ ...short, reviewDecision: "exclude" }).endsWith("!") && !dayCellLabel({ ...short, reviewDecision: "count" }).endsWith("!"));
 check("vắng không phải ngày công", day([]).countsAsWorkDay === false);
 check("nghỉ N không phải ngày công", day([], { leaveCode: "N" }).countsAsWorkDay === false);
 check("phát hiện bấm giờ ngoài bán kính",

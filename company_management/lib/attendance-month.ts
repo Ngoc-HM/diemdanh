@@ -52,6 +52,8 @@ export type MonthDayCell = {
   workdayValue: number;
   /// Thiếu giờ, admin chưa xem lại.
   needsReview: boolean;
+  /// Quyết định của admin cho ngày thiếu giờ (null = chưa quyết).
+  reviewDecision: "count" | "exclude" | null;
   /// Phiếu OT đã duyệt của ngày này.
   overtime: { code: string; minutes: number } | null;
   /// Ngày chưa tới (hoặc hôm nay chưa xong) được tạm tính đủ theo lịch.
@@ -227,6 +229,7 @@ export async function computeMonthAttendance(
         outsideRadius: evaluation.outsideRadius,
         workdayValue,
         needsReview: evaluation.needsReview,
+        reviewDecision: evaluation.reviewDecision,
         overtime: ot ? { code: ot.code, minutes: ot.minutes } : null,
         projected,
       };

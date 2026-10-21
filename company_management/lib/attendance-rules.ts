@@ -410,6 +410,8 @@ export function dayCellLabel(evaluation: DayEvaluation): string {
     case "late":
       return code ? `${code}*` : "*";
     case "insufficient":
+      // Admin đã chốt (tính / không tính) thì bỏ dấu "!": hết cảnh báo.
+      if (evaluation.reviewDecision) return code || "OK";
       return code ? `${code}!` : "!";
     case "open":
       return "…";

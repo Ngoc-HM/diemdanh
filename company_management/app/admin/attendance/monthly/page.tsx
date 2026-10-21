@@ -44,6 +44,7 @@ type DayCell = {
   workdayValue: number;
   /// Thiếu giờ, admin chưa xem lại.
   needsReview: boolean;
+  reviewDecision: "count" | "exclude" | null;
 };
 
 type Row = {
@@ -140,6 +141,28 @@ export default function MonthlyAttendancePage() {
     }
   }
 
+  /// Ngày thiếu giờ: chốt tính đủ công / không tính ngay tại ô, không phải mở
+  /// trang chi tiết nhân viên.
+  async function reviewDay(userId: string, date: string, decision: "count" | "exclude" | null) {
+    setSaving(true);
+    setError(null);
+    try {
+      const response = await fetch("/api/admin/attendance/day-review", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId, date, decision }),
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || "Không lưu được");
+      setEditing(null);
+      await load(month);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Không lưu được");
+    } finally {
+      setSaving(false);
+    }
+  }
+
   const totals = data?.summary.reduce(
     (acc, row) => ({
       workdays: acc.workdays + row.workdays,
@@ -204,8 +227,8 @@ export default function MonthlyAttendancePage() {
           <AlarmClockOff size={16} aria-hidden="true" />
           <span>
             <span className="font-semibold">{totals.review}</span> ngày làm
-            thiếu giờ chờ xem lại (ô có dấu !). Chưa quyết định thì vẫn tính đủ
-            công; mở chi tiết nhân viên để chọn không tính.
+            thiếu giờ chờ xem lại (ô có dấu !). Bấm vào ô để chọn tính đủ công
+            hay không tính; chưa chọn thì vẫn tính đủ công.
           </span>
         </div>
       )}
@@ -429,6 +452,15 @@ export default function MonthlyAttendancePage() {
                                 markDay(row.user.id, date, choice)
                               }
                               onClose={() => setEditing(null)}
+                              review={
+                                cell && (cell.needsReview || cell.reviewDecision)
+                                  ? {
+                                      decision: cell.reviewDecision,
+                                      onPick: (decision) =>
+                                        reviewDay(row.user.id, date, decision),
+                                    }
+                                  : undefined
+                              }
                               onAddCheckout={
                                 status === "missed_out"
                                   ? () => {
