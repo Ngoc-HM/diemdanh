@@ -30,6 +30,21 @@ import CheckoutDialog, {
   type CheckoutTarget,
 } from "../../_components/checkout-dialog";
 
+/// Ký hiệu trong ô ngày, hiện ngay dưới chú giải màu.
+const SYMBOL_HELP: [string, string][] = [
+  ["S C CN", "ca đã xếp"],
+  ["*", "đi muộn"],
+  ["!", "thiếu giờ, bấm ô để chốt"],
+  ["+T", "có OT đã duyệt (T, T1, T2)"],
+  ["?", "quên checkout"],
+  ["…", "đang trong ca"],
+  ["V", "vắng"],
+  ["NL", "làm ngoài lịch"],
+  ["N", "nghỉ"],
+  ["O", "ốm"],
+  ["L", "nghỉ lễ"],
+];
+
 type DayCell = {
   status: DayStatus;
   label: string;
@@ -314,6 +329,17 @@ export default function MonthlyAttendancePage() {
           <span className="h-3.5 w-3.5 rounded-sm bg-amber-100" />
           <span className="text-slate-600">Chờ duyệt đổi ca</span>
         </span>
+      </div>
+
+      <div className="mb-4 flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-600">
+        {SYMBOL_HELP.map(([symbol, meaning]) => (
+          <span key={symbol} className="flex items-center gap-1">
+            <span className="rounded bg-slate-100 px-1.5 py-0.5 font-mono font-semibold text-slate-900">
+              {symbol}
+            </span>
+            {meaning}
+          </span>
+        ))}
       </div>
 
       {loading ? (
