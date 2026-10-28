@@ -23,6 +23,7 @@ import {
   Clock,
   Users,
   Wifi,
+  FileSpreadsheet,
 } from "lucide-react";
 import {
   CompanyLogo,
@@ -39,6 +40,7 @@ type NavItem = {
 
 const navItems: NavItem[] = [
   { href: "/admin/attendance", label: "Điểm danh", icon: <CalendarCheck size={18} /> },
+  { href: "/admin/final-timesheet", label: "Bảng công chốt", icon: <FileSpreadsheet size={18} /> },
   { href: "/admin/missed-checkout", label: "Quên checkout", icon: <AlarmClockOff size={18} /> },
   { href: "/admin/work-reports", label: "Báo cáo công việc", icon: <NotebookText size={18} /> },
   { href: "/admin/schedules", label: "Lịch làm việc", icon: <CalendarDays size={18} /> },

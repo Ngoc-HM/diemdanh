@@ -7,7 +7,6 @@ import {
   ChevronLeft,
   ChevronRight,
   ClipboardCheck,
-  Download,
 } from "lucide-react";
 import PageHeader from "../../_components/page-header";
 import {
@@ -204,21 +203,6 @@ export default function MonthlyAttendancePage() {
       <PageHeader
         title="Bảng chấm công"
         description="Đối chiếu lịch làm việc đã đăng ký với giờ chấm công thực tế."
-        actions={
-          <Button
-            variant="secondary"
-            onClick={() =>
-              window.open(
-                `/api/admin/attendance/monthly?month=${month}&export=xlsx`,
-                "_blank",
-              )
-            }
-            disabled={!data || data.summary.length === 0}
-          >
-            <Download size={16} aria-hidden="true" />
-            Xuất Excel
-          </Button>
-        }
       />
 
       {totals && totals.missedCheckout > 0 && (

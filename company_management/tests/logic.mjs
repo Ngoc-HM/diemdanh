@@ -22,6 +22,7 @@ import {
   DEFAULT_OVERTIME_CONFIG,
 } from "../lib/overtime.ts";
 import { planWifiPunch, MAC_PATTERN } from "../lib/wifi-rules.ts";
+import { finalDayLabel, validateFinalDay } from "../lib/final-rules.ts";
 import {
   annualLeaveForMonth,
   computePayroll,
@@ -590,6 +591,14 @@ console.log("\n== chấm công tự động qua wifi ==");
   check("có cả ra wifi lẫn ra bấm tay → vẫn chỉ dời dòng wifi", planWifiPunch([p("a", "in", "08:00"), p("w", "out", "12:00", "wifi"), p("m", "out", "17:00")], t("17:30")).action === "move_out");
   check("MAC hợp lệ", MAC_PATTERN.test("1c:4d:89:ab:cd:ef") && !MAC_PATTERN.test("1C:4D:89:AB:CD:EF") && !MAC_PATTERN.test("1c:4d:89:ab:cd"));
 }
+
+console.log("\n== bảng công chốt ==");
+check("ô chấm tay: x / x/2 / mã ca", finalDayLabel({ status: "work", codes: [], workday: 1 }) === "x" && finalDayLabel({ status: "work", codes: [], workday: 0.5 }) === "x/2" && finalDayLabel({ status: "work", codes: ["CN"], workday: 1 }) === "CN");
+check("ô chấm tay: N O V L trống", ["leave", "sick", "absent", "holiday", "off"].map((status) => finalDayLabel({ status, codes: [], workday: 0 })).join(",") === "N,O,V,L,");
+check("hợp lệ: 1 công", validateFinalDay({ status: "work", codes: [], workday: 1 }) === null);
+check("sai: công lẻ 0,3", validateFinalDay({ status: "work", codes: [], workday: 0.3 }) !== null);
+check("sai: có công mà 0", validateFinalDay({ status: "work", codes: [], workday: 0 }) !== null);
+check("sai: trạng thái lạ", validateFinalDay({ status: "abc", codes: [], workday: 0 }) !== null);
 
 console.log(`\n===== ${pass} đạt / ${fail} hỏng =====`);
 if (bad.length) bad.forEach((f) => console.log(" -", f));

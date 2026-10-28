@@ -27,6 +27,7 @@ import {
 } from "@/lib/schedule";
 import { getApprovedOvertime } from "@/lib/overtime-service";
 import { OVERTIME_CODES } from "@/lib/overtime";
+import { FINAL_TO_DAY_STATUS, finalDayLabel, getFinalDays } from "@/lib/final-timesheet";
 
 export type MonthEmployee = {
   id: string;
@@ -58,6 +59,11 @@ export type MonthDayCell = {
   overtime: { code: string; minutes: number } | null;
   /// Ngày chưa tới (hoặc hôm nay chưa xong) được tạm tính đủ theo lịch.
   projected: boolean;
+  /// Chỉ có khi tính theo bảng công chốt (`applyFinal`): ô này admin đã chấm tay.
+  finalEdited?: boolean;
+  /// Ô máy chấm của ngày này khi admin đã chấm tay (để đối chiếu); null = ô
+  /// chưa sửa, chính nó là ô máy.
+  machine?: Omit<MonthDayCell, "machine"> | null;
 };
 
 export type MonthSummaryRow = {
@@ -87,9 +93,13 @@ export type MonthSummaryRow = {
 /// `projectRemaining`: tạm tính các ngày từ hôm nay đến hết tháng là đi làm
 /// đủ theo lịch (ngày đã đăng ký nghỉ thì không). Bảng lương dùng khi chốt
 /// lương trước cuối tháng.
+///
+/// `applyFinal`: tính theo bảng công chốt — ô admin đã chấm tay đè lên ô máy
+/// chấm (quyết định cuối cùng). File Excel và bảng lương dùng chế độ này; lưới
+/// "Bảng chấm công" (tham khảo) thì không.
 export async function computeMonthAttendance(
   month: string,
-  options: { userIds?: string[]; projectRemaining?: boolean } = {}
+  options: { userIds?: string[]; projectRemaining?: boolean; applyFinal?: boolean } = {}
 ) {
   const today = dateKeyVN();
   const { startDate, endDate, daysInMonth } = getMonthRange(month);
@@ -122,12 +132,13 @@ export async function computeMonthAttendance(
     ? allUsers.filter((user) => options.userIds!.includes(user.id))
     : allUsers;
   const userIds = users.map((user) => user.id);
-  const [schedules, marks, pendingRequests, reviews, overtime] = await Promise.all([
+  const [schedules, marks, pendingRequests, reviews, overtime, finals] = await Promise.all([
     resolveMonthSchedules(users, month, rules),
     getDayMarks(userIds, startDate, endDate),
     getPendingShiftRequestDates(userIds, startDate, endDate),
     getDayReviews(userIds, startDate, endDate),
     getApprovedOvertime(userIds, month),
+    options.applyFinal ? getFinalDays(userIds, startDate, endDate) : Promise.resolve(null),
   ]);
   const ruleById = new Map(rules.map((rule) => [rule.id, rule]));
   const fullDayMinutes = fullDayMinutesOf(rules);
@@ -202,27 +213,32 @@ export async function computeMonthAttendance(
         scheduledValue > evaluation.workdayValue;
       const workdayValue = projected ? scheduledValue : evaluation.workdayValue;
 
+      const final = finals?.get(`${user.id}|${date}`) ?? null;
+
       // Ngày trống vẫn phải có ô nếu đang chờ duyệt đổi ca, để lưới tô vàng được.
       if (
         evaluation.status === "off" &&
         punches.length === 0 &&
         !mark &&
         !pendingRequest &&
-        !ot
+        !ot &&
+        !final
       ) {
         continue;
       }
 
       const baseLabel = dayCellLabel(evaluation);
       if (ot) overtimeMinutes[ot.code] = (overtimeMinutes[ot.code] ?? 0) + ot.minutes;
+      const withOvertime = (label: string, value: number) =>
+        ot ? (value > 0 ? `${label}+${ot.code}` : ot.code) : label;
 
-      days[date] = {
+      const machineCell: MonthDayCell = {
         status: evaluation.status,
         adminEdited: mark?.isAdminEdit ?? false,
         pendingRequest,
         // Ngày có OT: thêm ký hiệu OT; ngày chỉ có OT (không có công) thì
         // chỉ hiện ký hiệu OT.
-        label: ot ? (workdayValue > 0 ? `${baseLabel}+${ot.code}` : ot.code) : baseLabel,
+        label: withOvertime(baseLabel, workdayValue),
         codes: evaluation.codes,
         workedHours: minutesToHours(evaluation.workedMinutes),
         lateMinutes: evaluation.lateMinutes,
@@ -234,22 +250,44 @@ export async function computeMonthAttendance(
         projected,
       };
 
+      // Ô admin đã chấm tay ở bảng công chốt: lấy theo admin, bỏ mọi cảnh báo
+      // của máy (muộn, thiếu giờ, tạm tính).
+      const cell: MonthDayCell = final
+        ? {
+            ...machineCell,
+            status: FINAL_TO_DAY_STATUS[final.status],
+            label: withOvertime(finalDayLabel(final), final.workday),
+            codes: final.status === "work" ? final.codes : [],
+            lateMinutes: 0,
+            workdayValue: final.workday,
+            needsReview: false,
+            reviewDecision: null,
+            projected: false,
+          }
+        : machineCell;
+      if (options.applyFinal) {
+        cell.finalEdited = Boolean(final);
+        // Chỉ ô đã sửa mới cần giữ bản của máy; ô chưa sửa chính là ô máy.
+        cell.machine = final ? machineCell : null;
+      }
+      days[date] = cell;
+
       totalMinutes += evaluation.workedMinutes;
       if (punches.length > 0) attendanceDays++;
-      if (evaluation.needsReview) reviewDays++;
-      if (projected) projectedDays++;
-      workdays += workdayValue;
+      if (cell.needsReview) reviewDays++;
+      if (cell.projected) projectedDays++;
+      workdays += cell.workdayValue;
       // Cột đếm ca chỉ tính ca thực sự đi làm, không tính ngày lễ được hưởng công.
-      if (evaluation.countsAsWorkDay && evaluation.status !== "holiday") {
-        for (const code of evaluation.codes) {
+      if (cell.workdayValue > 0 && cell.status !== "holiday") {
+        for (const code of cell.codes) {
           sessionCounts[code] = (sessionCounts[code] || 0) + 1;
         }
       }
-      if (evaluation.status === "late") lateDays++;
-      if (evaluation.status === "absent" && !projected) absentDays++;
-      if (evaluation.status === "leave") leaveDays++;
-      if (evaluation.status === "sick") sickDays++;
-      if (evaluation.status === "missed_out") missedCheckoutDays++;
+      if (cell.status === "late") lateDays++;
+      if (cell.status === "absent" && !cell.projected) absentDays++;
+      if (cell.status === "leave") leaveDays++;
+      if (cell.status === "sick") sickDays++;
+      if (cell.status === "missed_out") missedCheckoutDays++;
     }
 
     return {

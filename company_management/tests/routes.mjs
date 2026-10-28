@@ -57,6 +57,7 @@ const ADMIN_PAGES = [
   ["/admin/email", "Email (SMTP)"],
   ["/admin/security", "Bảo mật"],
   ["/admin/devices", "Thiết bị chấm công"],
+  ["/admin/final-timesheet", "Bảng công chốt"],
   ["/admin/access-violations", "Truy cập lạ"],
 ];
 

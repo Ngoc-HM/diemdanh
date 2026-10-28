@@ -20,7 +20,13 @@ export async function GET(req: Request) {
 
     if (!isValidMonth(month)) badRequest("Tháng không hợp lệ");
 
-    const result = await computeMonthAttendance(month);
+    // File Excel luôn theo bảng công chốt: ô admin chấm tay đè ô máy chấm, tháng
+    // chưa hết thì hôm nay tới cuối tháng tạm tính đủ công theo lịch. Lưới
+    // trên trang (tham khảo) thì giữ nguyên theo máy.
+    const result = await computeMonthAttendance(
+      month,
+      wantsExcel ? { applyFinal: true, projectRemaining: month >= monthKeyVN() } : {}
+    );
 
     if (wantsExcel) {
       // Tên công ty chỉ cần khi xuất file, nên tra ở đây.

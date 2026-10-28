@@ -1922,6 +1922,45 @@ async function main() {
     check("danh sách trống sau khi xoá", r.json.devices?.length === 0);
     await client.query(`DELETE FROM "WifiPresence" WHERE "mac" = $1`, [WIFI_MAC]);
 
+    console.log("\n== bảng công chốt ==");
+    {
+      const month = TODAY_VN.slice(0, 7);
+      const day = `${month}-01`;
+      const finalRow = async () => {
+        const res = await call(admin, "GET", `/api/admin/attendance/final?month=${month}`);
+        return { res, row: res.json.rows?.find((x) => x.user.id === employeeId) };
+      };
+      let { res, row } = await finalRow();
+      check("đọc bảng công chốt", res.status === 200 && Boolean(row), `(${res.status})`);
+      const before = row?.workdays ?? 0;
+      const machineBefore = row?.days?.[day]?.label ?? "";
+
+      r = await call(admin, "PUT", "/api/admin/attendance/final", { userId: employeeId, date: day, value: { status: "work", codes: [], workday: 0.3 } });
+      check("số công lẻ không phải bội 0,5 bị từ chối", r.status === 400, `(${r.status})`);
+      r = await call(emp, "PUT", "/api/admin/attendance/final", { userId: employeeId, date: day, value: { status: "work", codes: [], workday: 1 } });
+      check("nhân viên không chấm được bảng chốt", r.status === 401 || r.status === 403, `(${r.status})`);
+
+      // Ô 01 chuyển sang V rồi sang x: ô theo admin, số công đổi theo.
+      r = await call(admin, "PUT", "/api/admin/attendance/final", { userId: employeeId, date: day, value: { status: "absent", codes: [], workday: 0 } });
+      check("admin chấm V", r.status === 200, `(${r.status} ${r.json.error ?? ""})`);
+      ({ row } = await finalRow());
+      check("ô V theo admin, đánh dấu đã sửa", row?.days?.[day]?.label === "V" && row?.days?.[day]?.edited === true, JSON.stringify(row?.days?.[day]));
+      const afterAbsent = row?.workdays ?? 0;
+
+      r = await call(admin, "PUT", "/api/admin/attendance/final", { userId: employeeId, date: day, value: { status: "work", codes: [], workday: 1 } });
+      ({ row } = await finalRow());
+      check("admin chấm x: ô ghi x, thêm đúng 1 công", row?.days?.[day]?.label === "x" && Math.abs((row?.workdays ?? 0) - afterAbsent - 1) < 1e-9, `(${afterAbsent} → ${row?.workdays} ${row?.days?.[day]?.label})`);
+      check("vẫn giữ ký hiệu máy để đối chiếu", typeof row?.days?.[day]?.machineLabel === "string");
+
+      r = await call(admin, "GET", `/api/admin/attendance/monthly?month=${month}`);
+      const ref = r.json.summary?.find((x) => x.user.id === employeeId)?.days?.[day];
+      check("bảng chấm công tham khảo không bị đổi theo", !ref || ref.label !== "x" || machineBefore === "x", JSON.stringify(ref?.label));
+
+      r = await call(admin, "PUT", "/api/admin/attendance/final", { userId: employeeId, date: day, value: null });
+      ({ row } = await finalRow());
+      check("bỏ chấm tay: ô quay về theo máy", !row?.days?.[day]?.edited && (row?.days?.[day]?.label ?? "") === machineBefore && Math.abs((row?.workdays ?? 0) - before) < 1e-9, `(${row?.days?.[day]?.label} / ${machineBefore})`);
+    }
+
     console.log("\n== xoá ==");
     r = await call(admin, "DELETE", `/api/holidays/${holidayId}`);
     check("xoá ngày lễ", r.status === 200);
@@ -1950,6 +1989,7 @@ async function main() {
     console.log("\n== dọn dẹp ==");
     await client.query(`DELETE FROM "WifiPresence" WHERE "mac" = '02:00:00:5e:00:01'`);
     await client.query(`DELETE FROM "Settings" WHERE "key" = 'wifi_attendance'`);
+    if (employeeId) await client.query(`DELETE FROM "FinalTimesheetDay" WHERE "userId" = $1`, [employeeId]);
     if (employeeId) {
       // FK cascade cũng xoá theo, nhưng dọn tường minh để không phụ thuộc vào đó.
       await client.query(`DELETE FROM "ShiftChangeRequest" WHERE "userId" = $1`, [employeeId]);

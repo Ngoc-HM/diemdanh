@@ -150,6 +150,18 @@ docker compose -p company_management exec -T db psql -U postgres -d company_mana
 
 (có hiệu lực sau tối đa 5 giây).
 
+### Bảng công chốt (quyết định cuối cùng)
+
+Trang `/admin/final-timesheet`. Mỗi ô ghi đúng ký hiệu sẽ ra file Excel. Ô admin
+không đụng tới thì lấy theo máy chấm (vẫn là số chính thức); ô admin chấm tay
+(x, x/2, mã ca, N, O, V, L, để trống) thì lấy theo admin, tô tím, rê chuột xem
+máy chấm gì. "Theo máy" để bỏ sửa. Lưu ở bảng `FinalTimesheetDay` (chỉ ô đã sửa).
+
+File Excel và bảng lương tính theo bảng này (`computeMonthAttendance` với
+`applyFinal`); lưới "Bảng chấm công" chỉ để tham khảo. Tháng chưa hết thì từ hôm
+nay tới cuối tháng tạm tính đủ công theo lịch, admin sửa sau. Ngày N admin chấm
+tay cũng được tính vào phép năm.
+
 ### Bảng chấm công gửi kế toán
 
 `/admin/attendance/monthly` → nút **Xuất Excel** tải file `.xlsx` của tháng đang

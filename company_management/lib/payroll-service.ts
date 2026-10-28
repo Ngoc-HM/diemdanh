@@ -116,7 +116,11 @@ export type PayrollSheet = {
 export async function computeMonthPayroll(month: string): Promise<PayrollSheet> {
   const today = dateKeyVN();
   const projected = month >= monthKeyVN();
-  const attendance = await computeMonthAttendance(month, { projectRemaining: projected });
+  // Bảng lương tính theo bảng công chốt (ô admin chấm tay là quyết định cuối).
+  const attendance = await computeMonthAttendance(month, {
+    projectRemaining: projected,
+    applyFinal: true,
+  });
   const userIds = attendance.summary.map((row) => row.user.id);
   const { endDate, startDate } = getMonthRange(month);
 
@@ -147,9 +151,26 @@ export async function computeMonthPayroll(month: string): Promise<PayrollSheet> 
   const startByUser = new Map(
     users.map((user) => [user.id, user.startDate ? dateKeyVN(user.startDate) : null])
   );
+  // Ngày nghỉ N tính phép năm: theo DayMark, nhưng ô bảng công chốt đè lên
+  // (admin chấm N thì tính, chấm khác N thì bỏ).
+  const finalRows = await query<{ userId: string; date: string; status: string }>(
+    `SELECT "userId", "date", "status" FROM "FinalTimesheetDay"
+      WHERE "userId" = ANY($1::text[]) AND "date" <= $2`,
+    [userIds, endDate]
+  );
+  const finalByKey = new Map(finalRows.map((row) => [`${row.userId}|${row.date}`, row.status]));
+  const leaveSet = new Set(
+    leaveRows
+      .map((row) => `${row.userId}|${row.date}`)
+      .filter((key) => !finalByKey.has(key) || finalByKey.get(key) === "leave")
+  );
+  for (const row of finalRows) {
+    if (row.status === "leave") leaveSet.add(`${row.userId}|${row.date}`);
+  }
   const leaveByUser = new Map<string, string[]>();
-  for (const row of leaveRows) {
-    leaveByUser.set(row.userId, [...(leaveByUser.get(row.userId) ?? []), row.date]);
+  for (const key of [...leaveSet].sort((a, b) => a.split("|")[1].localeCompare(b.split("|")[1]))) {
+    const [userId, date] = key.split("|");
+    leaveByUser.set(userId, [...(leaveByUser.get(userId) ?? []), date]);
   }
   const overtimeViews = await buildOvertimeViews(overtimeRows);
 
