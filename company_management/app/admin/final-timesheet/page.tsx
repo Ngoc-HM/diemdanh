@@ -65,7 +65,6 @@ function CellMenu({
   anchor,
   sessions,
   cell,
-  fullTime,
   saving,
   onPick,
   onClose,
@@ -73,8 +72,6 @@ function CellMenu({
   anchor: HTMLElement;
   sessions: Sheet["sessions"];
   cell: Cell | undefined;
-  /// Toàn thời gian chấm x / x/2; thực tập, bán thời gian chấm mã ca (giống file Excel).
-  fullTime: boolean;
   saving: boolean;
   onPick: (value: FinalDay | null) => void;
   onClose: () => void;
@@ -144,19 +141,12 @@ function CellMenu({
       }}
       className="z-50 overflow-hidden rounded-lg border border-slate-200 bg-white py-1 shadow-md"
     >
-      {fullTime ? (
-        <>
-          {option("x", "x", "1 công", { status: "work", codes: [], workday: 1 })}
-          {option("x2", "x/2", "0,5 công", { status: "work", codes: [], workday: 0.5 })}
-        </>
-      ) : (
-        sessions.map((session) =>
-          option(session.id, session.code, session.name, {
-            status: "work",
-            codes: [session.code],
-            workday: session.workdayValue,
-          })
-        )
+      {sessions.map((session) =>
+        option(session.id, session.code, session.name, {
+          status: "work",
+          codes: [session.code],
+          workday: session.workdayValue,
+        })
       )}
       <div className="my-1 border-t border-slate-200" />
       {option("N", "N", "Nghỉ", { status: "leave", codes: [], workday: 0 })}
@@ -357,7 +347,6 @@ export default function FinalTimesheetPage() {
                             anchor={editing.anchor}
                             sessions={data.sessions}
                             cell={cell}
-                            fullTime={row.user.employmentType === "full_time"}
                             saving={saving}
                             onPick={(value) => save(row.user.id, date, value)}
                             onClose={() => setEditing(null)}

@@ -5,7 +5,7 @@ export type FinalStatus = "work" | "leave" | "sick" | "absent" | "holiday" | "of
 
 export type FinalDay = {
   status: FinalStatus;
-  /// Mã ca ghi trên ô khi status = work; rỗng thì ghi x / x/2.
+  /// Mã ca ghi trên ô khi status = work; rỗng thì ghi CN (1 công) / S (nửa công).
   codes: string[];
   workday: number;
 };
@@ -22,11 +22,11 @@ export const FINAL_TO_DAY_STATUS: Record<FinalStatus, string> = {
   off: "off",
 };
 
-/// Ký hiệu ô (kiểu lưới, chưa đổi sang x cho full-time).
+/// Ký hiệu ô: mã ca S / C / CN.
 export function finalDayLabel(day: FinalDay): string {
   switch (day.status) {
     case "work":
-      return day.codes.join("+") || (day.workday >= 1 ? "x" : "x/2");
+      return day.codes.join("+") || (day.workday >= 1 ? "CN" : "S");
     case "leave":
       return "N";
     case "sick":

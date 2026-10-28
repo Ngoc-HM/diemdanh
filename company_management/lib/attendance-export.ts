@@ -1,7 +1,6 @@
 /// Dựng file Excel của bảng chấm công tháng, để admin gửi kế toán.
-/// Ký hiệu theo mẫu kế toán đang dùng: full-time ghi x (một công) / x/2 (nửa
-/// công), part-time và thực tập ghi mã ca đã làm (S / C / CN). Không có giờ
-/// vào/ra chi tiết.
+/// Ký hiệu thống nhất cho mọi loại nhân viên: mã ca đã làm (S / C / CN).
+/// Không có giờ vào/ra chi tiết.
 import writeXlsxFile from "write-excel-file/node";
 import type { DayStatus } from "@/lib/attendance-rules";
 import { formatMonthLabel, weekdayLabel } from "@/lib/datetime";
@@ -77,8 +76,7 @@ export function attendanceFileName(month: string): string {
 export const XLSX_CONTENT_TYPE =
   "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
 
-/// Ký hiệu một ô ngày cho kế toán. Ngày có công: full-time ghi x / x/2,
-/// người tự đăng ký ca ghi mã ca. Các trạng thái khác giữ ký hiệu của lưới
+/// Ký hiệu một ô ngày cho kế toán. Ngày có công ghi mã ca (S / C / CN). Các trạng thái khác giữ ký hiệu của lưới
 /// (N nghỉ, O ốm, V vắng, L lễ, ? quên checkout...).
 export type AccountingDay = {
   label: string;
@@ -89,7 +87,7 @@ export type AccountingDay = {
   overtime?: { code: string; minutes: number } | null;
 };
 
-export function accountingCellLabel(day: AccountingDay, employmentType: string): string {
+export function accountingCellLabel(day: AccountingDay): string {
   const otCode = day.overtime?.code;
   let base: string;
   if (day.status === "holiday") {
@@ -99,8 +97,8 @@ export function accountingCellLabel(day: AccountingDay, employmentType: string):
     if (otCode) return otCode;
     base = day.label;
   } else {
-    const mark = day.workdayValue >= 1 ? "x" : "x/2";
-    base = employmentType === "full_time" ? mark : day.codes.join("+") || mark;
+    // Mọi loại nhân viên đều ghi mã ca (S / C / CN), không dùng x, x/2.
+    base = day.codes.join("+") || (day.workdayValue >= 1 ? "CN" : "S");
   }
   return otCode ? `${base}+${otCode}` : base;
 }
@@ -298,7 +296,7 @@ export function attendanceSheet(input: AttendanceSheetInput) {
       ...dates.map((date) => {
         const day = row.days[date];
         const status = day ? STATUS_STYLE[day.status as DayStatus] : undefined;
-        const label = day ? accountingCellLabel(day, row.user.employmentType) : "";
+        const label = day ? accountingCellLabel(day) : "";
         return {
           value: label,
           type: String,

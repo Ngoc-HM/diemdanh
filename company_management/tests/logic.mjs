@@ -423,19 +423,19 @@ check("tháng trước ngày vào làm thì chưa có phép", lv("2026-09-15", "
 
 console.log("\n== ký hiệu bảng chấm công cho kế toán ==");
 const cell = (status, codes, value, label = "") => ({ status, codes, workdayValue: value, label });
-check("full-time một công = x", accountingCellLabel(cell("passed", ["CN"], 1), "full_time") === "x");
-check("full-time nửa công = x/2", accountingCellLabel(cell("passed", ["S"], 0.5), "full_time") === "x/2");
-check("part-time ghi mã ca", accountingCellLabel(cell("passed", ["S"], 0.5), "part_time") === "S");
-check("part-time hai ca ghi S+C", accountingCellLabel(cell("passed", ["S", "C"], 1), "intern") === "S+C");
-check("ngày lễ = L", accountingCellLabel(cell("holiday", ["CN"], 1, "L"), "full_time") === "L");
-check("vắng giữ ký hiệu V", accountingCellLabel(cell("absent", ["CN"], 0, "V"), "full_time") === "V");
-check("thiếu giờ admin không tính giữ ký hiệu lưới", accountingCellLabel(cell("insufficient", ["CN"], 0, "CN!"), "full_time") === "CN!");
-check("full-time có OT ngày thường = x+T",
-  accountingCellLabel({ ...cell("passed", ["CN"], 1), overtime: { code: "T", minutes: 120 } }, "full_time") === "x+T");
+check("full-time một công = CN", accountingCellLabel(cell("passed", ["CN"], 1)) === "CN");
+check("full-time nửa công = S", accountingCellLabel(cell("passed", ["S"], 0.5)) === "S");
+check("part-time ghi mã ca", accountingCellLabel(cell("passed", ["S"], 0.5)) === "S");
+check("part-time hai ca ghi S+C", accountingCellLabel(cell("passed", ["S", "C"], 1)) === "S+C");
+check("ngày lễ = L", accountingCellLabel(cell("holiday", ["CN"], 1, "L")) === "L");
+check("vắng giữ ký hiệu V", accountingCellLabel(cell("absent", ["CN"], 0, "V")) === "V");
+check("thiếu giờ admin không tính giữ ký hiệu lưới", accountingCellLabel(cell("insufficient", ["CN"], 0, "CN!")) === "CN!");
+check("full-time có OT ngày thường = CN+T",
+  accountingCellLabel({ ...cell("passed", ["CN"], 1), overtime: { code: "T", minutes: 120 } }) === "CN+T");
 check("full-time chỉ làm OT thứ 7 = T1",
-  accountingCellLabel({ ...cell("unscheduled", [], 0, "NL"), overtime: { code: "T1", minutes: 450 } }, "full_time") === "T1");
+  accountingCellLabel({ ...cell("unscheduled", [], 0, "NL"), overtime: { code: "T1", minutes: 450 } }) === "T1");
 check("ngày lễ có OT = L+T2",
-  accountingCellLabel({ ...cell("holiday", ["CN"], 1, "L"), overtime: { code: "T2", minutes: 60 } }, "full_time") === "L+T2");
+  accountingCellLabel({ ...cell("holiday", ["CN"], 1, "L"), overtime: { code: "T2", minutes: 60 } }) === "L+T2");
 
 console.log("\n== giờ nghỉ trưa ==");
 const lunch = parseLunchBreak("12:00-13:30");
@@ -593,7 +593,7 @@ console.log("\n== chấm công tự động qua wifi ==");
 }
 
 console.log("\n== bảng công chốt ==");
-check("ô chấm tay: x / x/2 / mã ca", finalDayLabel({ status: "work", codes: [], workday: 1 }) === "x" && finalDayLabel({ status: "work", codes: [], workday: 0.5 }) === "x/2" && finalDayLabel({ status: "work", codes: ["CN"], workday: 1 }) === "CN");
+check("ô chấm tay: mã ca", finalDayLabel({ status: "work", codes: [], workday: 1 }) === "CN" && finalDayLabel({ status: "work", codes: [], workday: 0.5 }) === "S" && finalDayLabel({ status: "work", codes: ["CN"], workday: 1 }) === "CN");
 check("ô chấm tay: N O V L trống", ["leave", "sick", "absent", "holiday", "off"].map((status) => finalDayLabel({ status, codes: [], workday: 0 })).join(",") === "N,O,V,L,");
 check("hợp lệ: 1 công", validateFinalDay({ status: "work", codes: [], workday: 1 }) === null);
 check("sai: công lẻ 0,3", validateFinalDay({ status: "work", codes: [], workday: 0.3 }) !== null);

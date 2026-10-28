@@ -7,11 +7,11 @@ import { FinalDay, validateFinalDay } from "@/lib/final-timesheet";
 
 /// Ký hiệu công của ô, KHÔNG kèm OT: trên trang bảng công chốt OT có bảng
 /// riêng bên dưới, nên "x+T" chỉ còn "x" và ngày chỉ có OT thì để trống.
-function accountingOf(cell: Omit<MonthDayCell, "machine"> | null | undefined, employmentType: string) {
+function accountingOf(cell: Omit<MonthDayCell, "machine"> | null | undefined) {
   if (!cell) return "";
   const ot = cell.overtime?.code;
   const label = !ot ? cell.label : cell.label === ot ? "" : cell.label.replace(new RegExp(`\\+${ot}$`), "");
-  return accountingCellLabel({ ...cell, label, overtime: null }, employmentType);
+  return accountingCellLabel({ ...cell, label, overtime: null });
 }
 
 /// Bảng công chốt của tháng: mỗi ô ghi đúng ký hiệu sẽ ra file Excel (theo
@@ -58,8 +58,8 @@ export async function GET(req: Request) {
           Object.entries(row.days).map(([date, cell]) => [
             date,
             {
-              label: accountingOf(cell, row.user.employmentType),
-              machineLabel: accountingOf(cell.machine ?? cell, row.user.employmentType),
+              label: accountingOf(cell),
+              machineLabel: accountingOf(cell.machine ?? cell),
               machineDetail: (cell.machine ?? cell).label,
               edited: Boolean(cell.finalEdited),
               projected: cell.projected,

@@ -154,7 +154,7 @@ docker compose -p company_management exec -T db psql -U postgres -d company_mana
 
 Trang `/admin/final-timesheet`. Mỗi ô ghi đúng ký hiệu sẽ ra file Excel. Ô admin
 không đụng tới thì lấy theo máy chấm (vẫn là số chính thức); ô admin chấm tay
-(x, x/2, mã ca, N, O, V, L, để trống) thì lấy theo admin, tô tím, rê chuột xem
+(mã ca S / C / CN, N, O, V, L, để trống) thì lấy theo admin, tô tím, rê chuột xem
 máy chấm gì. "Theo máy" để bỏ sửa. Lưu ở bảng `FinalTimesheetDay` (chỉ ô đã sửa).
 
 File Excel và bảng lương tính theo bảng này (`computeMonthAttendance` với
@@ -170,8 +170,8 @@ xem: mỗi nhân viên một dòng (mã NV, họ tên, email, loại hợp đồ
 Nghỉ (N) · Ốm (O) · Tổng giờ** và số ngày đã làm theo từng mã ca.
 
 Ký hiệu ô theo mẫu kế toán (`accountingCellLabel` trong `lib/attendance-export.ts`):
-full-time ghi **`x`** (một công) / **`x/2`** (nửa công); part-time và thực tập ghi
-mã ca đã làm (`S`, `C`, `CN`, ghép `S+C`). Ngày không có công giữ ký hiệu lưới:
+mọi loại nhân viên đều ghi mã ca đã làm (`S`, `C`, `CN`, ghép `S+C`), không dùng
+`x` / `x/2`. Ngày không có công giữ ký hiệu lưới:
 `L` nghỉ lễ, `N` nghỉ, `O` ốm, `V` vắng, `?` quên checkout, `CN!` thiếu giờ mà
 admin chọn không tính.
 

@@ -1940,21 +1940,21 @@ async function main() {
       r = await call(emp, "PUT", "/api/admin/attendance/final", { userId: employeeId, date: day, value: { status: "work", codes: [], workday: 1 } });
       check("nhân viên không chấm được bảng chốt", r.status === 401 || r.status === 403, `(${r.status})`);
 
-      // Ô 01 chuyển sang V rồi sang x: ô theo admin, số công đổi theo.
+      // Ô 01 chuyển sang V rồi sang CN: ô theo admin, số công đổi theo.
       r = await call(admin, "PUT", "/api/admin/attendance/final", { userId: employeeId, date: day, value: { status: "absent", codes: [], workday: 0 } });
       check("admin chấm V", r.status === 200, `(${r.status} ${r.json.error ?? ""})`);
       ({ row } = await finalRow());
       check("ô V theo admin, đánh dấu đã sửa", row?.days?.[day]?.label === "V" && row?.days?.[day]?.edited === true, JSON.stringify(row?.days?.[day]));
       const afterAbsent = row?.workdays ?? 0;
 
-      r = await call(admin, "PUT", "/api/admin/attendance/final", { userId: employeeId, date: day, value: { status: "work", codes: [], workday: 1 } });
+      r = await call(admin, "PUT", "/api/admin/attendance/final", { userId: employeeId, date: day, value: { status: "work", codes: ["CN"], workday: 1 } });
       ({ row } = await finalRow());
-      check("admin chấm x: ô ghi x, thêm đúng 1 công", row?.days?.[day]?.label === "x" && Math.abs((row?.workdays ?? 0) - afterAbsent - 1) < 1e-9, `(${afterAbsent} → ${row?.workdays} ${row?.days?.[day]?.label})`);
+      check("admin chấm CN: ô ghi CN, thêm đúng 1 công", row?.days?.[day]?.label === "CN" && Math.abs((row?.workdays ?? 0) - afterAbsent - 1) < 1e-9, `(${afterAbsent} → ${row?.workdays} ${row?.days?.[day]?.label})`);
       check("vẫn giữ ký hiệu máy để đối chiếu", typeof row?.days?.[day]?.machineLabel === "string");
 
       r = await call(admin, "GET", `/api/admin/attendance/monthly?month=${month}`);
       const ref = r.json.summary?.find((x) => x.user.id === employeeId)?.days?.[day];
-      check("bảng chấm công tham khảo không bị đổi theo", !ref || ref.label !== "x" || machineBefore === "x", JSON.stringify(ref?.label));
+      check("bảng chấm công tham khảo không bị đổi theo", !ref || ref.label !== "CN" || machineBefore === "CN", JSON.stringify(ref?.label));
 
       r = await call(admin, "PUT", "/api/admin/attendance/final", { userId: employeeId, date: day, value: null });
       ({ row } = await finalRow());

@@ -438,7 +438,7 @@ function personalAttendanceSheet(sheet: PayrollSheet, row: PayrollRow) {
         { value: dmy(date), type: String, ...BORDER },
         { value: weekdayLabel(date), type: String, ...BORDER, align: "center" as const },
         {
-          value: accountingCellLabel(day, row.attendance.user.employmentType),
+          value: accountingCellLabel(day),
           type: String,
           ...BORDER,
           align: "center" as const,
