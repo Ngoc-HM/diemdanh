@@ -59,6 +59,8 @@ type DayCell = {
   /// Thiếu giờ, admin chưa xem lại.
   needsReview: boolean;
   reviewDecision: "count" | "exclude" | null;
+  /// Ô admin đã chấm ở Bảng công chốt: hiện theo bảng chốt.
+  finalEdited?: boolean;
 };
 
 type Row = {
@@ -128,7 +130,7 @@ export default function MonthlyAttendancePage() {
   }, [month, load]);
 
   /// Admin chấm lại một ô rồi tải lại bảng để mọi con số khớp với đánh dấu mới.
-  async function markDay(userId: string, date: string, choice: MarkChoice) {
+  async function markDay(userId: string, date: string, choice: MarkChoice, finalEdited = false) {
     setSaving(true);
     setError(null);
     try {
@@ -139,6 +141,15 @@ export default function MonthlyAttendancePage() {
             ? { userId, date, leaveCode: choice.code, sessionIds: null }
             : { userId, date, leaveCode: null, sessionIds: null };
 
+      // Ô đã chốt: sửa ở đây thì bỏ chốt để lưới và bảng chốt khớp nhau.
+      if (finalEdited) {
+        const cleared = await fetch("/api/admin/attendance/final", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ userId, date, value: null }),
+        });
+        if (!cleared.ok) throw new Error((await cleared.json()).error || "Không lưu được");
+      }
       const response = await fetch("/api/admin/attendance/day-mark", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
@@ -310,6 +321,10 @@ export default function MonthlyAttendancePage() {
           <span className="text-slate-600">Admin đã sửa</span>
         </span>
         <span className="flex items-center gap-1.5">
+          <span className="h-3.5 w-3.5 rounded-sm bg-violet-100 ring-1 ring-violet-300" />
+          <span className="text-slate-600">Đã chốt</span>
+        </span>
+        <span className="flex items-center gap-1.5">
           <span className="h-3.5 w-3.5 rounded-sm bg-amber-100" />
           <span className="text-slate-600">Chờ duyệt đổi ca</span>
         </span>
@@ -409,8 +424,10 @@ export default function MonthlyAttendancePage() {
                       const pending = cell?.pendingRequest ?? false;
                       // Admin đã sửa hoặc đang chờ duyệt đều tô vàng "cần để ý",
                       // đè lên màu trạng thái thường của ô.
-                      const cellClass =
-                        edited || pending
+                      const final = cell?.finalEdited ?? false;
+                      const cellClass = final
+                        ? "bg-violet-100 text-violet-900 font-semibold"
+                        : edited || pending
                           ? "bg-amber-100"
                           : DAY_STATUS_CELL[status];
                       return (
@@ -444,7 +461,7 @@ export default function MonthlyAttendancePage() {
                               (cell?.needsReview
                                 ? " · thiếu giờ, chờ xem lại"
                                 : "") +
-                              (edited ? " · admin đã sửa" : "") +
+                              (final ? " · đã chốt" : edited ? " · admin đã sửa" : "") +
                               (pending ? " · chờ duyệt đổi ca" : "")
                             }
                             className={`h-full w-full px-1 py-2 hover:ring-2 hover:ring-inset hover:ring-sky-500 ${
@@ -459,7 +476,7 @@ export default function MonthlyAttendancePage() {
                               sessions={data.sessions}
                               saving={saving}
                               onPick={(choice) =>
-                                markDay(row.user.id, date, choice)
+                                markDay(row.user.id, date, choice, cell?.finalEdited)
                               }
                               onClose={() => setEditing(null)}
                               review={

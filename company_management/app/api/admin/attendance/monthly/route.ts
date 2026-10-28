@@ -20,13 +20,13 @@ export async function GET(req: Request) {
 
     if (!isValidMonth(month)) badRequest("Tháng không hợp lệ");
 
-    // File Excel luôn theo bảng công chốt: ô admin chấm tay đè ô máy chấm, tháng
-    // chưa hết thì hôm nay tới cuối tháng tạm tính đủ công theo lịch. Lưới
-    // trên trang (tham khảo) thì giữ nguyên theo máy.
-    const result = await computeMonthAttendance(
-      month,
-      wantsExcel ? { applyFinal: true, projectRemaining: month >= monthKeyVN() } : {}
-    );
+    // Cả lưới lẫn file Excel đều theo bảng công chốt: ô admin chấm tay đè ô máy
+    // chấm. Riêng Excel, tháng chưa hết thì hôm nay tới cuối tháng tạm tính đủ
+    // công theo lịch; lưới thì không tạm tính.
+    const result = await computeMonthAttendance(month, {
+      applyFinal: true,
+      projectRemaining: wantsExcel && month >= monthKeyVN(),
+    });
 
     if (wantsExcel) {
       // Tên công ty chỉ cần khi xuất file, nên tra ở đây.
@@ -61,7 +61,13 @@ export async function GET(req: Request) {
       holidays: Object.fromEntries(result.holidays),
       statusLabels: DAY_STATUS_LABELS,
       standardWorkdays: result.standardWorkdays,
-      summary: result.summary,
+      // Bỏ bản máy chấm đi kèm ô đã chốt: lưới không dùng, đỡ nặng.
+      summary: result.summary.map((row) => ({
+        ...row,
+        days: Object.fromEntries(
+          Object.entries(row.days).map(([date, cell]) => [date, { ...cell, machine: undefined }])
+        ),
+      })),
     };
   }, "Monthly attendance error");
 }

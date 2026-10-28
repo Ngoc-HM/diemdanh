@@ -1954,7 +1954,7 @@ async function main() {
 
       r = await call(admin, "GET", `/api/admin/attendance/monthly?month=${month}`);
       const ref = r.json.summary?.find((x) => x.user.id === employeeId)?.days?.[day];
-      check("bảng chấm công tham khảo không bị đổi theo", !ref || ref.label !== "CN" || machineBefore === "CN", JSON.stringify(ref?.label));
+      check("bảng chấm công hiện theo ô đã chốt", ref?.label === "CN" && ref?.finalEdited === true && ref?.machine === undefined, JSON.stringify(ref));
 
       r = await call(admin, "PUT", "/api/admin/attendance/final", { userId: employeeId, date: day, value: null });
       ({ row } = await finalRow());
