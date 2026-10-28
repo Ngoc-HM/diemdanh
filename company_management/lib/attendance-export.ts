@@ -715,9 +715,15 @@ function employeeOvertimeSheet(input: AttendanceSheetInput) {
   };
 }
 
-/// Giờ vào sớm nhất / ra muộn nhất của một ngày; `adminEdited` = admin đã sửa
-/// giờ hoặc chấm tay ô đó.
-export type DayPunchTimes = { firstIn: string | null; lastOut: string | null; adminEdited: boolean };
+/// Giờ vào sớm nhất / ra muộn nhất của một ngày. `inByAdmin` / `outByAdmin`:
+/// giờ đó do admin điền (tô màu đúng ô); `adminEdited`: ngày admin có sửa.
+export type DayPunchTimes = {
+  firstIn: string | null;
+  lastOut: string | null;
+  inByAdmin?: boolean;
+  outByAdmin?: boolean;
+  adminEdited: boolean;
+};
 
 /// Bảng giờ vào / ra ngang theo ngày của một nhân viên: dòng Giờ vào, Giờ ra
 /// và Ghi chú ("Admin sửa" ở ngày admin đã sửa).
@@ -744,6 +750,10 @@ function employeePunchSheet(input: AttendanceSheetInput, times: Record<string, D
       { fontWeight: "bold", fontSize: 16, textColor: BRAND_DARK, align: "center", alignVertical: "center" },
       30
     ),
+    [
+      { value: "Ô tô vàng: giờ admin điền", type: String, columnSpan: bannerSpan, fontStyle: "italic", fontSize: 9, textColor: "#64748B", backgroundColor: undefined },
+      ...Array.from({ length: totalColumns - 1 }, () => null),
+    ],
     Array.from({ length: totalColumns }, () => null),
   ];
   const headerTop = [
@@ -768,7 +778,13 @@ function employeePunchSheet(input: AttendanceSheetInput, times: Record<string, D
     })),
   ];
   const base = { ...CELL_BORDER, fontSize: 10, alignVertical: "center" as const };
-  const line = (label: string, value: (day: DayPunchTimes | undefined) => string, first: boolean) => [
+  const ADMIN_FILL = "#FDE68A";
+  const line = (
+    label: string,
+    value: (day: DayPunchTimes | undefined) => string,
+    byAdmin: (day: DayPunchTimes | undefined) => boolean,
+    first: boolean
+  ) => [
     first
       ? { value: user?.employeeCode ?? "", type: String, rowSpan: 3, ...base, align: "center" as const }
       : null,
@@ -781,14 +797,15 @@ function employeePunchSheet(input: AttendanceSheetInput, times: Record<string, D
         type: String,
         ...base,
         align: "center" as const,
-        backgroundColor: day?.adminEdited ? "#FEF3C7" : undefined,
+        backgroundColor: byAdmin(day) ? ADMIN_FILL : undefined,
+        fontWeight: byAdmin(day) ? ("bold" as const) : undefined,
       };
     }),
   ];
   const body = [
-    line("Giờ vào", (day) => day?.firstIn ?? "", true),
-    line("Giờ ra", (day) => day?.lastOut ?? "", false),
-    line("Ghi chú", (day) => (day?.adminEdited ? "Admin sửa" : ""), false),
+    line("Giờ vào", (day) => day?.firstIn ?? "", (day) => Boolean(day?.firstIn && day.inByAdmin), true),
+    line("Giờ ra", (day) => day?.lastOut ?? "", (day) => Boolean(day?.lastOut && day.outByAdmin), false),
+    line("Ghi chú", (day) => (day?.adminEdited ? "Admin sửa" : ""), () => false, false),
   ];
 
   return {

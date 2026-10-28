@@ -129,8 +129,8 @@ export async function POST(req: Request) {
     await transaction(async (client) => {
       await client.query(
         `INSERT INTO "AttendancePunch"
-           ("attendanceId", "type", "at", "isManual", "withinRadius")
-         VALUES ($1, 'out', $2, true, true)`,
+           ("attendanceId", "type", "at", "isManual", "withinRadius", "source")
+         VALUES ($1, 'out', $2, true, true, 'manual')`,
         [attendanceId, vnDateTimeToUtc(date, time)],
       );
       await client.query(

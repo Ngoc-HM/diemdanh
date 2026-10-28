@@ -282,7 +282,7 @@ export async function GET(
 }
 
 /// Admin sửa hoặc bổ sung công một ngày. Ghi đè toàn bộ lần bấm giờ của ngày đó
-/// và đánh dấu `isManual` để phân biệt với dữ liệu GPS thật.
+/// và đánh dấu `isManual` cho giờ admin thêm / đổi (giờ giữ nguyên vẫn là của máy).
 export async function PUT(
   req: Request,
   { params }: { params: Promise<{ userId: string }> }
@@ -336,8 +336,14 @@ export async function PUT(
     }
 
     // Giờ cũ để email báo nhân viên thấy rõ trước / sau.
-    const previous = await query<{ type: string; at: Date; note: string | null }>(
-      `SELECT p."type", p."at", a."note"
+    const previous = await query<{
+      type: string;
+      at: Date;
+      note: string | null;
+      isManual: boolean | null;
+      source: string | null;
+    }>(
+      `SELECT p."type", p."at", a."note", p."isManual", p."source"
          FROM "Attendance" a
          LEFT JOIN "AttendancePunch" p ON p."attendanceId" = a."id"
         WHERE a."userId" = $1 AND a."date" = $2
@@ -348,6 +354,14 @@ export async function PUT(
       .filter((row) => row.type)
       .map((row) => ({ type: row.type, time: formatTimeVN(row.at) }));
     const previousNote = previous[0]?.note ?? null;
+    // Lần chấm giữ nguyên giờ máy ghi thì vẫn là của máy; chỉ giờ admin thêm
+    // hoặc đổi mới đánh dấu admin sửa (file Excel tô đúng ô đó).
+    const untouched = new Map(
+      previous
+        .filter((row) => row.type && !row.isManual)
+        .map((row) => [`${row.type}|${formatTimeVN(row.at)}`, row.source ?? "gps"])
+    );
+    const origin = sorted.map((punch) => untouched.get(`${punch.type}|${punch.time}`) ?? null);
 
     await transaction(async (client) => {
       const attendance = await client.query<{ id: string }>(
@@ -369,13 +383,14 @@ export async function PUT(
       if (sorted.length > 0) {
         await client.query(
           `INSERT INTO "AttendancePunch"
-             ("attendanceId", "type", "at", "isManual", "withinRadius")
-           SELECT $1, entry.type, entry.at, true, true
-             FROM unnest($2::text[], $3::timestamptz[]) AS entry(type, at)`,
+             ("attendanceId", "type", "at", "isManual", "withinRadius", "source")
+           SELECT $1, entry.type, entry.at, entry.source IS NULL, true, COALESCE(entry.source, 'manual')
+             FROM unnest($2::text[], $3::timestamptz[], $4::text[]) AS entry(type, at, source)`,
           [
             attendanceId,
             sorted.map((punch) => punch.type),
             sorted.map((punch) => vnDateTimeToUtc(date, punch.time)),
+            origin,
           ]
         );
       }

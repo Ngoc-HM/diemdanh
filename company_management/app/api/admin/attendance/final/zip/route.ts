@@ -46,8 +46,14 @@ export async function GET(req: Request) {
     for (const row of punchRows) {
       const byDate = times.get(row.userId) ?? {};
       const day = (byDate[row.date] ??= { firstIn: null, lastOut: null, adminEdited: false });
-      if (row.type === "in" && !day.firstIn) day.firstIn = formatTimeVN(row.at);
-      if (row.type === "out") day.lastOut = formatTimeVN(row.at);
+      if (row.type === "in" && !day.firstIn) {
+        day.firstIn = formatTimeVN(row.at);
+        day.inByAdmin = row.isManual;
+      }
+      if (row.type === "out") {
+        day.lastOut = formatTimeVN(row.at);
+        day.outByAdmin = row.isManual;
+      }
       if (row.isManual) day.adminEdited = true;
       times.set(row.userId, byDate);
     }
