@@ -73,7 +73,17 @@ export default function LoginPage() {
             <p className="mt-1 text-sm text-slate-600">Chấm công nội bộ</p>
           </div>
 
-          <form onSubmit={handleSubmit} className="space-y-4">
+          {/* name / id / method để trình quản lý mật khẩu của trình duyệt nhận
+              đúng đây là form đăng nhập: lưu, tự điền và hiểu là đã đăng nhập
+              xong khi trang chuyển đi (submit thật vẫn chặn, gửi bằng fetch). */}
+          <form
+            id="login-form"
+            name="login"
+            method="post"
+            action="/login"
+            onSubmit={handleSubmit}
+            className="space-y-4"
+          >
             {needCode ? (
               <>
                 <p className="text-sm text-slate-600">
@@ -86,6 +96,8 @@ export default function LoginPage() {
                 </p>
                 <Field label="Mã xác thực" required>
                   <Input
+                    id="otp"
+                    name="otp"
                     value={code}
                     onChange={(event) => setCode(event.target.value)}
                     inputMode="numeric"
@@ -101,6 +113,8 @@ export default function LoginPage() {
               <>
                 <Field label="Email hoặc tên đăng nhập" required>
                   <Input
+                    id="username"
+                    name="username"
                     value={identifier}
                     onChange={(event) => setIdentifier(event.target.value)}
                     placeholder="nhanvien@congty.vn"
@@ -110,6 +124,8 @@ export default function LoginPage() {
                 </Field>
                 <Field label="Mật khẩu" required>
                   <Input
+                    id="password"
+                    name="password"
                     type="password"
                     value={password}
                     onChange={(event) => setPassword(event.target.value)}
