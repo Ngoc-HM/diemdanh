@@ -59,6 +59,7 @@ export async function GET(req: Request) {
               edited: Boolean(cell.finalEdited),
               projected: cell.projected,
               workdayValue: cell.workdayValue,
+              overtime: cell.overtime,
             },
           ])
         ),

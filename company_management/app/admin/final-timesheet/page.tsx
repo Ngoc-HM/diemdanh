@@ -7,6 +7,7 @@ import PageHeader from "../_components/page-header";
 import { Button, Card, EmptyState, Message, TableSkeleton } from "@/app/_components/ui";
 import { addMonths, formatMonthLabel, monthKeyVN, weekdayLabel } from "@/lib/datetime";
 import { formatWorkdays } from "@/lib/attendance-rules";
+import { formatOvertimeHours } from "@/lib/overtime";
 import type { FinalDay } from "@/lib/final-rules";
 
 type Cell = {
@@ -16,6 +17,8 @@ type Cell = {
   edited: boolean;
   projected: boolean;
   workdayValue: number;
+  /// Phiếu OT đã duyệt của ngày (ở mục Duyệt OT).
+  overtime: { code: string; minutes: number } | null;
 };
 
 type Row = {
@@ -24,7 +27,15 @@ type Row = {
   leaveDays: number;
   sickDays: number;
   absentDays: number;
+  overtimeMinutes: Record<string, number>;
   days: Record<string, Cell>;
+};
+
+const OT_CODES = ["T", "T1", "T2"] as const;
+const OT_TONE: Record<string, string> = {
+  T: "bg-amber-50 text-amber-800",
+  T1: "bg-orange-100 text-orange-800",
+  T2: "bg-rose-100 text-rose-800",
 };
 
 type Sheet = {
@@ -350,6 +361,72 @@ export default function FinalTimesheetPage() {
             </tbody>
           </table>
         </Card>
+      )}
+
+      {!loading && data && data.rows.length > 0 && (
+        <>
+          <div className="mb-3 mt-8 flex flex-wrap items-center gap-x-5 gap-y-1">
+            <h2 className="text-lg font-semibold text-slate-900">Làm thêm giờ (OT)</h2>
+            {OT_CODES.map((code) => (
+              <span key={code} className="flex items-center gap-1.5 text-xs text-slate-600">
+                <span className={`rounded px-1.5 py-0.5 font-semibold ${OT_TONE[code]}`}>{code}</span>
+                {code === "T" ? "ngày thường" : code === "T1" ? "ngày nghỉ" : "ngày lễ"}
+              </span>
+            ))}
+            <span className="text-xs text-slate-500">Số giờ đã duyệt, sửa ở mục Duyệt OT</span>
+          </div>
+          <Card className="overflow-x-auto">
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="border-b border-slate-200 bg-slate-50">
+                  <th className="sticky left-0 z-10 min-w-[200px] bg-slate-50 px-3 py-2 text-left font-semibold text-slate-900">
+                    Nhân viên
+                  </th>
+                  {data.dates.map((date) => (
+                    <th key={date} className="min-w-[34px] px-1 py-2 text-center font-medium text-slate-500">
+                      <div>{date.slice(8, 10)}</div>
+                      <div className="text-[10px] font-normal text-slate-400">{weekdayLabel(date)}</div>
+                    </th>
+                  ))}
+                  {OT_CODES.map((code) => (
+                    <th key={code} className="px-2 py-2 text-center font-semibold text-slate-900">
+                      {code}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {data.rows.map((row) => (
+                  <tr key={row.user.id} className="border-b border-slate-100 last:border-0">
+                    <td className="sticky left-0 z-10 bg-white px-3 py-2">
+                      <div className="font-medium text-slate-900">{row.user.name}</div>
+                      <div className="text-[11px] text-slate-500">
+                        {[row.user.employeeCode, row.user.employmentLabel].filter(Boolean).join(" · ")}
+                      </div>
+                    </td>
+                    {data.dates.map((date) => {
+                      const ot = row.days[date]?.overtime;
+                      return (
+                        <td
+                          key={date}
+                          title={ot ? `${ot.code} · ${formatOvertimeHours(ot.minutes)} giờ` : undefined}
+                          className={`px-1 py-2 text-center font-medium ${ot ? OT_TONE[ot.code] ?? "" : ""}`}
+                        >
+                          {ot ? formatOvertimeHours(ot.minutes) : ""}
+                        </td>
+                      );
+                    })}
+                    {OT_CODES.map((code) => (
+                      <td key={code} className="px-2 py-2 text-center font-semibold text-slate-800">
+                        {row.overtimeMinutes[code] ? formatOvertimeHours(row.overtimeMinutes[code]) : "—"}
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </Card>
+        </>
       )}
     </>
   );
