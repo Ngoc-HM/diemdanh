@@ -229,14 +229,24 @@ export default function FinalTimesheetPage() {
       <PageHeader
         title="Bảng công chốt"
         actions={
-          <Button
-            variant="secondary"
-            onClick={() => window.open(`/api/admin/attendance/monthly?month=${month}&export=xlsx`, "_blank")}
-            disabled={!data || data.rows.length === 0}
-          >
-            <Download size={16} aria-hidden="true" />
-            Xuất Excel
-          </Button>
+          <div className="flex gap-2">
+            <Button
+              variant="secondary"
+              onClick={() => window.open(`/api/admin/attendance/monthly?month=${month}&export=xlsx`, "_blank")}
+              disabled={!data || data.rows.length === 0}
+            >
+              <Download size={16} aria-hidden="true" />
+              Toàn công ty
+            </Button>
+            <Button
+              variant="secondary"
+              onClick={() => window.open(`/api/admin/attendance/final/zip?month=${month}`, "_blank")}
+              disabled={!data || data.rows.length === 0}
+            >
+              <Download size={16} aria-hidden="true" />
+              Từng người
+            </Button>
+          </div>
         }
       />
 

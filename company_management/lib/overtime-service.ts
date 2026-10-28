@@ -233,3 +233,21 @@ export async function getApprovedOvertime(
   }
   return byDay;
 }
+
+/// Các phiếu OT đã duyệt trong tháng, từng phiếu riêng (không gộp theo ngày) —
+/// dùng cho sheet OT trong file chấm công của từng người.
+export async function listApprovedOvertimeTickets(
+  userIds: string[],
+  month: string
+): Promise<OvertimeView[]> {
+  if (userIds.length === 0) return [];
+  const { startDate, endDate } = getMonthRange(month);
+  const rows = await query<OvertimeRow>(
+    `${OVERTIME_SELECT}
+      WHERE o."status" = 'approved' AND o."userId" = ANY($1::text[])
+        AND o."date" BETWEEN $2 AND $3`,
+    [userIds, startDate, endDate]
+  );
+  const views = await buildOvertimeViews(rows);
+  return views.sort((a, b) => (a.date + a.plannedStart).localeCompare(b.date + b.plannedStart));
+}

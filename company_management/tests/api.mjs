@@ -1956,6 +1956,16 @@ async function main() {
       const ref = r.json.summary?.find((x) => x.user.id === employeeId)?.days?.[day];
       check("bảng chấm công hiện theo ô đã chốt", ref?.label === "CN" && ref?.finalEdited === true && ref?.machine === undefined, JSON.stringify(ref));
 
+      const zipRes = await fetch(BASE + `/api/admin/attendance/final/zip?month=${month}`, { headers: { Cookie: admin.header() } });
+      const zipBuffer = Buffer.from(await zipRes.arrayBuffer());
+      const { unzipSync } = await import("fflate");
+      let entries = {};
+      try { entries = unzipSync(new Uint8Array(zipBuffer)); } catch {}
+      const xlsxEntries = Object.keys(entries).filter((name) => name.endsWith(".xlsx"));
+      check("xuất zip từng người: mỗi người một file Excel", zipRes.status === 200 && (zipRes.headers.get("content-type") ?? "").includes("zip") && xlsxEntries.length > 0 && xlsxEntries.every((name) => Buffer.from(entries[name].subarray(0, 2)).toString() === "PK"), `(${zipRes.status} ${xlsxEntries.length} file)`);
+      r = await call(emp, "GET", `/api/admin/attendance/final/zip?month=${month}`);
+      check("nhân viên không tải được zip", r.status === 401 || r.status === 403, `(${r.status})`);
+
       r = await call(admin, "PUT", "/api/admin/attendance/final", { userId: employeeId, date: day, value: null });
       ({ row } = await finalRow());
       check("bỏ chấm tay: ô quay về theo máy", !row?.days?.[day]?.edited && (row?.days?.[day]?.label ?? "") === machineBefore && Math.abs((row?.workdays ?? 0) - before) < 1e-9, `(${row?.days?.[day]?.label} / ${machineBefore})`);

@@ -105,6 +105,7 @@ export function accountingCellLabel(day: AccountingDay): string {
 
 /// Ba cột giờ OT ở cuối bảng, theo thứ tự hệ số tăng dần.
 const OVERTIME_COLUMN_CODES = ["T", "T1", "T2"];
+const OVERTIME_DAY_NAMES: Record<string, string> = { T: "ngày thường", T1: "ngày nghỉ", T2: "ngày lễ" };
 
 /// Ngày công lẻ nửa ngày thì hiện 1 chữ số thập phân, chẵn thì số nguyên.
 const WORKDAY_FORMAT = "0.##";
@@ -603,4 +604,149 @@ export function employeeAttendanceSheet(input: EmployeeSheetInput) {
     showGridLines: false,
     columns: columns.map((column) => ({ width: column.width })),
   };
+}
+
+/// Một phiếu OT đã duyệt trong sheet OT của file từng người.
+export type EmployeeOvertimeTicket = {
+  date: string;
+  plannedStart: string;
+  plannedEnd: string;
+  code: string;
+  minutes: number;
+  place: string | null;
+  content: string;
+};
+
+/// Sheet OT của một nhân viên: mỗi phiếu đã duyệt một dòng, dòng cuối tổng giờ
+/// theo T / T1 / T2.
+export function employeeOvertimeSheet(input: {
+  month: string;
+  user: { name: string; employeeCode: string | null };
+  tickets: EmployeeOvertimeTicket[];
+}) {
+  const { month, user, tickets } = input;
+  const columns = [
+    { label: "Ngày", width: 11 },
+    { label: "Thứ", width: 6 },
+    { label: "Từ", width: 8 },
+    { label: "Đến", width: 8 },
+    { label: "Loại", width: 7 },
+    { label: "Số giờ", width: 8 },
+    { label: "Nơi", width: 22 },
+    { label: "Nội dung", width: 40 },
+  ];
+  const span = columns.length;
+  const line = (value: string, style: Record<string, unknown> = {}) => [
+    { value, type: String, columnSpan: span, ...style },
+    ...Array.from({ length: span - 1 }, () => null),
+  ];
+  const hours = (minutes: number) => Math.round((minutes / 60) * 100) / 100;
+  const cell = (value: string | number, extra: Record<string, unknown> = {}) => ({
+    value,
+    type: typeof value === "number" ? Number : String,
+    ...CELL_BORDER,
+    fontSize: 10,
+    alignVertical: "center" as const,
+    ...extra,
+  });
+
+  const header = [
+    line(`LÀM THÊM GIỜ (OT) ${formatMonthLabel(month).toUpperCase()}`, {
+      fontWeight: "bold",
+      fontSize: 15,
+      textColor: BRAND_DARK,
+      align: "center",
+      height: 26,
+    }),
+    line([user.name, user.employeeCode].filter(Boolean).join("   ·   "), { fontSize: 10 }),
+    columns.map((column) => ({ value: column.label, type: String, ...HEAD_CELL, height: 22 })),
+  ];
+  const body = tickets.map((ticket) => [
+    cell(`${ticket.date.slice(8, 10)}/${ticket.date.slice(5, 7)}/${ticket.date.slice(0, 4)}`, { align: "center" }),
+    cell(weekdayLabel(ticket.date), { align: "center" }),
+    cell(ticket.plannedStart, { align: "center" }),
+    cell(ticket.plannedEnd, { align: "center" }),
+    cell(ticket.code, { align: "center", fontWeight: "bold" }),
+    cell(hours(ticket.minutes), { format: "0.##", align: "center" }),
+    cell(ticket.place ?? "", { wrap: true }),
+    cell(ticket.content, { wrap: true }),
+  ]);
+  const footStyle = { ...CELL_BORDER, backgroundColor: "#E2E8F0", fontWeight: "bold" as const };
+  const totals = OVERTIME_COLUMN_CODES.map(
+    (code) => `${code}: ${hours(tickets.filter((t) => t.code === code).reduce((s, t) => s + t.minutes, 0))}h`
+  ).join("   ·   ");
+  const footer = [
+    { value: "TỔNG", type: String, columnSpan: 5, ...footStyle, align: "center" as const },
+    null,
+    null,
+    null,
+    null,
+    {
+      value: hours(tickets.reduce((s, t) => s + t.minutes, 0)),
+      type: Number,
+      format: "0.##",
+      ...footStyle,
+      align: "center" as const,
+    },
+    { value: totals, type: String, columnSpan: 2, ...footStyle },
+    null,
+  ];
+
+  return {
+    data: [...header, ...body, footer],
+    sheet: "OT",
+    stickyRowsCount: header.length,
+    showGridLines: false,
+    columns: columns.map((column) => ({ width: column.width })),
+  };
+}
+
+/// File của một nhân viên: hai bảng. Bảng chính mỗi ngày một dòng (ca, giờ
+/// vào / ra, công, OT), cuối bảng là phần tổng hợp giống các cột tổng của file
+/// toàn công ty; bảng OT liệt kê từng phiếu đã duyệt.
+export async function buildEmployeeBundleWorkbook(input: {
+  summary: AttendanceExportRow;
+  sessionCodes: string[];
+  detail: EmployeeSheetInput;
+  overtime: Parameters<typeof employeeOvertimeSheet>[0];
+}): Promise<Buffer> {
+  const { summary: row, sessionCodes } = input;
+  const main = employeeAttendanceSheet(input.detail);
+  const span = main.columns.length;
+  const hours = (minutes: number) => Math.round((minutes / 60) * 100) / 100;
+  const items: [string, number, string][] = [
+    ["Ngày công", row.workdays, WORKDAY_FORMAT],
+    ["Ngày công tháng", input.detail.standardWorkdays, "0"],
+    ["Đi muộn", row.lateDays, "0"],
+    ["Vắng", row.absentDays, "0"],
+    ["Nghỉ (N)", row.leaveDays, "0"],
+    ["Ốm (O)", row.sickDays, "0"],
+    ["Tổng giờ", Math.round(row.totalHours * 10) / 10, "0.0"],
+    ...OVERTIME_COLUMN_CODES.map(
+      (code) =>
+        [`OT ${OVERTIME_DAY_NAMES[code]} - ${code} (giờ)`, hours(row.overtimeMinutes[code] ?? 0), "0.##"] as [
+          string,
+          number,
+          string,
+        ]
+    ),
+    ...sessionCodes.map((code) => [`Số ca ${code}`, row.sessions[code] ?? 0, "0"] as [string, number, string]),
+  ];
+  const blank = Array.from({ length: span }, () => null);
+  const title = [
+    { value: "TỔNG HỢP", type: String, columnSpan: 4, ...HEAD_CELL, height: 22 },
+    ...Array.from({ length: span - 1 }, () => null),
+  ];
+  const lines = items.map(([label, value, format]) => [
+    { value: label, type: String, columnSpan: 3, ...CELL_BORDER, fontSize: 10, fontWeight: "bold" as const },
+    null,
+    null,
+    { value, type: Number, format, ...CELL_BORDER, fontSize: 10, align: "center" as const },
+    ...Array.from({ length: span - 4 }, () => null),
+  ]);
+
+  return await writeXlsxFile([
+    { ...main, sheet: "Chấm công", data: [...main.data, blank, title, ...lines] },
+    employeeOvertimeSheet(input.overtime),
+  ] as Parameters<typeof writeXlsxFile>[0]).toBuffer();
 }
