@@ -166,6 +166,7 @@ export async function GET(
           (Boolean(ot) && scheduled.length === 0),
         fullDayMinutes,
         reviewDecision: reviews.get(`${userId}|${date}`) ?? null,
+        approvedOvertime: Boolean(ot),
       });
 
       return {

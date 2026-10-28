@@ -223,7 +223,38 @@ export function evaluateDay(input: {
   /// ít hơn là 0,5. Mặc định 7 tiếng.
   fullDayMinutes?: number;
   reviewDecision?: ReviewDecision | null;
+  /// Ngày có phiếu OT admin đã duyệt: duyệt OT là xác nhận hôm đó có đi làm,
+  /// nên ngày có lịch mà máy ghi vắng / thiếu giờ / quên checkout vẫn tính đủ
+  /// công theo lịch.
+  approvedOvertime?: boolean;
 }): DayEvaluation {
+  const evaluation = evaluateDayByPunches(input);
+  return input.approvedOvertime ? acceptApprovedOvertime(evaluation, input.scheduled) : evaluation;
+}
+
+/// Trạng thái máy chấm bị phiếu OT đã duyệt xác nhận lại là đi làm đủ.
+const OVERRIDDEN_BY_OVERTIME: DayStatus[] = ["absent", "insufficient", "missed_out"];
+
+export function acceptApprovedOvertime(
+  evaluation: DayEvaluation,
+  scheduled: SessionRule[]
+): DayEvaluation {
+  if (scheduled.length === 0 || !OVERRIDDEN_BY_OVERTIME.includes(evaluation.status)) {
+    return evaluation;
+  }
+  const workdayValue = sumWorkdayValue(scheduled);
+  return {
+    ...evaluation,
+    status: "passed",
+    workdayValue,
+    countsAsWorkDay: workdayValue > 0,
+    needsReview: false,
+    missingMinutes: 0,
+    codes: scheduled.map((rule) => rule.code),
+  };
+}
+
+function evaluateDayByPunches(input: Parameters<typeof evaluateDay>[0]): DayEvaluation {
   const {
     scheduled,
     punches,

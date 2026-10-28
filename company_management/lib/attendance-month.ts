@@ -198,6 +198,7 @@ export async function computeMonthAttendance(
           (Boolean(ot) && scheduled.length === 0),
         fullDayMinutes,
         reviewDecision: reviews.get(`${user.id}|${date}`) ?? null,
+        approvedOvertime: Boolean(ot),
       });
 
       // Chốt lương trước cuối tháng: hôm nay và các ngày sau coi như đi làm

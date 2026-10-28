@@ -1,12 +1,10 @@
 import { NextResponse } from "next/server";
 import { zipSync } from "fflate";
-import { query, queryOne } from "@/lib/db";
+import { queryOne } from "@/lib/db";
 import { badRequest, handle, requireAdmin } from "@/lib/auth-guard";
-import { formatTimeVN, getMonthRange, isValidMonth, monthKeyVN } from "@/lib/datetime";
+import { isValidMonth, monthKeyVN } from "@/lib/datetime";
 import { computeMonthAttendance } from "@/lib/attendance-month";
-import { DAY_STATUS_LABELS, type DayStatus } from "@/lib/attendance-rules";
 import { buildEmployeeBundleWorkbook } from "@/lib/attendance-export";
-import { listApprovedOvertimeTickets } from "@/lib/overtime-service";
 
 /// Tên file trong zip: "Mã NV - Họ tên.xlsx", bỏ ký tự không hợp lệ trên Windows.
 function entryName(name: string, code: string | null, used: Set<string>) {
@@ -17,8 +15,8 @@ function entryName(name: string, code: string | null, used: Set<string>) {
   return file;
 }
 
-/// File zip chấm công từng người theo bảng công chốt: mỗi người một file Excel
-/// gồm bảng chính (giờ vào / ra từng ngày, tổng hợp ở cuối) và bảng OT.
+/// File zip chấm công từng người: mỗi người một file Excel giống hệt file toàn
+/// công ty nhưng chỉ có dòng của người đó, kèm bảng OT ngang theo ngày.
 export async function GET(req: Request) {
   return handle(async () => {
     await requireAdmin();
@@ -30,75 +28,23 @@ export async function GET(req: Request) {
       applyFinal: true,
       projectRemaining: month >= monthKeyVN(),
     });
-    const userIds = result.summary.map((row) => row.user.id);
-    const { startDate, endDate } = getMonthRange(month);
+    const companyName = await queryOne<{ value: string }>(
+      `SELECT "value" FROM "Settings" WHERE "key" = 'company_name'`
+    );
 
-    const [companyName, punchRows, tickets] = await Promise.all([
-      queryOne<{ value: string }>(`SELECT "value" FROM "Settings" WHERE "key" = 'company_name'`),
-      query<{ userId: string; date: string; note: string | null; type: string | null; at: Date | null }>(
-        `SELECT a."userId", a."date", a."note", p."type", p."at"
-           FROM "Attendance" a
-           LEFT JOIN "AttendancePunch" p ON p."attendanceId" = a."id"
-          WHERE a."userId" = ANY($1::text[]) AND a."date" BETWEEN $2 AND $3
-          ORDER BY p."at" ASC`,
-        [userIds, startDate, endDate]
-      ),
-      listApprovedOvertimeTickets(userIds, month),
-    ]);
-
-    // Giờ vào sớm nhất / ra muộn nhất và ghi chú của từng ngày.
-    const dayInfo = new Map<string, { firstIn: string | null; lastOut: string | null; note: string | null }>();
-    for (const row of punchRows) {
-      const key = `${row.userId}|${row.date}`;
-      const info = dayInfo.get(key) ?? { firstIn: null, lastOut: null, note: row.note };
-      if (row.at && row.type === "in" && !info.firstIn) info.firstIn = formatTimeVN(row.at);
-      if (row.at && row.type === "out") info.lastOut = formatTimeVN(row.at);
-      dayInfo.set(key, info);
-    }
-
-    const holidays = Object.fromEntries(result.holidays);
-    const company = companyName?.value ?? "";
     const files: Record<string, Uint8Array> = {};
     const used = new Set<string>();
-
     for (const row of result.summary) {
-      const userId = row.user.id;
-      const days = result.dates.map((date) => {
-        const cell = row.days[date];
-        const info = dayInfo.get(`${userId}|${date}`);
-        const status = cell ? (DAY_STATUS_LABELS[cell.status as DayStatus] ?? cell.status) : "";
-        return {
-          date,
-          holidayName: holidays[date] ?? null,
-          scheduledCodes: cell?.codes ?? [],
-          firstIn: info?.firstIn ?? null,
-          lastOut: info?.lastOut ?? null,
-          workedHours: cell?.workedHours ?? 0,
-          workdayValue: cell?.workdayValue ?? 0,
-          overtime: cell?.overtime ? { ...cell.overtime, place: null } : null,
-          statusLabel: cell?.finalEdited ? `${status} (đã chốt)` : cell?.projected ? "Tạm tính" : status,
-          note: info?.note ?? null,
-        };
-      });
-
       const file = await buildEmployeeBundleWorkbook({
-        summary: row,
+        month,
+        dates: result.dates,
         sessionCodes: result.rules.map((rule) => rule.code),
-        detail: {
-          month,
-          companyName: company,
-          user: row.user,
-          days,
-          workdays: row.workdays,
-          standardWorkdays: result.standardWorkdays,
-          weeklyOffDays: result.weeklyOffDays,
-          exportedOn: result.today,
-        },
-        overtime: {
-          month,
-          user: row.user,
-          tickets: tickets.filter((ticket) => ticket.user.id === userId),
-        },
+        rows: [row],
+        companyName: companyName?.value ?? "",
+        holidays: Object.fromEntries(result.holidays),
+        weeklyOffDays: result.weeklyOffDays,
+        standardWorkdays: result.standardWorkdays,
+        exportedOn: result.today,
       });
       files[entryName(row.user.name, row.user.employeeCode, used)] = new Uint8Array(file);
     }

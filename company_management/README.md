@@ -162,6 +162,13 @@ File Excel và bảng lương tính theo bảng này (`computeMonthAttendance` v
 nay tới cuối tháng tạm tính đủ công theo lịch, admin sửa sau. Ngày N admin chấm
 tay cũng được tính vào phép năm.
 
+Hai nút xuất: **Toàn công ty** (một file, mọi người) và **Từng người** (file zip,
+mỗi người một file Excel giống hệt file toàn công ty nhưng chỉ có dòng của người
+đó, kèm sheet OT ngang theo ngày).
+
+Ngày có lịch mà có phiếu OT admin đã duyệt thì tính đủ công theo lịch, không ghi
+vắng / thiếu giờ / quên checkout (duyệt OT là xác nhận hôm đó có đi làm).
+
 ### Bảng chấm công gửi kế toán
 
 `/admin/attendance/monthly` → nút **Xuất Excel** tải file `.xlsx` của tháng đang

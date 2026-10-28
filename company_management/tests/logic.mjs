@@ -210,6 +210,17 @@ check("không lịch, không chấm = off",
   evaluateDay({ scheduled: [], punches: [] }).status === "off");
 check("có lịch, chưa chấm công, ngày đã qua = vắng",
   evaluateDay({ scheduled: [ca], punches: [], isPast: true }).status === "absent");
+{
+  const otAbsent = evaluateDay({ scheduled: [ca], punches: [], isPast: true, approvedOvertime: true });
+  check("có phiếu OT đã duyệt: ngày có lịch không chấm vẫn đủ công", otAbsent.status === "passed" && otAbsent.workdayValue === 1 && !otAbsent.needsReview);
+  const otShort = evaluateDay({ scheduled: [ca], punches: [
+    { type: "in", at: at("2026-09-01", "08:00"), withinRadius: true },
+    { type: "out", at: at("2026-09-01", "09:00"), withinRadius: true },
+  ], isPast: true, approvedOvertime: true });
+  check("có phiếu OT đã duyệt: thiếu giờ thành đủ công", otShort.status === "passed" && otShort.missingMinutes === 0);
+  check("có phiếu OT nhưng không có lịch: không cộng công", evaluateDay({ scheduled: [], punches: [], isPast: true, isRestDay: true, approvedOvertime: true }).workdayValue === 0);
+  check("có phiếu OT ngày đã đăng ký nghỉ: vẫn là nghỉ", evaluateDay({ scheduled: [ca], punches: [], isPast: true, leaveCode: "N", approvedOvertime: true }).status === "leave");
+}
 const notYet = evaluateDay({ scheduled: [ca], punches: [], notYetDue: true });
 check("có lịch, chưa chấm công, hôm nay / ngày sau = chưa tới (không tính vắng)",
   notYet.status === "upcoming" && notYet.workdayValue === 0 && notYet.missingMinutes === 0, `(${notYet.status})`);
