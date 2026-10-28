@@ -5,13 +5,9 @@ import { computeMonthAttendance, MonthDayCell } from "@/lib/attendance-month";
 import { accountingCellLabel } from "@/lib/attendance-export";
 import { FinalDay, validateFinalDay } from "@/lib/final-timesheet";
 
-/// Ký hiệu công của ô, KHÔNG kèm OT: trên trang bảng công chốt OT có bảng
-/// riêng bên dưới, nên "x+T" chỉ còn "x" và ngày chỉ có OT thì để trống.
+/// Ký hiệu công của ô, không kèm OT (OT có bảng riêng bên dưới).
 function accountingOf(cell: Omit<MonthDayCell, "machine"> | null | undefined) {
-  if (!cell) return "";
-  const ot = cell.overtime?.code;
-  const label = !ot ? cell.label : cell.label === ot ? "" : cell.label.replace(new RegExp(`\\+${ot}$`), "");
-  return accountingCellLabel({ ...cell, label, overtime: null });
+  return cell ? accountingCellLabel(cell) : "";
 }
 
 /// Bảng công chốt của tháng: mỗi ô ghi đúng ký hiệu sẽ ra file Excel (theo

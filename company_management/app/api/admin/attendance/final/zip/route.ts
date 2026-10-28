@@ -1,10 +1,10 @@
 import { NextResponse } from "next/server";
 import { zipSync } from "fflate";
-import { queryOne } from "@/lib/db";
+import { query, queryOne } from "@/lib/db";
 import { badRequest, handle, requireAdmin } from "@/lib/auth-guard";
-import { isValidMonth, monthKeyVN } from "@/lib/datetime";
+import { formatTimeVN, getMonthRange, isValidMonth, monthKeyVN } from "@/lib/datetime";
 import { computeMonthAttendance } from "@/lib/attendance-month";
-import { buildEmployeeBundleWorkbook } from "@/lib/attendance-export";
+import { buildEmployeeBundleWorkbook, type DayPunchTimes } from "@/lib/attendance-export";
 
 /// Tên file trong zip: "Mã NV - Họ tên.xlsx", bỏ ký tự không hợp lệ trên Windows.
 function entryName(name: string, code: string | null, used: Set<string>) {
@@ -16,7 +16,7 @@ function entryName(name: string, code: string | null, used: Set<string>) {
 }
 
 /// File zip chấm công từng người: mỗi người một file Excel giống hệt file toàn
-/// công ty nhưng chỉ có dòng của người đó, kèm bảng OT ngang theo ngày.
+/// công ty nhưng chỉ có dòng của người đó, kèm bảng OT và bảng giờ vào / ra.
 export async function GET(req: Request) {
   return handle(async () => {
     await requireAdmin();
@@ -28,13 +28,39 @@ export async function GET(req: Request) {
       applyFinal: true,
       projectRemaining: month >= monthKeyVN(),
     });
-    const companyName = await queryOne<{ value: string }>(
-      `SELECT "value" FROM "Settings" WHERE "key" = 'company_name'`
-    );
+    const { startDate, endDate } = getMonthRange(month);
+    const [companyName, punchRows] = await Promise.all([
+      queryOne<{ value: string }>(`SELECT "value" FROM "Settings" WHERE "key" = 'company_name'`),
+      query<{ userId: string; date: string; type: string; at: Date; isManual: boolean }>(
+        `SELECT a."userId", a."date", p."type", p."at", p."isManual"
+           FROM "Attendance" a
+           JOIN "AttendancePunch" p ON p."attendanceId" = a."id"
+          WHERE a."userId" = ANY($1::text[]) AND a."date" BETWEEN $2 AND $3
+          ORDER BY p."at" ASC`,
+        [result.summary.map((row) => row.user.id), startDate, endDate]
+      ),
+    ]);
+
+    // Giờ vào sớm nhất / ra muộn nhất từng ngày; admin sửa giờ thì ghi chú.
+    const times = new Map<string, Record<string, DayPunchTimes>>();
+    for (const row of punchRows) {
+      const byDate = times.get(row.userId) ?? {};
+      const day = (byDate[row.date] ??= { firstIn: null, lastOut: null, adminEdited: false });
+      if (row.type === "in" && !day.firstIn) day.firstIn = formatTimeVN(row.at);
+      if (row.type === "out") day.lastOut = formatTimeVN(row.at);
+      if (row.isManual) day.adminEdited = true;
+      times.set(row.userId, byDate);
+    }
 
     const files: Record<string, Uint8Array> = {};
     const used = new Set<string>();
     for (const row of result.summary) {
+      // Ô admin chấm tay ở bảng công chốt cũng tính là admin sửa.
+      const userTimes = { ...(times.get(row.user.id) ?? {}) };
+      for (const [date, cell] of Object.entries(row.days)) {
+        if (!cell.finalEdited) continue;
+        userTimes[date] = { ...(userTimes[date] ?? { firstIn: null, lastOut: null }), adminEdited: true };
+      }
       const file = await buildEmployeeBundleWorkbook({
         month,
         dates: result.dates,
@@ -45,7 +71,7 @@ export async function GET(req: Request) {
         weeklyOffDays: result.weeklyOffDays,
         standardWorkdays: result.standardWorkdays,
         exportedOn: result.today,
-      });
+      }, userTimes);
       files[entryName(row.user.name, row.user.employeeCode, used)] = new Uint8Array(file);
     }
 

@@ -88,19 +88,18 @@ export type AccountingDay = {
 };
 
 export function accountingCellLabel(day: AccountingDay): string {
+  // OT tính riêng (cột OT / bảng OT), ô ngày không ghi ký hiệu OT: bỏ đuôi
+  // "+T" khỏi nhãn lưới, ngày chỉ có OT thì để trống.
   const otCode = day.overtime?.code;
-  let base: string;
-  if (day.status === "holiday") {
-    base = "L";
-  } else if (day.workdayValue <= 0) {
-    // Ngày chỉ có OT (vd full-time làm thứ 7): chỉ ghi ký hiệu OT.
-    if (otCode) return otCode;
-    base = day.label;
-  } else {
-    // Mọi loại nhân viên đều ghi mã ca (S / C / CN), không dùng x, x/2.
-    base = day.codes.join("+") || (day.workdayValue >= 1 ? "CN" : "S");
-  }
-  return otCode ? `${base}+${otCode}` : base;
+  const label = !otCode
+    ? day.label
+    : day.label === otCode
+      ? ""
+      : day.label.replace(new RegExp(`\\+${otCode}$`), "");
+  if (day.status === "holiday") return "L";
+  if (day.workdayValue <= 0) return label;
+  // Mọi loại nhân viên đều ghi mã ca (S / C / CN), không dùng x, x/2.
+  return day.codes.join("+") || (day.workdayValue >= 1 ? "CN" : "S");
 }
 
 /// Ba cột giờ OT ở cuối bảng, theo thứ tự hệ số tăng dần.
@@ -716,11 +715,105 @@ function employeeOvertimeSheet(input: AttendanceSheetInput) {
   };
 }
 
-/// File của một nhân viên: bảng chấm công giống hệt file toàn công ty nhưng
-/// chỉ có dòng của người đó, kèm bảng OT ngang theo ngày.
-export async function buildEmployeeBundleWorkbook(input: AttendanceSheetInput): Promise<Buffer> {
+/// Giờ vào sớm nhất / ra muộn nhất của một ngày; `adminEdited` = admin đã sửa
+/// giờ hoặc chấm tay ô đó.
+export type DayPunchTimes = { firstIn: string | null; lastOut: string | null; adminEdited: boolean };
+
+/// Bảng giờ vào / ra ngang theo ngày của một nhân viên: dòng Giờ vào, Giờ ra
+/// và Ghi chú ("Admin sửa" ở ngày admin đã sửa).
+function employeePunchSheet(input: AttendanceSheetInput, times: Record<string, DayPunchTimes>) {
+  const { month, dates, rows, companyName, holidays, weeklyOffDays } = input;
+  const user = rows[0]?.user;
+  const offDays = new Set(weeklyOffDays);
+  const isOffDay = (date: string) => offDays.has(new Date(`${date}T00:00:00Z`).getUTCDay());
+  const identity = [
+    { label: "Mã NV", width: 11 },
+    { label: "Họ và tên", width: 26 },
+    { label: "", width: 10 },
+  ];
+  const totalColumns = identity.length + dates.length;
+  const bannerSpan = Math.min(totalColumns, identity.length + 10);
+  const bannerRow = (value: string, style: Record<string, unknown>, height: number) => [
+    { value, type: String, columnSpan: bannerSpan, height, ...style },
+    ...Array.from({ length: totalColumns - 1 }, () => null),
+  ];
+  const title = [
+    bannerRow(companyName, { fontWeight: "bold", fontSize: 12, textColor: "#0F172A" }, 20),
+    bannerRow(
+      `GIỜ VÀO / RA ${formatMonthLabel(month).toUpperCase()}`,
+      { fontWeight: "bold", fontSize: 16, textColor: BRAND_DARK, align: "center", alignVertical: "center" },
+      30
+    ),
+    Array.from({ length: totalColumns }, () => null),
+  ];
+  const headerTop = [
+    ...identity.map((column) => ({ value: column.label, type: String, rowSpan: 2, height: 22, ...HEAD_CELL })),
+    ...dates.map((date) => ({
+      value: Number(date.slice(8, 10)),
+      type: Number,
+      ...HEAD_CELL,
+      backgroundColor: holidays[date] || isOffDay(date) ? BRAND_DARK : BRAND,
+    })),
+  ];
+  const headerBottom = [
+    ...identity.map(() => null),
+    ...dates.map((date) => ({
+      value: weekdayLabel(date),
+      type: String,
+      ...CELL_BORDER,
+      fontSize: 9,
+      align: "center" as const,
+      backgroundColor: holidays[date] ? HOLIDAY : isOffDay(date) ? WEEKEND : "#E0F2FE",
+      textColor: "#0C4A6E",
+    })),
+  ];
+  const base = { ...CELL_BORDER, fontSize: 10, alignVertical: "center" as const };
+  const line = (label: string, value: (day: DayPunchTimes | undefined) => string, first: boolean) => [
+    first
+      ? { value: user?.employeeCode ?? "", type: String, rowSpan: 3, ...base, align: "center" as const }
+      : null,
+    first ? { value: user?.name ?? "", type: String, rowSpan: 3, ...base, fontWeight: "bold" as const } : null,
+    { value: label, type: String, ...base, fontWeight: "bold" as const },
+    ...dates.map((date) => {
+      const day = times[date];
+      return {
+        value: value(day),
+        type: String,
+        ...base,
+        align: "center" as const,
+        backgroundColor: day?.adminEdited ? "#FEF3C7" : undefined,
+      };
+    }),
+  ];
+  const body = [
+    line("Giờ vào", (day) => day?.firstIn ?? "", true),
+    line("Giờ ra", (day) => day?.lastOut ?? "", false),
+    line("Ghi chú", (day) => (day?.adminEdited ? "Admin sửa" : ""), false),
+  ];
+
+  return {
+    data: [...title, headerTop, headerBottom, ...body],
+    sheet: "Giờ vào ra",
+    stickyRowsCount: title.length + 2,
+    stickyColumnsCount: 3,
+    showGridLines: false,
+    orientation: "landscape" as const,
+    columns: [
+      ...identity.map((column) => ({ width: column.width })),
+      ...dates.map(() => ({ width: 7 })),
+    ],
+  };
+}
+
+/// File của một nhân viên: sheet 1 bảng chấm công giống hệt file toàn công ty
+/// nhưng chỉ có dòng của người đó, sheet 2 bảng OT, sheet 3 giờ vào / ra.
+export async function buildEmployeeBundleWorkbook(
+  input: AttendanceSheetInput,
+  times: Record<string, DayPunchTimes>
+): Promise<Buffer> {
   return await writeXlsxFile([
     attendanceSheet(input),
     employeeOvertimeSheet(input),
+    employeePunchSheet(input, times),
   ] as Parameters<typeof writeXlsxFile>[0]).toBuffer();
 }
