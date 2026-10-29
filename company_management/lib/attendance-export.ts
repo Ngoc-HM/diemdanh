@@ -143,8 +143,12 @@ type AttendanceSheetInput = {
   exportedOn: string;
 };
 
+/// File toàn công ty: sheet bảng chấm công + sheet OT chi tiết theo ngày.
 export async function buildAttendanceWorkbook(input: AttendanceSheetInput): Promise<Buffer> {
-  return await writeXlsxFile([attendanceSheet(input)]).toBuffer();
+  return await writeXlsxFile([
+    attendanceSheet(input),
+    employeeOvertimeSheet(input),
+  ] as Parameters<typeof writeXlsxFile>[0]).toBuffer();
 }
 
 /// Sheet bảng chấm công cả công ty — dùng riêng hoặc gắn vào file bảng lương.
@@ -608,7 +612,7 @@ export function employeeAttendanceSheet(input: EmployeeSheetInput) {
 /// Màu ô OT theo loại ngày: T ngày thường, T1 ngày nghỉ, T2 ngày lễ.
 const OVERTIME_FILL: Record<string, string> = { T: "#FEF3C7", T1: "#FFEDD5", T2: "#FFE4E6" };
 
-/// Bảng OT ngang của một nhân viên: mỗi ngày một cột ghi số giờ OT đã duyệt,
+/// Bảng OT ngang (một hoặc nhiều nhân viên): mỗi ngày một cột ghi số giờ OT đã duyệt,
 /// cuối dòng là tổng giờ T / T1 / T2 — giống bảng OT trên trang bảng công chốt.
 function employeeOvertimeSheet(input: AttendanceSheetInput) {
   const { month, dates, rows, companyName, holidays, weeklyOffDays } = input;

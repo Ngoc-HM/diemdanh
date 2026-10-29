@@ -1310,6 +1310,11 @@ async function main() {
     );
     // File .xlsx là một file zip: hai byte đầu luôn là "PK".
     check("file .xlsx hợp lệ", xlsxBuffer.subarray(0, 2).toString() === "PK", `(${xlsxBuffer.length} byte)`);
+    {
+      const { unzipSync, strFromU8 } = await import("fflate");
+      const workbookXml = strFromU8(unzipSync(new Uint8Array(xlsxBuffer))["xl/workbook.xml"] ?? new Uint8Array());
+      check("file toàn công ty có sheet OT", /<sheet [^>]*name="OT"/.test(workbookXml), `(${workbookXml.match(/name="[^"]+"/g)})`);
+    }
     check(
       "đặt tên file theo tháng",
       (xlsx.headers.get("content-disposition") ?? "").includes("cham-cong-2026-09.xlsx"),
