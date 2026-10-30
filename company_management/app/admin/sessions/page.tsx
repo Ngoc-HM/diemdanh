@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Pencil, Plus, Trash2, Wand2 } from "lucide-react";
+import { Pencil, Plus, RefreshCw, Trash2, Wand2 } from "lucide-react";
 import PageHeader from "../_components/page-header";
 import {
   Badge,
@@ -54,6 +54,9 @@ const DEFAULT_LUNCH_FORM: LunchForm = {
 export default function SessionsPage() {
   const [sessions, setSessions] = useState<WorkSession[]>([]);
   const [loading, setLoading] = useState(true);
+  /// Tải danh sách lỗi (vd đúng lúc máy chủ khởi động lại): không coi là
+  /// "chưa có ca", để khỏi bấm tạo bộ mặc định nhầm.
+  const [loadFailed, setLoadFailed] = useState(false);
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<WorkSession | null>(null);
   const [form, setForm] = useState(EMPTY_FORM);
@@ -67,13 +70,14 @@ export default function SessionsPage() {
 
   async function load() {
     setLoading(true);
+    setLoadFailed(false);
     try {
       const [sessionRes, lunchRes] = await Promise.all([
         fetch("/api/admin/work-sessions"),
         fetch("/api/settings/lunch-break"),
       ]);
-      const data = await sessionRes.json();
-      if (!sessionRes.ok) throw new Error(data.error);
+      const data = await sessionRes.json().catch(() => ({}));
+      if (!sessionRes.ok) throw new Error(data.error || "Không tải được danh sách ca");
       setSessions(data.sessions);
 
       if (lunchRes.ok) {
@@ -85,6 +89,7 @@ export default function SessionsPage() {
         );
       }
     } catch (error) {
+      setLoadFailed(true);
       setMessage({
         type: "error",
         text: error instanceof Error ? error.message : "Không tải được danh sách",
@@ -138,6 +143,8 @@ export default function SessionsPage() {
     const data = await response.json();
     if (!response.ok) {
       setMessage({ type: "error", text: data.error || "Không thể tạo" });
+      // Thường là đã có ca nhưng màn hình chưa tải được: tải lại để hiện ra.
+      load();
       return;
     }
     setSessions(data.sessions);
@@ -289,6 +296,17 @@ export default function SessionsPage() {
 
       {loading ? (
         <TableSkeleton />
+      ) : loadFailed ? (
+        <EmptyState
+          title="Không tải được danh sách ca"
+          description="Máy chủ chưa trả lời, có thể đang khởi động lại. Thử tải lại sau vài giây."
+          action={
+            <Button onClick={load}>
+              <RefreshCw size={16} aria-hidden="true" />
+              Tải lại
+            </Button>
+          }
+        />
       ) : sessions.length === 0 ? (
         <EmptyState
           title="Chưa có ca làm việc"

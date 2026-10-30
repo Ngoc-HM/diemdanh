@@ -583,9 +583,8 @@ export default function PayrollPage() {
                 </Field>
                 {form.contractType === "probation" && (
                   <Field label="Lương thử việc" hint={probationHint(form)}>
-                    <div className="flex gap-2">
+                    <div className="grid grid-cols-[8.5rem_minmax(0,1fr)] gap-2">
                       <Select
-                        className="w-36 shrink-0"
                         aria-label="Cách nhập lương thử việc"
                         value={form.probationMode}
                         onChange={(event) =>
