@@ -370,6 +370,17 @@ check(
   split.overtime[0]?.amount === 157670,
   `(${split.overtime[0]?.amount})`
 );
+check("thử việc: thuế 10% chỉ trên 12 công thử việc, không tính OT = 463.636", split.tax === 463636, `(${split.tax})`);
+// File kế toán T10/2026, dòng Lê Tiến Thức: 12tr, 85%, 12 công thử việc + 10 công,
+// OT 1.651.705 → thuế = 5.563.636 × 10% = 556.364, thực nhận 12.113.523.
+const thuc = pay({ baseSalary: 12000000, contractType: "probation", probationPercent: 85, taxMode: "flat10" }, {
+  workdays: 22,
+  overtimeMinutes: { T: 1140, T1: 0, T2: 0 },
+  probationPortion: { workdays: 12, paidLeaveDays: 0, overtimeMinutes: { T: 1140 } },
+});
+check("khớp kế toán: thuế thử việc không tính OT = 556.364", thuc.tax === 556364, `(${thuc.tax})`);
+const wholeOt = pay({ baseSalary: 8300000, contractType: "probation" }, { workdays: 21, overtimeMinutes: { T: 120, T1: 0, T2: 0 } });
+check("thử việc cả tháng có OT: thuế 10% chỉ trên thành tiền", wholeOt.tax === Math.round(wholeOt.earned * 0.1), `(${wholeOt.tax})`);
 const wholeProbation = pay({ baseSalary: 10000000, contractType: "probation" }, { workdays: 22 });
 check("không có ngày kết thúc: cả tháng 85% = 8.500.000", wholeProbation.earned === 8500000 && wholeProbation.probationWorkdays === null, `(${wholeProbation.earned})`);
 

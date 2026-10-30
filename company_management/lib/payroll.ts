@@ -426,20 +426,9 @@ export function computePayroll(input: PayrollInput): PayrollResult {
       amount: Math.round(overtimePlain(code, minutes) * ((rates[code] ?? 100) / 100)),
     }));
   const overtimeTotal = overtime.reduce((sum, item) => sum + item.amount, 0);
-  // Phần thu nhập rơi vào thời gian thử việc (tháng hết thử việc giữa chừng):
-  // khấu trừ 10% chỉ tính trên phần này, sau ngày kết thúc không khấu trừ.
+  // Thử việc khấu trừ 10% chỉ trên lương ngày công thử việc (như kế toán: không
+  // tính OT); tháng hết thử việc giữa chừng thì phần sau ngày kết thúc không trừ.
   const probationEarned = portion ? Math.round(dailyRate * probationDays!) : 0;
-  const probationOvertime = portion
-    ? Math.round(
-        overtime.reduce(
-          (sum, item) =>
-            sum +
-            ((hourlyRate * Math.min(item.minutes, portion.overtimeMinutes[item.code] ?? 0)) / 60) *
-              (item.rate / 100),
-          0
-        )
-      )
-    : 0;
   const probationShare = portion && paidWorkdays > 0 ? Math.min(1, probationDays! / paidWorkdays) : 0;
   /// Phần lương OT bằng lương giờ thường (100%) — phần trả thêm do hệ số
   /// không chịu thuế TNCN khi tính luỹ tiến.
@@ -463,8 +452,10 @@ export function computePayroll(input: PayrollInput): PayrollResult {
     let tax = 0;
     if (profile.taxMode === "flat10") {
       taxableIncome = portion
-        ? probationEarned + probationOvertime + Math.round((grossUp + taxableAllowances) * probationShare)
-        : earned + grossUp + taxableAllowances + overtimeTotal;
+        ? probationEarned + Math.round((grossUp + taxableAllowances) * probationShare)
+        : isProbation
+          ? earned + grossUp + taxableAllowances
+          : earned + grossUp + taxableAllowances + overtimeTotal;
       tax =
         taxableIncome >= config.flatTaxThreshold
           ? Math.round((taxableIncome * config.flatTaxRate) / 100)
