@@ -27,6 +27,7 @@ import {
   annualLeaveForMonth,
   computePayroll,
   DEFAULT_PAY_PROFILE,
+  insuranceAppliesInMonth,
   parsePayrollConfig,
   probationPortionForMonth,
   progressiveTax,
@@ -397,6 +398,29 @@ check(
   "hợp đồng chính thức: bỏ qua ngày kết thúc thử việc",
   probationPortionForMonth({ profile: { contractType: "official", probationEndDate: "2026-10-17" }, dates: octDates, days: octDays, paidLeaveDates: [] }) === null
 );
+// Ví dụ thật: 12tr, thử việc 85% đến hết 17/10, khấu trừ 10%, đóng BH trên
+// 6.023.000 từ 1/11. T10: 12 công thử việc (trừ 10% phần này) + 10 công 100%
+// (không trừ thuế), chưa trừ BH. T11: đủ 100%, không thuế, chỉ trừ 10,5% BH.
+const realProfile = {
+  baseSalary: 12000000, contractType: "probation", probationPercent: 85, probationEndDate: "2026-10-17",
+  taxMode: "flat10", hasInsurance: true, insuranceSalary: 6023000, insuranceStartDate: "2026-11-01",
+};
+const oct = pay(realProfile, {
+  month: "2026-10", workdays: 22,
+  probationPortion: { workdays: 12, paidLeaveDays: 0, overtimeMinutes: {} },
+});
+check("T10: thành tiền 12 công 85% + 10 công 100% = 11.018.182", oct.earned === 11018182, `(${oct.earned})`);
+check("T10: thuế 10% chỉ trên phần thử việc 5.563.636 = 556.364", oct.tax === 556364, `(${oct.tax})`);
+check("T10: chưa tới tháng đóng BH nên không trừ BH", oct.insurance.total === 0, `(${oct.insurance.total})`);
+const nov = pay(realProfile, {
+  month: "2026-11", workdays: 22,
+  probationPortion: { workdays: 0, paidLeaveDays: 0, overtimeMinutes: {} },
+});
+check("T11: đủ 12.000.000, không trừ thuế", nov.earned === 12000000 && nov.tax === 0, `(${nov.earned} / ${nov.tax})`);
+check("T11: chỉ trừ 10,5% BH trên 6.023.000 = 632.415", nov.insurance.total === 632415, `(${nov.insurance.total})`);
+check("T11: thực nhận 11.367.585", nov.net === 11367585, `(${nov.net})`);
+check("BH bắt đầu giữa tháng 15/11: trừ đủ tháng 11", insuranceAppliesInMonth({ hasInsurance: true, insuranceStartDate: "2026-11-15" }, "2026-11"));
+check("BH bỏ trống ngày bắt đầu: trừ luôn", insuranceAppliesInMonth({ hasInsurance: true, insuranceStartDate: null }, "2026-09"));
 // Dòng 7: CTV lương tháng 7.000.000, 14,5/22 công (có nửa ngày x/2).
 const ctvMonthly = pay({ baseSalary: 7000000, contractType: "collaborator" }, { workdays: 14.5 });
 check("CTV lương tháng: 7.000.000 × 14,5/22 = 4.613.636 (khớp file)", ctvMonthly.earned === 4613636, `(${ctvMonthly.earned})`);

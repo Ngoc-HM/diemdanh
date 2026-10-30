@@ -259,7 +259,11 @@ bảng chấm công), phiếu OT đã duyệt, hồ sơ lương và khoản hỗ
   năm có lương và OT từ đầu tháng tới hết ngày kết thúc thử việc tính theo lương
   thử việc; từ hôm sau tính 100% lương (OT cũng theo lương giờ của từng phần rồi
   mới nhân hệ số). Ngày kết thúc trước tháng thì cả tháng 100%; bỏ trống hoặc từ
-  cuối tháng trở đi thì cả tháng thử việc.
+  cuối tháng trở đi thì cả tháng thử việc. Khấu trừ thuế 10% chỉ tính trên phần
+  thu nhập thử việc (hỗ trợ chịu thuế chia theo tỉ lệ công); sau ngày kết thúc
+  không khấu trừ.
+- **Ngày bắt đầu đóng BH** (`insuranceStartDate`, migration 027): từ tháng chứa
+  ngày này trừ đủ BH cả tháng, các tháng trước không trừ; bỏ trống = trừ luôn.
 - **Phép năm**: cộng dần số ngày/năm ÷ 12 mỗi tháng từ ngày bắt đầu tính phép
   (mặc định ngày vào làm), thêm 1 ngày/năm mỗi 5 năm, tồn tối đa 3 năm; nghỉ `N`
   trừ dần, hết phép là không lương. Không áp cho CTV.

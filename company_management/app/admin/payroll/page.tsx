@@ -571,7 +571,7 @@ export default function PayrollPage() {
                 {form.contractType === "probation" && (
                   <Field
                     label="Ngày kết thúc thử việc"
-                    hint="Đến hết ngày này tính lương thử việc, từ hôm sau 100%"
+                    hint="Đến hết ngày này tính lương thử việc và trừ thuế 10%; từ hôm sau 100% lương, không trừ thuế"
                   >
                     <Input
                       type="date"
@@ -631,6 +631,18 @@ export default function PayrollPage() {
                       value={form.insuranceSalary}
                       onValueChange={(digits) => set("insuranceSalary", digits)}
                       placeholder="Vd: 7.100.000"
+                    />
+                  </Field>
+                )}
+                {form.hasInsurance && (
+                  <Field
+                    label="Ngày bắt đầu đóng bảo hiểm"
+                    hint="Từ tháng có ngày này trừ đủ BH; bỏ trống = trừ luôn"
+                  >
+                    <Input
+                      type="date"
+                      value={form.insuranceStartDate ?? ""}
+                      onChange={(event) => set("insuranceStartDate", event.target.value || null)}
                     />
                   </Field>
                 )}

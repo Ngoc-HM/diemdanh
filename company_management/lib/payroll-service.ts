@@ -28,7 +28,7 @@ type PayProfileRow = PayProfile & { userId: string };
 export const PAY_PROFILE_COLUMNS = `
   "userId", "payBasis", "salaryType", "baseSalary"::float8 AS "baseSalary", "contractType",
   "probationPercent", "probationEndDate", "gender", "dependents", "taxMode", "hasInsurance",
-  "insuranceSalary"::float8 AS "insuranceSalary", "annualLeave", "leaveStartDate",
+  "insuranceSalary"::float8 AS "insuranceSalary", "insuranceStartDate", "annualLeave", "leaveStartDate",
   "bankAccount", "bankName"
 `;
 
@@ -199,6 +199,7 @@ export async function computeMonthPayroll(month: string): Promise<PayrollSheet> 
       paidLeaveDays: leave.paidDays,
       overtimeMinutes: summary.overtimeMinutes,
       allowances: stored ? (allowances.get(userId) ?? []) : [],
+      month,
       probationPortion: probationPortionForMonth({
         profile,
         dates: attendance.dates,

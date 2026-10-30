@@ -45,6 +45,9 @@ export type PayProfile = {
   taxMode: TaxMode;
   hasInsurance: boolean;
   insuranceSalary: number | null;
+  /// Ngày bắt đầu đóng BH (YYYY-MM-DD): từ tháng chứa ngày này trừ đủ BH, các
+  /// tháng trước không trừ. Bỏ trống = trừ mọi tháng.
+  insuranceStartDate: string | null;
   annualLeave: boolean;
   leaveStartDate: string | null;
   bankAccount: string | null;
@@ -63,6 +66,7 @@ export const DEFAULT_PAY_PROFILE: PayProfile = {
   taxMode: "flat10",
   hasInsurance: false,
   insuranceSalary: null,
+  insuranceStartDate: null,
   annualLeave: false,
   leaveStartDate: null,
   bankAccount: null,
@@ -269,7 +273,19 @@ export type PayrollInput = {
   /// Phần công / phép / OT rơi vào thời gian thử việc khi tháng có ngày kết
   /// thúc thử việc. Bỏ trống = cả tháng theo loại hợp đồng.
   probationPortion?: ProbationPortion | null;
+  /// Tháng tính lương (YYYY-MM), để biết đã tới tháng bắt đầu đóng BH chưa.
+  month?: string;
 };
+
+/// Tháng này có trừ BH không: phải đóng BH và đã tới tháng bắt đầu đóng.
+export function insuranceAppliesInMonth(
+  profile: Pick<PayProfile, "hasInsurance" | "insuranceStartDate">,
+  month: string | undefined
+): boolean {
+  if (!profile.hasInsurance) return false;
+  if (!profile.insuranceStartDate || !month) return true;
+  return month >= profile.insuranceStartDate.slice(0, 7);
+}
 
 export type ProbationPortion = {
   workdays: number;
@@ -410,15 +426,29 @@ export function computePayroll(input: PayrollInput): PayrollResult {
       amount: Math.round(overtimePlain(code, minutes) * ((rates[code] ?? 100) / 100)),
     }));
   const overtimeTotal = overtime.reduce((sum, item) => sum + item.amount, 0);
+  // Phần thu nhập rơi vào thời gian thử việc (tháng hết thử việc giữa chừng):
+  // khấu trừ 10% chỉ tính trên phần này, sau ngày kết thúc không khấu trừ.
+  const probationEarned = portion ? Math.round(dailyRate * probationDays!) : 0;
+  const probationOvertime = portion
+    ? Math.round(
+        overtime.reduce(
+          (sum, item) =>
+            sum +
+            ((hourlyRate * Math.min(item.minutes, portion.overtimeMinutes[item.code] ?? 0)) / 60) *
+              (item.rate / 100),
+          0
+        )
+      )
+    : 0;
+  const probationShare = portion && paidWorkdays > 0 ? Math.min(1, probationDays! / paidWorkdays) : 0;
   /// Phần lương OT bằng lương giờ thường (100%) — phần trả thêm do hệ số
   /// không chịu thuế TNCN khi tính luỹ tiến.
   const overtimeBase = Math.round(
     overtime.reduce((sum, item) => sum + overtimePlain(item.code, item.minutes), 0)
   );
 
-  const insuranceBase = profile.hasInsurance
-    ? (profile.insuranceSalary ?? profile.baseSalary)
-    : 0;
+  const insured = insuranceAppliesInMonth(profile, input.month);
+  const insuranceBase = insured ? (profile.insuranceSalary ?? profile.baseSalary) : 0;
   const bhxh = Math.round((insuranceBase * config.insurance.bhxh) / 100);
   const bhyt = Math.round((insuranceBase * config.insurance.bhyt) / 100);
   const bhtn = Math.round((insuranceBase * config.insurance.bhtn) / 100);
@@ -432,7 +462,9 @@ export function computePayroll(input: PayrollInput): PayrollResult {
     let taxableIncome = 0;
     let tax = 0;
     if (profile.taxMode === "flat10") {
-      taxableIncome = earned + grossUp + taxableAllowances + overtimeTotal;
+      taxableIncome = portion
+        ? probationEarned + probationOvertime + Math.round((grossUp + taxableAllowances) * probationShare)
+        : earned + grossUp + taxableAllowances + overtimeTotal;
       tax =
         taxableIncome >= config.flatTaxThreshold
           ? Math.round((taxableIncome * config.flatTaxRate) / 100)
