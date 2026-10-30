@@ -93,6 +93,7 @@ export async function PUT(
       baseSalary: money(body?.baseSalary, "Lương cơ bản")!,
       contractType: body?.contractType,
       probationPercent: Number(body?.probationPercent ?? 85),
+      probationEndDate: String(body?.probationEndDate ?? "").trim() || null,
       gender: body?.gender === "male" || body?.gender === "female" ? body.gender : null,
       dependents: Number(body?.dependents ?? 0),
       taxMode: body?.taxMode,
@@ -122,6 +123,10 @@ export async function PUT(
     if (!Number.isInteger(profile.dependents) || profile.dependents < 0 || profile.dependents > 20) {
       badRequest("Số người phụ thuộc không hợp lệ");
     }
+    if (profile.probationEndDate && !isValidDateKey(profile.probationEndDate)) {
+      badRequest("Ngày kết thúc thử việc không hợp lệ");
+    }
+    if (profile.contractType !== "probation") profile.probationEndDate = null;
     if (profile.leaveStartDate && !isValidDateKey(profile.leaveStartDate)) {
       badRequest("Ngày bắt đầu tính phép không hợp lệ");
     }
@@ -151,13 +156,15 @@ export async function PUT(
         `INSERT INTO "PayProfile"
            ("userId", "salaryType", "baseSalary", "contractType", "probationPercent",
             "gender", "dependents", "taxMode", "hasInsurance", "insuranceSalary",
-            "annualLeave", "leaveStartDate", "bankAccount", "bankName", "payBasis", "updatedAt")
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, now())
+            "annualLeave", "leaveStartDate", "bankAccount", "bankName", "payBasis",
+            "probationEndDate", "updatedAt")
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, now())
          ON CONFLICT ("userId") DO UPDATE SET
            "payBasis" = EXCLUDED."payBasis",
            "salaryType" = EXCLUDED."salaryType", "baseSalary" = EXCLUDED."baseSalary",
            "contractType" = EXCLUDED."contractType",
-           "probationPercent" = EXCLUDED."probationPercent", "gender" = EXCLUDED."gender",
+           "probationPercent" = EXCLUDED."probationPercent",
+           "probationEndDate" = EXCLUDED."probationEndDate", "gender" = EXCLUDED."gender",
            "dependents" = EXCLUDED."dependents", "taxMode" = EXCLUDED."taxMode",
            "hasInsurance" = EXCLUDED."hasInsurance",
            "insuranceSalary" = EXCLUDED."insuranceSalary",
@@ -181,6 +188,7 @@ export async function PUT(
           profile.bankAccount,
           profile.bankName,
           profile.payBasis,
+          profile.probationEndDate,
         ]
       );
       await client.query(`DELETE FROM "EmployeeAllowance" WHERE "userId" = $1`, [userId]);

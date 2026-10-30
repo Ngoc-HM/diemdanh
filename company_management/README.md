@@ -255,6 +255,11 @@ bảng chấm công), phiếu OT đã duyệt, hồ sơ lương và khoản hỗ
   lệ; thuế 10% trên thu nhập chịu thuế, hoặc luỹ tiến trên (thu nhập + OT tính
   100% − BH − giảm trừ bản thân − người phụ thuộc). Mức BH, thuế, giảm trừ, biểu
   thuế sửa được — **mặc định cần kế toán đối chiếu lại**.
+- **Hết thử việc giữa tháng** (`probationEndDate`, migration 026): công, phép
+  năm có lương và OT từ đầu tháng tới hết ngày kết thúc thử việc tính theo lương
+  thử việc; từ hôm sau tính 100% lương (OT cũng theo lương giờ của từng phần rồi
+  mới nhân hệ số). Ngày kết thúc trước tháng thì cả tháng 100%; bỏ trống hoặc từ
+  cuối tháng trở đi thì cả tháng thử việc.
 - **Phép năm**: cộng dần số ngày/năm ÷ 12 mỗi tháng từ ngày bắt đầu tính phép
   (mặc định ngày vào làm), thêm 1 ngày/năm mỗi 5 năm, tồn tối đa 3 năm; nghỉ `N`
   trừ dần, hết phép là không lương. Không áp cho CTV.

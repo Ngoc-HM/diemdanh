@@ -28,6 +28,7 @@ import {
   computePayroll,
   DEFAULT_PAY_PROFILE,
   parsePayrollConfig,
+  probationPortionForMonth,
   progressiveTax,
   validatePayrollConfig,
 } from "../lib/payroll.ts";
@@ -353,6 +354,49 @@ check("CTV theo ngày: thực nhận 774.000 (khớp file)", ctvDaily.net === 77
 const probation = pay({ baseSalary: 8300000, contractType: "probation", probationPercent: 85 }, { workdays: 21 });
 check("thử việc: lương áp dụng 85% = 7.055.000", probation.appliedSalary === 7055000, `(${probation.appliedSalary})`);
 check("thử việc: 7.055.000 × 21/22 = 6.734.318 (khớp file)", probation.earned === 6734318, `(${probation.earned})`);
+// Hết thử việc giữa tháng: 10tr, 85%. 12 công đến hết ngày kết thúc theo
+// 8.500.000/22, 10 công sau đó theo 10.000.000/22. OT T 2 giờ: 1 giờ trong thử
+// việc (lương giờ 85%), 1 giờ sau (100%), cùng nhân 150%.
+const split = pay({ baseSalary: 10000000, contractType: "probation", probationPercent: 85 }, {
+  workdays: 22,
+  overtimeMinutes: { T: 120, T1: 0, T2: 0 },
+  probationPortion: { workdays: 12, paidLeaveDays: 0, overtimeMinutes: { T: 60 } },
+});
+check("hết thử việc giữa tháng: 12 công 85% + 10 công 100% = 9.181.818", split.earned === 9181818, `(${split.earned})`);
+check("hết thử việc giữa tháng: ghi số công thử việc = 12", split.probationWorkdays === 12, `(${split.probationWorkdays})`);
+check(
+  "hết thử việc giữa tháng: OT 1 giờ 85% + 1 giờ 100%, × 150% = 157.670",
+  split.overtime[0]?.amount === 157670,
+  `(${split.overtime[0]?.amount})`
+);
+const wholeProbation = pay({ baseSalary: 10000000, contractType: "probation" }, { workdays: 22 });
+check("không có ngày kết thúc: cả tháng 85% = 8.500.000", wholeProbation.earned === 8500000 && wholeProbation.probationWorkdays === null, `(${wholeProbation.earned})`);
+
+const octDates = Array.from({ length: 31 }, (_, i) => `2026-10-${String(i + 1).padStart(2, "0")}`);
+const octDays = Object.fromEntries(octDates.map((date) => [date, { workdayValue: 1, overtime: date === "2026-10-17" || date === "2026-10-20" ? { code: "T", minutes: 60 } : null }]));
+const portion17 = probationPortionForMonth({
+  profile: { contractType: "probation", probationEndDate: "2026-10-17" },
+  dates: octDates,
+  days: octDays,
+  paidLeaveDates: ["2026-10-05", "2026-10-25"],
+});
+check(
+  "kết thúc thử việc 17/10: tính thử việc từ 1 đến hết 17/10",
+  portion17?.workdays === 17 && portion17.paidLeaveDays === 1 && portion17.overtimeMinutes.T === 60,
+  `(${JSON.stringify(portion17)})`
+);
+check(
+  "kết thúc thử việc tháng trước: cả tháng 100%",
+  probationPortionForMonth({ profile: { contractType: "probation", probationEndDate: "2026-09-30" }, dates: octDates, days: octDays, paidLeaveDates: [] })?.workdays === 0
+);
+check(
+  "kết thúc thử việc từ cuối tháng trở đi: cả tháng thử việc",
+  probationPortionForMonth({ profile: { contractType: "probation", probationEndDate: "2026-10-31" }, dates: octDates, days: octDays, paidLeaveDates: [] }) === null
+);
+check(
+  "hợp đồng chính thức: bỏ qua ngày kết thúc thử việc",
+  probationPortionForMonth({ profile: { contractType: "official", probationEndDate: "2026-10-17" }, dates: octDates, days: octDays, paidLeaveDates: [] }) === null
+);
 // Dòng 7: CTV lương tháng 7.000.000, 14,5/22 công (có nửa ngày x/2).
 const ctvMonthly = pay({ baseSalary: 7000000, contractType: "collaborator" }, { workdays: 14.5 });
 check("CTV lương tháng: 7.000.000 × 14,5/22 = 4.613.636 (khớp file)", ctvMonthly.earned === 4613636, `(${ctvMonthly.earned})`);

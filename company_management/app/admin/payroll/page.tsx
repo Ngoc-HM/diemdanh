@@ -570,6 +570,18 @@ export default function PayrollPage() {
                     />
                   </Field>
                 )}
+                {form.contractType === "probation" && (
+                  <Field
+                    label="Ngày kết thúc thử việc"
+                    hint="Đến hết ngày này tính lương thử việc, từ hôm sau 100%"
+                  >
+                    <Input
+                      type="date"
+                      value={form.probationEndDate ?? ""}
+                      onChange={(event) => set("probationEndDate", event.target.value || null)}
+                    />
+                  </Field>
+                )}
               </div>
             </section>
 

@@ -37,6 +37,9 @@ export type PayProfile = {
   baseSalary: number;
   contractType: ContractType;
   probationPercent: number;
+  /// Ngày cuối hưởng lương thử việc (YYYY-MM-DD). Sau ngày này tính 100% lương;
+  /// bỏ trống = cả tháng theo loại hợp đồng.
+  probationEndDate: string | null;
   gender: "male" | "female" | null;
   dependents: number;
   taxMode: TaxMode;
@@ -54,6 +57,7 @@ export const DEFAULT_PAY_PROFILE: PayProfile = {
   baseSalary: 0,
   contractType: "official",
   probationPercent: 85,
+  probationEndDate: null,
   gender: null,
   dependents: 0,
   taxMode: "flat10",
@@ -262,7 +266,45 @@ export type PayrollInput = {
   /// Phút OT đã duyệt theo ký hiệu T / T1 / T2.
   overtimeMinutes: Record<string, number>;
   allowances: AssignedAllowance[];
+  /// Phần công / phép / OT rơi vào thời gian thử việc khi tháng có ngày kết
+  /// thúc thử việc. Bỏ trống = cả tháng theo loại hợp đồng.
+  probationPortion?: ProbationPortion | null;
 };
+
+export type ProbationPortion = {
+  workdays: number;
+  paidLeaveDays: number;
+  overtimeMinutes: Record<string, number>;
+};
+
+/// Phần thử việc của tháng theo ngày kết thúc thử việc: các ngày từ đầu tháng
+/// tới hết ngày kết thúc tính lương thử việc, sau đó tính 100%.
+/// Trả null khi cả tháng tính như nhau (không phải thử việc, không có ngày kết
+/// thúc, hoặc ngày kết thúc từ cuối tháng trở đi).
+export function probationPortionForMonth(input: {
+  profile: Pick<PayProfile, "contractType" | "probationEndDate">;
+  dates: string[];
+  days: Record<string, { workdayValue: number; overtime?: { code: string; minutes: number } | null } | undefined>;
+  /// Ngày nghỉ phép năm có lương trong tháng.
+  paidLeaveDates: string[];
+}): ProbationPortion | null {
+  const end = input.profile.probationEndDate;
+  if (input.profile.contractType !== "probation" || !end || input.dates.length === 0) return null;
+  if (end >= input.dates[input.dates.length - 1]) return null;
+  const portion: ProbationPortion = { workdays: 0, paidLeaveDays: 0, overtimeMinutes: {} };
+  for (const date of input.dates) {
+    if (date > end) break;
+    const day = input.days[date];
+    if (!day) continue;
+    portion.workdays += day.workdayValue;
+    if (day.overtime) {
+      portion.overtimeMinutes[day.overtime.code] =
+        (portion.overtimeMinutes[day.overtime.code] ?? 0) + day.overtime.minutes;
+    }
+  }
+  portion.paidLeaveDays = input.paidLeaveDates.filter((date) => date <= end).length;
+  return portion;
+}
 
 export type PayrollResult = {
   payBasis: PayBasis;
@@ -270,6 +312,9 @@ export type PayrollResult = {
   baseSalary: number;
   /// Lương áp dụng (thử việc = base × %), theo tháng hoặc theo ngày.
   appliedSalary: number;
+  /// Số công (gồm phép) tính theo lương thử việc khi tháng có ngày kết thúc
+  /// thử việc; phần còn lại tính 100%. null = cả tháng một mức.
+  probationWorkdays: number | null;
   salaryType: SalaryType;
   standardWorkdays: number;
   workdays: number;
@@ -307,18 +352,26 @@ const OT_RATE_BY_CODE = (config: OvertimeConfig): Record<string, number> => ({
 
 export function computePayroll(input: PayrollInput): PayrollResult {
   const { profile, config, overtimeConfig, standardWorkdays } = input;
-  const factor = profile.contractType === "probation" ? profile.probationPercent / 100 : 1;
+  const isProbation = profile.contractType === "probation";
+  const portion = isProbation ? (input.probationPortion ?? null) : null;
+  const factor = isProbation ? profile.probationPercent / 100 : 1;
   const appliedSalary = Math.round(profile.baseSalary * factor);
   const paidWorkdays = input.workdays + input.paidLeaveDays;
 
-  const dailyRate =
-    profile.salaryType === "daily"
-      ? appliedSalary
-      : standardWorkdays > 0
-        ? appliedSalary / standardWorkdays
-        : 0;
+  const dailyOf = (salary: number) =>
+    profile.salaryType === "daily" ? salary : standardWorkdays > 0 ? salary / standardWorkdays : 0;
+  const dailyRate = dailyOf(appliedSalary);
   const hourlyRate = dailyRate / overtimeConfig.hoursPerDay;
-  const earned = Math.round(dailyRate * paidWorkdays);
+  // Tháng hết thử việc giữa chừng: phần trước ngày kết thúc theo lương thử
+  // việc, phần sau theo 100% lương.
+  const fullDailyRate = dailyOf(profile.baseSalary);
+  const fullHourlyRate = fullDailyRate / overtimeConfig.hoursPerDay;
+  const probationDays = portion ? portion.workdays + portion.paidLeaveDays : null;
+  const earned = Math.round(
+    portion
+      ? dailyRate * probationDays! + fullDailyRate * (paidWorkdays - probationDays!)
+      : dailyRate * paidWorkdays
+  );
 
   const ratio = standardWorkdays > 0 ? Math.min(1, paidWorkdays / standardWorkdays) : 0;
   const allowances = input.allowances.map((allowance) => {
@@ -341,19 +394,26 @@ export function computePayroll(input: PayrollInput): PayrollResult {
     .reduce((sum, item) => sum + item.amount, 0);
 
   const rates = OT_RATE_BY_CODE(overtimeConfig);
+  /// Tiền giờ thường của số phút OT (chưa nhân hệ số), tách theo thử việc.
+  const overtimePlain = (code: string, minutes: number) => {
+    const probationMinutes = portion ? Math.min(minutes, portion.overtimeMinutes[code] ?? 0) : minutes;
+    return (
+      (hourlyRate * probationMinutes) / 60 + (fullHourlyRate * (minutes - probationMinutes)) / 60
+    );
+  };
   const overtime = Object.entries(input.overtimeMinutes)
     .filter(([, minutes]) => minutes > 0)
     .map(([code, minutes]) => ({
       code,
       minutes,
       rate: rates[code] ?? 100,
-      amount: Math.round(((hourlyRate * minutes) / 60) * ((rates[code] ?? 100) / 100)),
+      amount: Math.round(overtimePlain(code, minutes) * ((rates[code] ?? 100) / 100)),
     }));
   const overtimeTotal = overtime.reduce((sum, item) => sum + item.amount, 0);
   /// Phần lương OT bằng lương giờ thường (100%) — phần trả thêm do hệ số
   /// không chịu thuế TNCN khi tính luỹ tiến.
   const overtimeBase = Math.round(
-    overtime.reduce((sum, item) => sum + (hourlyRate * item.minutes) / 60, 0)
+    overtime.reduce((sum, item) => sum + overtimePlain(item.code, item.minutes), 0)
   );
 
   const insuranceBase = profile.hasInsurance
@@ -424,6 +484,7 @@ export function computePayroll(input: PayrollInput): PayrollResult {
     payBasis: profile.payBasis,
     baseSalary: profile.baseSalary,
     appliedSalary,
+    probationWorkdays: probationDays,
     salaryType: profile.salaryType,
     standardWorkdays,
     workdays: input.workdays,

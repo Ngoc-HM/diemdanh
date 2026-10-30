@@ -9,6 +9,7 @@ import {
   CONTRACT_LABELS,
   DEFAULT_PAY_PROFILE,
   computePayroll,
+  probationPortionForMonth,
   parsePayrollConfig,
   PayProfile,
   PayrollConfig,
@@ -26,7 +27,7 @@ type PayProfileRow = PayProfile & { userId: string };
 
 export const PAY_PROFILE_COLUMNS = `
   "userId", "payBasis", "salaryType", "baseSalary"::float8 AS "baseSalary", "contractType",
-  "probationPercent", "gender", "dependents", "taxMode", "hasInsurance",
+  "probationPercent", "probationEndDate", "gender", "dependents", "taxMode", "hasInsurance",
   "insuranceSalary"::float8 AS "insuranceSalary", "annualLeave", "leaveStartDate",
   "bankAccount", "bankName"
 `;
@@ -198,6 +199,15 @@ export async function computeMonthPayroll(month: string): Promise<PayrollSheet> 
       paidLeaveDays: leave.paidDays,
       overtimeMinutes: summary.overtimeMinutes,
       allowances: stored ? (allowances.get(userId) ?? []) : [],
+      probationPortion: probationPortionForMonth({
+        profile,
+        dates: attendance.dates,
+        days: summary.days,
+        // Phép có lương trừ theo thứ tự ngày: các ngày N đầu tháng được trả trước.
+        paidLeaveDates: (leaveByUser.get(userId) ?? [])
+          .filter((date) => date >= startDate)
+          .slice(0, leave.paidDays),
+      }),
     });
 
     return {

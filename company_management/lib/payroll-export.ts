@@ -81,7 +81,10 @@ function salarySheet(sheet: PayrollSheet, companyName: string) {
     {
       label: "Lương thử việc",
       width: 13,
-      value: (row) => (row.profile.contractType === "probation" ? row.payroll.appliedSalary : ""),
+      value: (row) =>
+        row.profile.contractType === "probation" && row.payroll.probationWorkdays !== 0
+          ? row.payroll.appliedSalary
+          : "",
       format: MONEY,
     },
     { label: "Ngày công", width: 8, value: (row) => row.payroll.workdays, format: DAYS },
@@ -286,8 +289,24 @@ function payslipSheet(sheet: PayrollSheet, row: PayrollRow, companyName: string)
       p.salaryType === "daily" ? "Đơn giá một ngày công" : "Lương cơ bản",
       money(p.baseSalary)
     ),
-    ...(row.profile.contractType === "probation"
+    ...(row.profile.contractType === "probation" && p.probationWorkdays !== 0
       ? [item(`Lương thử việc (${row.profile.probationPercent}%)`, money(p.appliedSalary))]
+      : []),
+    ...(p.probationWorkdays != null && row.profile.probationEndDate
+      ? [
+          item(`Công thử việc (đến ${row.profile.probationEndDate.split("-").reverse().join("/")})`, {
+            value: p.probationWorkdays,
+            type: Number,
+            format: DAYS,
+            ...BORDER,
+          }),
+          item("Công tính 100% lương", {
+            value: Math.round((p.paidWorkdays - p.probationWorkdays) * 100) / 100,
+            type: Number,
+            format: DAYS,
+            ...BORDER,
+          }),
+        ]
       : []),
     item("Thành tiền theo ngày công", money(p.earned)),
     ...p.allowances.map((allowance) => item(allowance.name, money(allowance.amount))),
