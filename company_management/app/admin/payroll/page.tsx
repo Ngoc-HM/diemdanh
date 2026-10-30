@@ -19,6 +19,7 @@ import {
   EmptyState,
   Field,
   Input,
+  MoneyInput,
   Message,
   Modal,
   Select,
@@ -537,13 +538,10 @@ export default function PayrollPage() {
                   label={`${form.salaryType === "daily" ? "Đơn giá một ngày công" : "Lương cơ bản / tháng"} (${PAY_BASIS_LABELS[form.payBasis]}, đ)`}
                   required
                 >
-                  <Input
-                    type="number"
-                    min="0"
-                    step="1000"
+                  <MoneyInput
                     value={form.baseSalary}
-                    onChange={(event) => set("baseSalary", event.target.value)}
-                    placeholder="Vd: 15000000"
+                    onValueChange={(digits) => set("baseSalary", digits)}
+                    placeholder="Vd: 15.000.000"
                     required
                   />
                 </Field>
@@ -629,13 +627,10 @@ export default function PayrollPage() {
                         : "Bỏ trống = theo lương cơ bản"
                     }
                   >
-                    <Input
-                      type="number"
-                      min="0"
-                      step="1000"
+                    <MoneyInput
                       value={form.insuranceSalary}
-                      onChange={(event) => set("insuranceSalary", event.target.value)}
-                      placeholder="Vd: 7100000"
+                      onValueChange={(digits) => set("insuranceSalary", digits)}
+                      placeholder="Vd: 7.100.000"
                     />
                   </Field>
                 )}
@@ -737,22 +732,18 @@ export default function PayrollPage() {
                         </span>
                       </label>
                       {item.assigned && (
-                        <Input
-                          type="number"
-                          min="0"
-                          step="1000"
+                        <MoneyInput
                           className="w-44"
                           placeholder="Mức riêng (bỏ trống = mặc định)"
                           aria-label={`Mức riêng cho ${item.name}`}
                           value={item.customAmount ?? ""}
-                          onChange={(event) =>
+                          onValueChange={(digits) =>
                             setAllowances((current) =>
                               current.map((entry) =>
                                 entry.id === item.id
                                   ? {
                                       ...entry,
-                                      customAmount:
-                                        event.target.value === "" ? null : Number(event.target.value),
+                                      customAmount: digits === "" ? null : Number(digits),
                                     }
                                   : entry
                               )

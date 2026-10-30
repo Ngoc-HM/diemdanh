@@ -76,6 +76,47 @@ export function Input({
   return <input {...props} className={`${CONTROL_CLASS} ${className}`} />;
 }
 
+/// Chèn dấu chấm ngăn cách hàng nghìn: "12000000" → "12.000.000".
+export function formatMoneyDigits(digits: string): string {
+  return digits.replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+}
+
+/// Ô nhập số tiền: hiện có dấu chấm hàng nghìn, trả ra chuỗi chỉ gồm chữ số
+/// ("" khi bỏ trống). Giữ con trỏ đúng chỗ khi gõ / xoá giữa chừng.
+export function MoneyInput({
+  value,
+  onValueChange,
+  ...props
+}: Omit<React.InputHTMLAttributes<HTMLInputElement>, "value" | "onChange" | "type"> & {
+  value: string | number | null | undefined;
+  onValueChange: (digits: string) => void;
+}) {
+  const digits = value === null || value === undefined ? "" : String(value).replace(/\D/g, "");
+  return (
+    <Input
+      {...props}
+      type="text"
+      inputMode="numeric"
+      value={formatMoneyDigits(digits)}
+      onChange={(event) => {
+        const input = event.target;
+        const caret = input.selectionStart ?? input.value.length;
+        const digitsBefore = input.value.slice(0, caret).replace(/\D/g, "").length;
+        const next = input.value.replace(/\D/g, "").replace(/^0+(?=\d)/, "");
+        onValueChange(next);
+        requestAnimationFrame(() => {
+          const shown = formatMoneyDigits(next);
+          let position = 0;
+          for (let seen = 0; position < shown.length && seen < digitsBefore; position++) {
+            if (/\d/.test(shown[position])) seen++;
+          }
+          if (document.activeElement === input) input.setSelectionRange(position, position);
+        });
+      }}
+    />
+  );
+}
+
 export function Select({
   className = "",
   children,

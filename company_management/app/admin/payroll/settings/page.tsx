@@ -11,6 +11,7 @@ import {
   EmptyState,
   Field,
   Input,
+  MoneyInput,
   Message,
   Modal,
   Select,
@@ -171,13 +172,20 @@ export default function PayrollSettingsPage() {
   ) => (
     <Field label={label} hint={options.hint}>
       <div className="flex items-center gap-1.5">
-        <Input
-          type="number"
-          min="0"
-          step={options.step ?? "1"}
-          value={Number.isFinite(value) ? value : ""}
-          onChange={(event) => onChange(Number(event.target.value))}
-        />
+        {options.suffix === "đ" ? (
+          <MoneyInput
+            value={Number.isFinite(value) ? value : ""}
+            onValueChange={(digits) => onChange(Number(digits))}
+          />
+        ) : (
+          <Input
+            type="number"
+            min="0"
+            step={options.step ?? "1"}
+            value={Number.isFinite(value) ? value : ""}
+            onChange={(event) => onChange(Number(event.target.value))}
+          />
+        )}
         {options.suffix && <span className="text-sm text-slate-500">{options.suffix}</span>}
       </div>
     </Field>
@@ -333,17 +341,14 @@ export default function PayrollSettingsPage() {
                     ) : (
                       <span className="flex w-48 items-center gap-1.5">
                         đến
-                        <Input
-                          type="number"
-                          min="0"
-                          step="1000000"
+                        <MoneyInput
                           value={bracket.upTo ?? ""}
                           aria-label={`Cận trên bậc ${index + 1}`}
-                          onChange={(event) =>
+                          onValueChange={(digits) =>
                             update((c) => ({
                               ...c,
                               taxBrackets: c.taxBrackets.map((item, position) =>
-                                position === index ? { ...item, upTo: Number(event.target.value) } : item
+                                position === index ? { ...item, upTo: Number(digits) } : item
                               ),
                             }))
                           }
@@ -414,12 +419,9 @@ export default function PayrollSettingsPage() {
             />
           </Field>
           <Field label="Mức mặc định (đ)" required hint="Từng người có thể có mức riêng">
-            <Input
-              type="number"
-              min="0"
-              step="1000"
+            <MoneyInput
               value={allowanceForm.amount}
-              onChange={(event) => setAllowanceForm({ ...allowanceForm, amount: event.target.value })}
+              onValueChange={(digits) => setAllowanceForm({ ...allowanceForm, amount: digits })}
               required
             />
           </Field>
