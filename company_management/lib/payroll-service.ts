@@ -27,7 +27,7 @@ type PayProfileRow = PayProfile & { userId: string };
 
 export const PAY_PROFILE_COLUMNS = `
   "userId", "payBasis", "salaryType", "baseSalary"::float8 AS "baseSalary", "contractType",
-  "probationPercent", "probationEndDate", "gender", "dependents", "taxMode", "hasInsurance",
+  "probationPercent", "probationSalary"::float8 AS "probationSalary", "probationEndDate", "gender", "dependents", "taxMode", "hasInsurance",
   "insuranceSalary"::float8 AS "insuranceSalary", "insuranceStartDate", "annualLeave", "leaveStartDate",
   "bankAccount", "bankName"
 `;

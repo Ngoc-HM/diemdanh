@@ -89,14 +89,35 @@ type ProfileAllowance = {
 };
 
 /// Form hồ sơ lương: số giữ ở dạng chuỗi để ô nhập trống được.
-type ProfileForm = Omit<PayProfile, "baseSalary" | "insuranceSalary" | "probationPercent" | "dependents"> & {
+type ProfileForm = Omit<
+  PayProfile,
+  "baseSalary" | "insuranceSalary" | "probationPercent" | "probationSalary" | "dependents"
+> & {
   baseSalary: string;
   insuranceSalary: string;
   probationPercent: string;
+  /// Lương thử việc nhập theo % lương cơ bản hay mức cố định.
+  probationMode: "percent" | "fixed";
+  probationSalary: string;
   dependents: string;
 };
 
 const vnd = (value: number) => value.toLocaleString("vi-VN");
+
+/// Dòng đối chiếu dưới ô lương thử việc: nhập % thì hiện ra số tiền, nhập mức
+/// cố định thì hiện ra % so với lương cơ bản.
+function probationHint(form: ProfileForm): string {
+  const base = Number(form.baseSalary) || 0;
+  if (form.probationMode === "percent") {
+    const percent = Number(form.probationPercent);
+    if (!base || !Number.isFinite(percent) || percent <= 0) return "Luật: tối thiểu 85%";
+    return `= ${vnd(Math.round((base * percent) / 100))} đ · luật: tối thiểu 85%`;
+  }
+  const amount = Number(form.probationSalary);
+  if (!base || !amount) return "Luật: tối thiểu 85% lương cơ bản";
+  const percent = Math.round((amount / base) * 10000) / 100;
+  return `= ${percent.toLocaleString("vi-VN")}% lương cơ bản${percent < 85 ? " · thấp hơn mức luật 85%" : ""}`;
+}
 
 export default function PayrollPage() {
   const [month, setMonth] = useState(() => monthKeyVN());
@@ -184,6 +205,8 @@ export default function PayrollPage() {
         baseSalary: profile.baseSalary ? String(profile.baseSalary) : "",
         insuranceSalary: profile.insuranceSalary !== null ? String(profile.insuranceSalary) : "",
         probationPercent: String(profile.probationPercent),
+        probationMode: profile.probationSalary !== null ? "fixed" : "percent",
+        probationSalary: profile.probationSalary !== null ? String(profile.probationSalary) : "",
         dependents: String(profile.dependents),
       });
       setAllowances(payload.allowances);
@@ -207,6 +230,7 @@ export default function PayrollPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           ...form,
+          probationSalary: form.probationMode === "fixed" ? form.probationSalary : null,
           allowances: allowances
             .filter((item) => item.assigned)
             .map((item) => ({ allowanceId: item.id, amount: item.customAmount })),
@@ -558,14 +582,40 @@ export default function PayrollPage() {
                   </Select>
                 </Field>
                 {form.contractType === "probation" && (
-                  <Field label="Lương thử việc (% lương cơ bản)" hint="Luật: tối thiểu 85%">
-                    <Input
-                      type="number"
-                      min="1"
-                      max="100"
-                      value={form.probationPercent}
-                      onChange={(event) => set("probationPercent", event.target.value)}
-                    />
+                  <Field label="Lương thử việc" hint={probationHint(form)}>
+                    <div className="flex gap-2">
+                      <Select
+                        className="w-36 shrink-0"
+                        aria-label="Cách nhập lương thử việc"
+                        value={form.probationMode}
+                        onChange={(event) =>
+                          set("probationMode", event.target.value as ProfileForm["probationMode"])
+                        }
+                      >
+                        <option value="percent">Theo %</option>
+                        <option value="fixed">Mức cố định</option>
+                      </Select>
+                      {form.probationMode === "percent" ? (
+                        <Input
+                          type="number"
+                          min="1"
+                          max="100"
+                          step="any"
+                          aria-label="% lương cơ bản"
+                          value={form.probationPercent}
+                          onChange={(event) => set("probationPercent", event.target.value)}
+                          required
+                        />
+                      ) : (
+                        <MoneyInput
+                          aria-label="Lương thử việc (đ)"
+                          placeholder="Vd: 7.000.000"
+                          value={form.probationSalary}
+                          onValueChange={(digits) => set("probationSalary", digits)}
+                          required
+                        />
+                      )}
+                    </div>
                   </Field>
                 )}
                 {form.contractType === "probation" && (

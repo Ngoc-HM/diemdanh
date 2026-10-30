@@ -381,6 +381,18 @@ const thuc = pay({ baseSalary: 12000000, contractType: "probation", probationPer
 check("khớp kế toán: thuế thử việc không tính OT = 556.364", thuc.tax === 556364, `(${thuc.tax})`);
 const wholeOt = pay({ baseSalary: 8300000, contractType: "probation" }, { workdays: 21, overtimeMinutes: { T: 120, T1: 0, T2: 0 } });
 check("thử việc cả tháng có OT: thuế 10% chỉ trên thành tiền", wholeOt.tax === Math.round(wholeOt.earned * 0.1), `(${wholeOt.tax})`);
+// File kế toán T10/2026, dòng Vũ Minh Hoàn: lương 8tr, thử việc mức cố định
+// 7.000.000; 9 công thử việc + 10 công, OT 32 giờ quy đổi theo lương thử việc.
+const hoan = pay({ baseSalary: 8000000, contractType: "probation", probationSalary: 7000000, taxMode: "flat10" }, {
+  workdays: 19,
+  overtimeMinutes: { T: 1280, T1: 0, T2: 0 },
+  probationPortion: { workdays: 9, paidLeaveDays: 0, overtimeMinutes: { T: 1280 } },
+});
+check("khớp kế toán Hoàn: thành tiền 2.863.636 + 3.636.364 = 6.500.000", hoan.earned === 6500000, `(${hoan.earned})`);
+check("khớp kế toán Hoàn: OT 32 giờ quy đổi theo lương 7tr = 1.272.727", hoan.overtimeTotal === 1272727, `(${hoan.overtimeTotal})`);
+check("khớp kế toán Hoàn: thuế 10% phần thử việc = 286.364", hoan.tax === 286364, `(${hoan.tax})`);
+check("lương thử việc %: số lẻ 87,5% của 8tr = 7.000.000",
+  pay({ baseSalary: 8000000, contractType: "probation", probationPercent: 87.5 }, {}).appliedSalary === 7000000);
 const wholeProbation = pay({ baseSalary: 10000000, contractType: "probation" }, { workdays: 22 });
 check("không có ngày kết thúc: cả tháng 85% = 8.500.000", wholeProbation.earned === 8500000 && wholeProbation.probationWorkdays === null, `(${wholeProbation.earned})`);
 

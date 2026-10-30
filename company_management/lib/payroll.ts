@@ -37,6 +37,8 @@ export type PayProfile = {
   baseSalary: number;
   contractType: ContractType;
   probationPercent: number;
+  /// Lương thử việc nhập mức cố định (đ); null = theo `probationPercent`.
+  probationSalary: number | null;
   /// Ngày cuối hưởng lương thử việc (YYYY-MM-DD). Sau ngày này tính 100% lương;
   /// bỏ trống = cả tháng theo loại hợp đồng.
   probationEndDate: string | null;
@@ -60,6 +62,7 @@ export const DEFAULT_PAY_PROFILE: PayProfile = {
   baseSalary: 0,
   contractType: "official",
   probationPercent: 85,
+  probationSalary: null,
   probationEndDate: null,
   gender: null,
   dependents: 0,
@@ -370,8 +373,9 @@ export function computePayroll(input: PayrollInput): PayrollResult {
   const { profile, config, overtimeConfig, standardWorkdays } = input;
   const isProbation = profile.contractType === "probation";
   const portion = isProbation ? (input.probationPortion ?? null) : null;
-  const factor = isProbation ? profile.probationPercent / 100 : 1;
-  const appliedSalary = Math.round(profile.baseSalary * factor);
+  const appliedSalary = isProbation
+    ? (profile.probationSalary ?? Math.round((profile.baseSalary * profile.probationPercent) / 100))
+    : profile.baseSalary;
   const paidWorkdays = input.workdays + input.paidLeaveDays;
 
   const dailyOf = (salary: number) =>

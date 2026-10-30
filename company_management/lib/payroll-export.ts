@@ -290,7 +290,12 @@ function payslipSheet(sheet: PayrollSheet, row: PayrollRow, companyName: string)
       money(p.baseSalary)
     ),
     ...(row.profile.contractType === "probation" && p.probationWorkdays !== 0
-      ? [item(`Lương thử việc (${row.profile.probationPercent}%)`, money(p.appliedSalary))]
+      ? [item(
+          row.profile.probationSalary != null
+            ? "Lương thử việc"
+            : `Lương thử việc (${row.profile.probationPercent}%)`,
+          money(p.appliedSalary)
+        )]
       : []),
     ...(p.probationWorkdays != null && row.profile.probationEndDate
       ? [
