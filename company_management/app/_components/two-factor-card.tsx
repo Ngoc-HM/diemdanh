@@ -83,6 +83,9 @@ export default function TwoFactorCard({
   }, []);
 
   function goto(next: Step) {
+    // Bỏ chọn ô mật khẩu trước khi nó bị gỡ, kẻo trình duyệt giữ Secure Input.
+    const active = document.activeElement;
+    if (active instanceof HTMLInputElement && active.type === "password") active.blur();
     setStep(next);
     setPassword("");
     setCode("");

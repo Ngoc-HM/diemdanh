@@ -1,6 +1,6 @@
 "use client";
 
-import { ReactNode, useEffect } from "react";
+import { ReactNode, useEffect, useLayoutEffect } from "react";
 import { X } from "lucide-react";
 
 /* Component dùng chung cho cả khu vực admin và nhân viên, để mọi trang
@@ -176,6 +176,19 @@ export function Badge({
   );
 }
 
+/// Ô mật khẩu bị gỡ khỏi trang khi đang được chọn thì Chrome / Cốc Cốc trên macOS
+/// có thể giữ Secure Input, làm bộ gõ tiếng Việt bị chặn. Bỏ chọn trước khi đóng.
+function ReleasePasswordFocus() {
+  useLayoutEffect(
+    () => () => {
+      const active = document.activeElement;
+      if (active instanceof HTMLInputElement && active.type === "password") active.blur();
+    },
+    []
+  );
+  return null;
+}
+
 export function Modal({
   open,
   title,
@@ -226,6 +239,7 @@ export function Modal({
             <X size={18} aria-hidden="true" />
           </button>
         </div>
+        <ReleasePasswordFocus />
         <div className={size === "large" ? "min-h-0 flex-1 overflow-y-auto px-6 py-5" : "px-5 py-4"}>
           {children}
         </div>
