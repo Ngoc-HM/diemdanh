@@ -50,6 +50,9 @@ type DayCell = {
   adminEdited: boolean;
   codes: string[];
   workedHours: number;
+  /// Giờ vào đầu tiên / giờ ra cuối cùng (HH:MM), null = chưa có.
+  firstIn?: string | null;
+  lastOut?: string | null;
   lateMinutes: number;
   outsideRadius: boolean;
   /// Đang có yêu cầu đổi ca chờ duyệt: ô tô vàng dù ngày còn trống.
@@ -452,7 +455,11 @@ export default function MonthlyAttendancePage() {
                             aria-expanded={open}
                             title={
                               (cell
-                                ? `${date} · ${cell.workedHours}h${
+                                ? `${date}${
+                                    cell.firstIn || cell.lastOut
+                                      ? ` · vào ${cell.firstIn ?? "--:--"} · ra ${cell.lastOut ?? "chưa có"}`
+                                      : ""
+                                  } · ${cell.workedHours}h${
                                     cell.lateMinutes
                                       ? ` · muộn ${cell.lateMinutes} phút`
                                       : ""

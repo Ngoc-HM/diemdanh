@@ -1,5 +1,5 @@
 import { query } from "@/lib/db";
-import { dateKeyVN, getMonthRange, listMonthDates } from "@/lib/datetime";
+import { dateKeyVN, formatTimeVN, getMonthRange, listMonthDates } from "@/lib/datetime";
 import {
   dayCellLabel,
   evaluateDay,
@@ -39,11 +39,25 @@ export type MonthEmployee = {
   position: string | null;
 };
 
+/// Giờ (HH:MM giờ VN) của lần bấm `type` sớm nhất (`pick = Math.min`) hoặc
+/// muộn nhất (`Math.max`) trong ngày; null khi chưa có lần nào.
+function timeOfPunch(
+  punches: PunchInput[],
+  type: "in" | "out",
+  pick: (...values: number[]) => number
+): string | null {
+  const times = punches.filter((punch) => punch.type === type).map((punch) => punch.at.getTime());
+  return times.length ? formatTimeVN(new Date(pick(...times))) : null;
+}
+
 export type MonthDayCell = {
   status: string;
   label: string;
   codes: string[];
   workedHours: number;
+  /// Giờ vào sớm nhất / giờ ra muộn nhất trong ngày (HH:MM giờ VN), null = chưa có.
+  firstIn?: string | null;
+  lastOut?: string | null;
   lateMinutes: number;
   outsideRadius: boolean;
   adminEdited: boolean;
@@ -242,6 +256,8 @@ export async function computeMonthAttendance(
         label: withOvertime(baseLabel, workdayValue),
         codes: evaluation.codes,
         workedHours: minutesToHours(evaluation.workedMinutes),
+        firstIn: timeOfPunch(punches, "in", Math.min),
+        lastOut: timeOfPunch(punches, "out", Math.max),
         lateMinutes: evaluation.lateMinutes,
         outsideRadius: evaluation.outsideRadius,
         workdayValue,
