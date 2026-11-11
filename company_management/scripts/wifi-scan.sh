@@ -30,14 +30,26 @@ while true; do
 
   # Chỉ lấy máy vừa trả lời (REACHABLE/DELAY/PROBE), đúng dải, MAC và IP hợp lệ
   # — awk lọc chặt để không có gì lạ lọt vào câu SQL.
+  # Mỗi MAC chỉ lấy một IP: máy vừa đổi IP có thể còn cả IP cũ trong bảng ARP,
+  # MAC lặp trong cùng câu INSERT ... ON CONFLICT làm Postgres từ chối cả lượt
+  # (không ai được ghi). Ưu tiên dòng REACHABLE (IP đang dùng).
   values=$(ip -4 neigh show \
     | awk -v base="$base." '
         index($1, base) == 1 && $4 == "lladdr" \
           && $5 ~ /^([0-9a-f]{2}:){5}[0-9a-f]{2}$/ \
           && $1 ~ /^[0-9.]+$/ \
           && $NF ~ /^(REACHABLE|DELAY|PROBE)$/ {
-          printf "%s(%c%s%c,%c%s%c,now())", sep, 39, $5, 39, 39, $1, 39
-          sep = ","
+          if (!($5 in ip) || ($NF == "REACHABLE" && state[$5] != "REACHABLE")) {
+            if (!($5 in ip)) order[++n] = $5
+            ip[$5] = $1
+            state[$5] = $NF
+          }
+        }
+        END {
+          for (i = 1; i <= n; i++) {
+            printf "%s(%c%s%c,%c%s%c,now())", sep, 39, order[i], 39, 39, ip[order[i]], 39
+            sep = ","
+          }
         }')
 
   if [ -n "$values" ]; then
