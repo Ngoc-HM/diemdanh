@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import {
   AlarmClockOff,
@@ -25,6 +25,7 @@ import {
 import { formatWorkdays, type DayStatus } from "@/lib/attendance-rules";
 import { DAY_STATUS_CELL, LEGEND } from "@/app/_components/status-styles";
 import DayMarkMenu, { type MarkChoice } from "../../_components/day-mark-menu";
+import DayCellTooltip, { type DayCellTooltipInfo } from "../../_components/day-cell-tooltip";
 import CheckoutDialog, {
   type CheckoutTarget,
 } from "../../_components/checkout-dialog";
@@ -122,6 +123,21 @@ export default function MonthlyAttendancePage() {
   } | null>(null);
   const [saving, setSaving] = useState(false);
   const [fixing, setFixing] = useState<CheckoutTarget | null>(null);
+  /// Bảng giờ vào / ra của ô: rê chuột 0,3 giây hoặc bấm chuột phải.
+  const [tip, setTip] = useState<{ anchor: HTMLElement; info: DayCellTooltipInfo } | null>(null);
+  const tipTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const hideTip = useCallback(() => {
+    if (tipTimer.current) clearTimeout(tipTimer.current);
+    tipTimer.current = null;
+    setTip(null);
+  }, []);
+
+  useEffect(() => {
+    if (!tip) return;
+    // capture: cuộn khung bảng cũng ẩn, tránh bảng nhỏ lệch khỏi ô.
+    window.addEventListener("scroll", hideTip, true);
+    return () => window.removeEventListener("scroll", hideTip, true);
+  }, [tip, hideTip]);
 
   const load = useCallback(async (target: string) => {
     setLoading(true);
@@ -457,6 +473,20 @@ export default function MonthlyAttendancePage() {
                       // Admin đã sửa hoặc đang chờ duyệt đều tô vàng "cần để ý",
                       // đè lên màu trạng thái thường của ô.
                       const final = cell?.finalEdited ?? false;
+                      const tipInfo: DayCellTooltipInfo = {
+                        title: `${weekdayLabel(date)} · ${date.slice(8, 10)}/${date.slice(5, 7)}`,
+                        label: cell?.label ?? "",
+                        firstIn: cell?.firstIn ?? null,
+                        lastOut: cell?.lastOut ?? null,
+                        workedHours: cell && cell.workedHours > 0 ? cell.workedHours : null,
+                        lateMinutes: cell?.lateMinutes ?? 0,
+                        notes: [
+                          cell?.needsReview ? "Thiếu giờ, chờ xem lại" : "",
+                          cell?.outsideRadius ? "Ngoài bán kính" : "",
+                          final ? "Đã chốt" : edited ? "Admin đã sửa" : "",
+                          pending ? "Chờ duyệt đổi ca" : "",
+                        ].filter(Boolean),
+                      };
                       const cellClass = final
                         ? "bg-violet-100 text-violet-900 font-semibold"
                         : edited || pending
@@ -469,7 +499,8 @@ export default function MonthlyAttendancePage() {
                         >
                           <button
                             type="button"
-                            onClick={(event) =>
+                            onClick={(event) => {
+                              hideTip();
                               setEditing(
                                 open
                                   ? null
@@ -478,28 +509,34 @@ export default function MonthlyAttendancePage() {
                                       date,
                                       anchor: event.currentTarget,
                                     },
-                              )
-                            }
+                              );
+                            }}
                             aria-haspopup="menu"
                             aria-expanded={open}
-                            title={
-                              (cell
-                                ? `${date}${
-                                    cell.firstIn || cell.lastOut
-                                      ? ` · vào ${cell.firstIn ?? "--:--"} · ra ${cell.lastOut ?? "chưa có"}`
-                                      : ""
-                                  } · ${cell.workedHours}h${
-                                    cell.lateMinutes
-                                      ? ` · muộn ${cell.lateMinutes} phút`
-                                      : ""
-                                  }${cell.outsideRadius ? " · ngoài bán kính" : ""}`
-                                : date) +
-                              (cell?.needsReview
-                                ? " · thiếu giờ, chờ xem lại"
-                                : "") +
-                              (final ? " · đã chốt" : edited ? " · admin đã sửa" : "") +
-                              (pending ? " · chờ duyệt đổi ca" : "")
-                            }
+                            aria-label={[
+                              tipInfo.title,
+                              tipInfo.label,
+                              tipInfo.firstIn && `vào ${tipInfo.firstIn}`,
+                              tipInfo.lastOut && `ra ${tipInfo.lastOut}`,
+                              tipInfo.lateMinutes > 0 && `muộn ${tipInfo.lateMinutes} phút`,
+                              ...tipInfo.notes,
+                            ]
+                              .filter(Boolean)
+                              .join(", ")}
+                            onMouseEnter={(event) => {
+                              const anchor = event.currentTarget;
+                              if (tipTimer.current) clearTimeout(tipTimer.current);
+                              tipTimer.current = setTimeout(
+                                () => setTip({ anchor, info: tipInfo }),
+                                300,
+                              );
+                            }}
+                            onMouseLeave={hideTip}
+                            onContextMenu={(event) => {
+                              event.preventDefault();
+                              if (tipTimer.current) clearTimeout(tipTimer.current);
+                              setTip({ anchor: event.currentTarget, info: tipInfo });
+                            }}
                             className={`h-full w-full px-1 py-2 hover:ring-2 hover:ring-inset hover:ring-sky-500 ${
                               open ? "ring-2 ring-inset ring-sky-600" : ""
                             }`}
@@ -564,6 +601,7 @@ export default function MonthlyAttendancePage() {
           </Card>
         </>
       )}
+      {tip && !editing && <DayCellTooltip anchor={tip.anchor} info={tip.info} />}
       <CheckoutDialog
         target={fixing}
         onClose={() => setFixing(null)}
