@@ -29,6 +29,19 @@ import CheckoutDialog, {
   type CheckoutTarget,
 } from "../../_components/checkout-dialog";
 
+/// Ngày làm việc thông thường (có ca, có đi làm) — chỉ những ngày này mới cộng
+/// phút muộn; vắng, nghỉ, ốm, lễ, làm ngoài lịch không tính.
+const WORKING_STATUSES: DayStatus[] = ["passed", "late", "insufficient", "missed_out", "open"];
+
+/// Tổng phút đi muộn của tháng, chỉ trên ngày làm việc thông thường.
+function lateMinutesOf(row: { days: Record<string, DayCell | undefined> }): number {
+  return Object.values(row.days).reduce(
+    (sum, cell) =>
+      cell && WORKING_STATUSES.includes(cell.status) ? sum + cell.lateMinutes : sum,
+    0,
+  );
+}
+
 /// Ký hiệu trong ô ngày, hiện ngay dưới chú giải màu.
 const SYMBOL_HELP: [string, string][] = [
   ["S C CN", "ca đã xếp"],
@@ -536,10 +549,7 @@ export default function MonthlyAttendancePage() {
                       {row.lateDays}
                     </td>
                     <td className="px-2 py-2 text-center text-amber-700">
-                      {Object.values(row.days).reduce(
-                        (sum, cell) => sum + (cell?.lateMinutes ?? 0),
-                        0,
-                      )}
+                      {lateMinutesOf(row)}
                     </td>
                     <td className="px-2 py-2 text-center text-rose-700">
                       {row.absentDays}
