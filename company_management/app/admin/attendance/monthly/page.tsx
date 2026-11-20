@@ -89,7 +89,7 @@ type Row = {
 type Payload = {
   month: string;
   dates: string[];
-  sessions: { id: string; code: string; name: string }[];
+  sessions: { id: string; code: string; name: string; workdayValue: number | null }[];
   holidays: Record<string, string>;
   /// Ngày công tháng (công chuẩn), dùng chung cho mọi người.
   standardWorkdays: number;
@@ -133,7 +133,11 @@ export default function MonthlyAttendancePage() {
   }, [month, load]);
 
   /// Admin chấm lại một ô rồi tải lại bảng để mọi con số khớp với đánh dấu mới.
-  async function markDay(userId: string, date: string, choice: MarkChoice, finalEdited = false) {
+  /// Admin chấm lại một ô: ghi lịch của ngày (DayMark) và chốt luôn kết quả ở
+  /// bảng công chốt — admin chọn gì thì ô hiện đúng thế, không còn so giờ chấm
+  /// (vd ô "CN!" thiếu giờ mà admin chọn CN thì thành CN, đủ công). "Xoá đánh
+  /// dấu" thì bỏ cả hai, ô quay về theo lịch đăng ký và giờ chấm.
+  async function markDay(userId: string, date: string, choice: MarkChoice) {
     setSaving(true);
     setError(null);
     try {
@@ -143,16 +147,17 @@ export default function MonthlyAttendancePage() {
           : choice.kind === "leave"
             ? { userId, date, leaveCode: choice.code, sessionIds: null }
             : { userId, date, leaveCode: null, sessionIds: null };
+      const session =
+        choice.kind === "session"
+          ? data?.sessions.find((item) => item.id === choice.sessionId)
+          : undefined;
+      const finalValue =
+        choice.kind === "session" && session
+          ? { status: "work", codes: [session.code], workday: session.workdayValue ?? 1 }
+          : choice.kind === "leave"
+            ? { status: choice.code === "N" ? "leave" : "sick", codes: [], workday: 0 }
+            : null;
 
-      // Ô đã chốt: sửa ở đây thì bỏ chốt để lưới và bảng chốt khớp nhau.
-      if (finalEdited) {
-        const cleared = await fetch("/api/admin/attendance/final", {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ userId, date, value: null }),
-        });
-        if (!cleared.ok) throw new Error((await cleared.json()).error || "Không lưu được");
-      }
       const response = await fetch("/api/admin/attendance/day-mark", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
@@ -160,6 +165,12 @@ export default function MonthlyAttendancePage() {
       });
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || "Không lưu được");
+      const finalized = await fetch("/api/admin/attendance/final", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId, date, value: finalValue }),
+      });
+      if (!finalized.ok) throw new Error((await finalized.json()).error || "Không lưu được");
       setEditing(null);
       await load(month);
     } catch (err) {
@@ -357,7 +368,7 @@ export default function MonthlyAttendancePage() {
             <table className="w-full text-xs">
               <thead>
                 <tr className="border-b border-slate-200 bg-slate-50">
-                  <th className="sticky left-0 z-10 min-w-[200px] bg-slate-50 px-3 py-2 text-left font-semibold text-slate-900">
+                  <th className="sticky left-0 z-10 w-[150px] min-w-[150px] bg-slate-50 px-3 py-2 text-left font-semibold text-slate-900">
                     Nhân viên
                   </th>
                   {data.dates.map((date) => {
@@ -389,6 +400,12 @@ export default function MonthlyAttendancePage() {
                   <th className="px-2 py-2 text-center font-semibold text-slate-900">
                     Muộn
                   </th>
+                  <th
+                    className="px-2 py-2 text-center font-semibold text-slate-900"
+                    title="Tổng số phút đi muộn trong tháng"
+                  >
+                    Phút muộn
+                  </th>
                   <th className="px-2 py-2 text-center font-semibold text-slate-900">
                     Vắng
                   </th>
@@ -410,12 +427,11 @@ export default function MonthlyAttendancePage() {
                       >
                         {row.user.name}
                       </Link>
-                      <div className="text-[11px] text-slate-500">
-                        {row.user.employeeCode
-                          ? `${row.user.employeeCode} · `
-                          : ""}
-                        {row.user.employmentLabel}
-                      </div>
+                      {row.user.employeeCode && (
+                        <div className="text-[11px] text-slate-500">
+                          {row.user.employeeCode}
+                        </div>
+                      )}
                     </td>
                     {data.dates.map((date) => {
                       const cell = row.days[date];
@@ -483,7 +499,7 @@ export default function MonthlyAttendancePage() {
                               sessions={data.sessions}
                               saving={saving}
                               onPick={(choice) =>
-                                markDay(row.user.id, date, choice, cell?.finalEdited)
+                                markDay(row.user.id, date, choice)
                               }
                               onClose={() => setEditing(null)}
                               review={
@@ -518,6 +534,12 @@ export default function MonthlyAttendancePage() {
                     </td>
                     <td className="px-2 py-2 text-center text-amber-700">
                       {row.lateDays}
+                    </td>
+                    <td className="px-2 py-2 text-center text-amber-700">
+                      {Object.values(row.days).reduce(
+                        (sum, cell) => sum + (cell?.lateMinutes ?? 0),
+                        0,
+                      )}
                     </td>
                     <td className="px-2 py-2 text-center text-rose-700">
                       {row.absentDays}
