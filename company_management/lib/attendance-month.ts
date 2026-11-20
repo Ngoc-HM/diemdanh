@@ -267,15 +267,17 @@ export async function computeMonthAttendance(
         projected,
       };
 
-      // Ô admin đã chấm tay ở bảng công chốt: lấy theo admin, bỏ mọi cảnh báo
-      // của máy (muộn, thiếu giờ, tạm tính).
+      // Ô admin đã chấm tay ở bảng công chốt: lấy theo admin, bỏ cảnh báo của
+      // máy (thiếu giờ, tạm tính); riêng số phút muộn vẫn giữ (xem dưới).
       const cell: MonthDayCell = final
         ? {
             ...machineCell,
             status: FINAL_TO_DAY_STATUS[final.status],
             label: withOvertime(finalDayLabel(final), final.workday),
             codes: final.status === "work" ? final.codes : [],
-            lateMinutes: 0,
+            // Phút muộn là so giờ vào thực tế với giờ bắt đầu ca: admin chốt
+            // ngày đi làm vẫn giữ để đối chiếu; chốt nghỉ / vắng / lễ thì bỏ.
+            lateMinutes: final.status === "work" ? machineCell.lateMinutes : 0,
             workdayValue: final.workday,
             needsReview: false,
             reviewDecision: null,
