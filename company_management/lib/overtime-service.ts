@@ -4,6 +4,7 @@ import {
   applyDayMark,
   getActiveSessionRules,
   getDayMarks,
+  getDaySwaps,
   getHolidayMap,
   getLunchBreak,
   getWeeklyOffDays,
@@ -124,10 +125,11 @@ export async function buildOvertimeViews(rows: OvertimeRow[]): Promise<OvertimeV
     ];
     const userIds = users.map((user) => user.id);
     const { startDate, endDate } = getMonthRange(month);
-    const [schedules, marks, holidays, punchRows] = await Promise.all([
+    const [schedules, marks, holidays, swaps, punchRows] = await Promise.all([
       resolveMonthSchedules(users, month, rules),
       getDayMarks(userIds, startDate, endDate),
       getHolidayMap(startDate, endDate),
+      getDaySwaps(startDate, endDate),
       query<{ userId: string; date: string; type: string; at: Date; withinRadius: boolean }>(
         `SELECT a."userId", a."date", p."type", p."at", p."withinRadius"
            FROM "Attendance" a
@@ -152,7 +154,8 @@ export async function buildOvertimeViews(rows: OvertimeRow[]): Promise<OvertimeV
       const dayType = overtimeDayType(
         weekdayOfDateKey(row.date),
         weeklyOffDays,
-        holidays.has(row.date)
+        holidays.has(row.date),
+        swaps.work.has(row.date) ? "work" : swaps.off.has(row.date) ? "off" : null
       );
       const scheduled = applyDayMark(
         schedules.get(row.userId)?.get(row.date) ?? [],

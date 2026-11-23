@@ -4,6 +4,7 @@
 import writeXlsxFile from "write-excel-file/node";
 import type { DayStatus } from "@/lib/attendance-rules";
 import { formatMonthLabel, weekdayLabel } from "@/lib/datetime";
+import { isOffDate } from "@/lib/schedule";
 
 /// Bảng màu lấy theo giao diện web để admin nhìn quen mắt.
 const BRAND = "#0284C7";
@@ -137,11 +138,22 @@ type AttendanceSheetInput = {
   holidays: Record<string, string>;
   /// Ngày nghỉ hằng tuần (0 = CN ... 6 = T7).
   weeklyOffDays: number[];
+  /// Ngày hoán đổi kèm ngày lễ: `off` nghỉ bù (tô như ngày nghỉ), `work` làm bù.
+  daySwaps?: { off: string[]; work: string[] };
   /// Ngày công tháng (công chuẩn), giống nhau cho mọi người.
   standardWorkdays: number;
   /// Ngày xuất file, dạng YYYY-MM-DD theo giờ VN.
   exportedOn: string;
 };
+
+/// Ngày nghỉ để tô màu: theo lịch tuần, đã áp hoán đổi kèm ngày lễ.
+function offDayChecker(
+  weeklyOffDays: readonly number[],
+  daySwaps?: { off: string[]; work: string[] }
+) {
+  const swaps = { off: new Set(daySwaps?.off ?? []), work: new Set(daySwaps?.work ?? []) };
+  return (date: string) => isOffDate(date, weeklyOffDays, swaps);
+}
 
 /// File toàn công ty: sheet bảng chấm công + sheet OT chi tiết theo ngày.
 export async function buildAttendanceWorkbook(input: AttendanceSheetInput): Promise<Buffer> {
@@ -165,9 +177,7 @@ export function attendanceSheet(input: AttendanceSheetInput) {
     exportedOn,
   } = input;
 
-  const offDays = new Set(weeklyOffDays);
-  const isOffDay = (date: string) =>
-    offDays.has(new Date(`${date}T00:00:00Z`).getUTCDay());
+  const isOffDay = offDayChecker(weeklyOffDays, input.daySwaps);
 
   const identityColumns = [
     { label: "STT", width: 6 },
@@ -465,6 +475,8 @@ type EmployeeSheetInput = {
   workdays: number;
   standardWorkdays: number;
   weeklyOffDays: number[];
+  /// Ngày hoán đổi kèm ngày lễ: `off` nghỉ bù (tô như ngày nghỉ), `work` làm bù.
+  daySwaps?: { off: string[]; work: string[] };
   exportedOn: string;
 };
 
@@ -478,7 +490,7 @@ export async function buildEmployeeAttendanceWorkbook(
 export function employeeAttendanceSheet(input: EmployeeSheetInput) {
   const { month, companyName, user, days, workdays, standardWorkdays, exportedOn } =
     input;
-  const offDays = new Set(input.weeklyOffDays);
+  const isOffDay = offDayChecker(input.weeklyOffDays, input.daySwaps);
 
   const columns = [
     { label: "Ngày", width: 11 },
@@ -526,7 +538,7 @@ export function employeeAttendanceSheet(input: EmployeeSheetInput) {
   ];
 
   const body = days.map((day) => {
-    const isOff = offDays.has(new Date(`${day.date}T00:00:00Z`).getUTCDay());
+    const isOff = isOffDay(day.date);
     const background = day.holidayName ? HOLIDAY : isOff ? WEEKEND : undefined;
     const cell = (
       value: string | number,
@@ -616,8 +628,7 @@ const OVERTIME_FILL: Record<string, string> = { T: "#FEF3C7", T1: "#FFEDD5", T2:
 /// cuối dòng là tổng giờ T / T1 / T2 — giống bảng OT trên trang bảng công chốt.
 function employeeOvertimeSheet(input: AttendanceSheetInput) {
   const { month, dates, rows, companyName, holidays, weeklyOffDays } = input;
-  const offDays = new Set(weeklyOffDays);
-  const isOffDay = (date: string) => offDays.has(new Date(`${date}T00:00:00Z`).getUTCDay());
+  const isOffDay = offDayChecker(weeklyOffDays, input.daySwaps);
   const identity = [
     { label: "STT", width: 6 },
     { label: "Mã NV", width: 11 },
@@ -734,8 +745,7 @@ export type DayPunchTimes = {
 function employeePunchSheet(input: AttendanceSheetInput, times: Record<string, DayPunchTimes>) {
   const { month, dates, rows, companyName, holidays, weeklyOffDays } = input;
   const user = rows[0]?.user;
-  const offDays = new Set(weeklyOffDays);
-  const isOffDay = (date: string) => offDays.has(new Date(`${date}T00:00:00Z`).getUTCDay());
+  const isOffDay = offDayChecker(weeklyOffDays, input.daySwaps);
   const identity = [
     { label: "Mã NV", width: 11 },
     { label: "Họ và tên", width: 26 },

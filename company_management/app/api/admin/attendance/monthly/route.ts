@@ -41,6 +41,7 @@ export async function GET(req: Request) {
         companyName: companyName?.value ?? "",
         holidays: Object.fromEntries(result.holidays),
         weeklyOffDays: result.weeklyOffDays,
+        daySwaps: result.daySwaps,
         standardWorkdays: result.standardWorkdays,
         exportedOn: result.today,
       });

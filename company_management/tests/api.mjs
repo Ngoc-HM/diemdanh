@@ -181,6 +181,7 @@ async function main() {
   const emp = makeJar();
   let employeeId = null;
   let holidayId = null;
+  let swapHolidayId = null;
   let locationId = null;
   // Giờ nghỉ trưa của DB trước khi test đổi; null = chưa kịp đọc.
   let previousLunch = null;
@@ -360,6 +361,21 @@ async function main() {
     });
     check("chặn ngày lễ trùng", r.status === 409, `(${r.status})`);
 
+    // Hoán đổi kèm lễ: lễ T3 20/10, nghỉ luôn T2 19/10, đi làm bù T7 24/10.
+    r = await call(admin, "POST", "/api/holidays", {
+      date: "2026-10-20", name: "__smoketest lễ có hoán đổi", swapOffDate: "2026-10-19",
+    });
+    check("hoán đổi thiếu ngày làm bù bị chặn", r.status === 400, `(${r.status})`);
+    r = await call(admin, "POST", "/api/holidays", {
+      date: "2026-10-20", name: "__smoketest lễ có hoán đổi", swapOffDate: "2026-10-24", swapWorkDate: "2026-10-19",
+    });
+    check("hoán đổi ngược (nghỉ T7, làm T2) bị chặn", r.status === 400, `(${r.status})`);
+    r = await call(admin, "POST", "/api/holidays", {
+      date: "2026-10-20", name: "__smoketest lễ có hoán đổi", swapOffDate: "2026-10-19", swapWorkDate: "2026-10-24",
+    });
+    swapHolidayId = r.json.holiday?.id;
+    check("tạo ngày lễ kèm hoán đổi", r.status === 200 && r.json.holiday?.swapWorkDate === "2026-10-24", `(${r.status})`);
+
     r = await call(admin, "POST", "/api/holidays", { date: "2026-02-31", name: "x" });
     check("chặn ngày không tồn tại (31/02)", r.status === 400, `(${r.status})`);
 
@@ -380,6 +396,17 @@ async function main() {
       ftRow?.selfScheduled === false && ftRow?.registered === false && ftRow?.totalShifts > 0,
       `(registered=${ftRow?.registered}, ${ftRow?.totalShifts} ca)`
     );
+
+
+    // Hoán đổi kèm lễ 20/10 chỉ áp cho lịch cố định của full-time.
+    const oct = await call(admin, "GET", `/api/admin/attendance/user/${employeeId}?month=2026-10`);
+    const swapOff = oct.json.days?.find((d) => d.date === "2026-10-19");
+    const swapWork = oct.json.days?.find((d) => d.date === "2026-10-24");
+    const plainMon = oct.json.days?.find((d) => d.date === "2026-10-26");
+    check("hoán đổi: T2 nghỉ bù không bị tính vắng", swapOff?.status !== "absent", `(${swapOff?.status})`);
+    check("hoán đổi: T7 làm bù có lịch, không chấm = vắng", swapWork?.status === "absent", `(${swapWork?.status})`);
+    check("hoán đổi cùng tháng: công chuẩn 10/2026 vẫn 22", oct.json.totals?.standardWorkdays === 22, `(${oct.json.totals?.standardWorkdays})`);
+    check("đối chứng: T2 26/10 thường không chấm cũng vắng", plainMon?.status === "absent", `(${plainMon?.status} / ${swapWork?.status})`);
 
     const ftSession = sessions.find((s) => !s.isDefaultFull) ?? sessions[0];
     r = await call(admin, "PUT", "/api/admin/schedules", {
@@ -1238,6 +1265,7 @@ async function main() {
     check("ngày đủ công", day1?.status === "passed", `(${day1?.status})`);
     const holiday = r.json.days?.find((d) => d.date === "2026-09-02");
     check("ngày lễ không bị tính vắng", holiday?.status === "holiday", `(${holiday?.status})`);
+
     const noSchedule = r.json.days?.find((d) => d.date === "2026-09-10");
     check("ngày không lịch, không chấm công = off", noSchedule?.status === "off", `(${noSchedule?.status})`);
     const day3 = r.json.days?.find((d) => d.date === ABSENT_DATE);
@@ -1980,6 +2008,9 @@ async function main() {
     r = await call(admin, "DELETE", `/api/holidays/${holidayId}`);
     check("xoá ngày lễ", r.status === 200);
     holidayId = null;
+    r = await call(admin, "DELETE", `/api/holidays/${swapHolidayId}`);
+    check("xoá ngày lễ kèm hoán đổi", r.status === 200);
+    swapHolidayId = null;
 
     r = await call(admin, "DELETE", `/api/users/${employeeId}?hard=true`);
     check("không xoá cứng được NV đã có công", r.status === 409, `(${r.status})`);

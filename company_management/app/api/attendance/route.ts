@@ -14,6 +14,7 @@ import {
   getActiveSessionRules,
   getDayMarks,
   getDayReviews,
+  getDaySwaps,
   getHolidayMap,
   getLunchBreak,
   getPendingShiftRequestDates,
@@ -56,7 +57,7 @@ export async function GET(req: Request) {
     ]);
     if (!user) badRequest("Không tìm thấy tài khoản");
 
-    const [rows, rules, holidays, lunchBreak, pending, weeklyOffDays, reviews] = await Promise.all([
+    const [rows, rules, holidays, lunchBreak, pending, weeklyOffDays, reviews, swaps] = await Promise.all([
       query<AttendanceWithPunch>(
         `SELECT a."id" AS "attendanceId", a."date", a."note",
                 p."id", p."type", p."at", p."distance", p."isManual", p."source"
@@ -72,6 +73,7 @@ export async function GET(req: Request) {
       getPendingShiftRequestDates([user!.id], startDate, endDate),
       getWeeklyOffDays(),
       getDayReviews([user!.id], startDate, endDate),
+      getDaySwaps(startDate, endDate),
     ]);
     const fullDayMinutes = fullDayMinutesOf(rules);
 
@@ -120,7 +122,7 @@ export async function GET(req: Request) {
         leaveCode: mark?.leaveCode ?? null,
         lunchBreak,
         isRestDay:
-          isRestDayFor(user!.employmentType, date, weeklyOffDays, holidays.has(date)) ||
+          isRestDayFor(user!.employmentType, date, weeklyOffDays, holidays.has(date), swaps) ||
           (Boolean(ot) && scheduled.length === 0),
         fullDayMinutes,
         reviewDecision: reviews.get(`${user!.id}|${date}`) ?? null,
@@ -177,7 +179,7 @@ export async function GET(req: Request) {
       days,
       summary: {
         workdays: days.reduce((sum, day) => sum + day.workdayValue, 0),
-        standardWorkdays: standardWorkdays(month, weeklyOffDays),
+        standardWorkdays: standardWorkdays(month, weeklyOffDays, swaps),
         overtimeMinutes: days.reduce((sum, day) => sum + (day.overtime?.minutes ?? 0), 0),
         workedHours:
           Math.round(days.reduce((sum, day) => sum + day.workedHours, 0) * 10) / 10,

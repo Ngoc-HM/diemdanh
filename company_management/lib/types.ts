@@ -109,6 +109,10 @@ export type HolidayRow = {
   startDate: string;
   endDate: string;
   name: string;
+  /// Hoán đổi kèm đợt lễ: ngày vốn đi làm nay được nghỉ, và ngày nghỉ tuần
+  /// phải đi làm bù. Cùng null = không hoán đổi.
+  swapOffDate: string | null;
+  swapWorkDate: string | null;
   createdAt: Date;
 };
 

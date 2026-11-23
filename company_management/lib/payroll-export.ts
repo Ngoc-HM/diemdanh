@@ -227,6 +227,7 @@ export async function buildCompanyPayrollWorkbook(
     companyName,
     holidays: sheet.holidays,
     weeklyOffDays: sheet.weeklyOffDays,
+    daySwaps: sheet.daySwaps,
     standardWorkdays: sheet.standardWorkdays,
     exportedOn: sheet.computedOn,
   });

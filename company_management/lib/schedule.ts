@@ -124,38 +124,63 @@ export function registrationWindow(
 /// Admin đổi được trong trang Ngày lễ; giá trị lưu ở Settings.weekly_off_days.
 export const DEFAULT_WEEKLY_OFF_DAYS: readonly number[] = [0, 6];
 
-/// Lịch mặc định của nhân viên full-time: mọi ngày trong tháng
-/// KHÔNG rơi vào ngày nghỉ hằng tuần do admin cấu hình.
+/// Hoán đổi ngày làm việc đi kèm ngày lễ (vd lễ T3: nghỉ luôn T2, làm bù
+/// một T7). `off`: ngày vốn đi làm nay được nghỉ; `work`: ngày vốn nghỉ tuần
+/// nay phải đi làm. Ngày lễ vẫn ưu tiên hơn hoán đổi.
+export type DaySwaps = {
+  off: ReadonlySet<string>;
+  work: ReadonlySet<string>;
+};
+
+export const NO_DAY_SWAPS: DaySwaps = { off: new Set(), work: new Set() };
+
+/// Ngày `date` có phải ngày nghỉ (theo lịch tuần + hoán đổi) hay không,
+/// chưa tính ngày lễ.
+export function isOffDate(
+  date: string,
+  weeklyOffDays: readonly number[],
+  swaps: DaySwaps = NO_DAY_SWAPS
+): boolean {
+  if (swaps.work.has(date)) return false;
+  if (swaps.off.has(date)) return true;
+  return weeklyOffDays.includes(weekdayOfDateKey(date));
+}
+
+/// Lịch mặc định của nhân viên full-time: mọi ngày trong tháng KHÔNG phải
+/// ngày nghỉ hằng tuần, đã áp hoán đổi (bỏ ngày nghỉ bù, thêm ngày làm bù).
 export function fullTimeWorkingDates(
   month: string,
-  weeklyOffDays: readonly number[] = DEFAULT_WEEKLY_OFF_DAYS
+  weeklyOffDays: readonly number[] = DEFAULT_WEEKLY_OFF_DAYS,
+  swaps: DaySwaps = NO_DAY_SWAPS
 ): string[] {
-  const off = new Set(weeklyOffDays);
-  return listMonthDates(month).filter((date) => !off.has(weekdayOfDateKey(date)));
+  return listMonthDates(month).filter((date) => !isOffDate(date, weeklyOffDays, swaps));
 }
 
 /// Ngày công tháng (công chuẩn) dùng làm mẫu số khi tính lương: số ngày
-/// không phải ngày nghỉ hằng tuần trong tháng. Ngày lễ vẫn nằm trong đó vì
-/// nghỉ lễ được hưởng lương. Vd tháng 9/2026, nghỉ T7 + CN: 22.
+/// không phải ngày nghỉ (tuần + hoán đổi) trong tháng. Ngày lễ vẫn nằm trong
+/// đó vì nghỉ lễ được hưởng lương. Vd tháng 9/2026, nghỉ T7 + CN: 22.
+/// Hoán đổi trong cùng tháng thì công chuẩn không đổi (-1 +1).
 export function standardWorkdays(
   month: string,
-  weeklyOffDays: readonly number[] = DEFAULT_WEEKLY_OFF_DAYS
+  weeklyOffDays: readonly number[] = DEFAULT_WEEKLY_OFF_DAYS,
+  swaps: DaySwaps = NO_DAY_SWAPS
 ): number {
-  return fullTimeWorkingDates(month, weeklyOffDays).length;
+  return fullTimeWorkingDates(month, weeklyOffDays, swaps).length;
 }
 
-/// Ngày nghỉ của một người: với full-time là ngày nghỉ hằng tuần và ngày lễ.
-/// Part-time / thực tập tự đăng ký ca nên ngày nào cũng có thể là ngày làm.
+/// Ngày nghỉ của một người: với full-time là ngày nghỉ hằng tuần (đã áp
+/// hoán đổi) và ngày lễ. Part-time / thực tập tự đăng ký ca nên ngày nào
+/// cũng có thể là ngày làm.
 export function isRestDayFor(
   employmentType: string,
   date: string,
   weeklyOffDays: readonly number[],
-  isHoliday: boolean
+  isHoliday: boolean,
+  swaps: DaySwaps = NO_DAY_SWAPS
 ): boolean {
   if (isSelfScheduled(employmentType)) return false;
-  return isHoliday || weeklyOffDays.includes(weekdayOfDateKey(date));
+  return isHoliday || isOffDate(date, weeklyOffDays, swaps);
 }
-
 
 export type ScheduleWindowState = {
   /// Tháng đang mở đăng ký (null nếu ngoài cửa sổ)

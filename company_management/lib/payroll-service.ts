@@ -103,6 +103,7 @@ export type PayrollSheet = {
   dates: string[];
   holidays: Record<string, string>;
   weeklyOffDays: number[];
+  daySwaps: { off: string[]; work: string[] };
   sessionCodes: string[];
   config: PayrollConfig;
   overtimeConfig: OvertimeConfig;
@@ -260,6 +261,7 @@ export async function computeMonthPayroll(month: string): Promise<PayrollSheet> 
     dates: attendance.dates,
     holidays: Object.fromEntries(attendance.holidays),
     weeklyOffDays: attendance.weeklyOffDays,
+    daySwaps: attendance.daySwaps,
     sessionCodes: attendance.rules.map((rule) => rule.code),
     config,
     overtimeConfig,

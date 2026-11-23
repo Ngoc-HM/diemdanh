@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Plus, Trash2 } from "lucide-react";
+import { ArrowLeftRight, Plus, Trash2 } from "lucide-react";
 import PageHeader from "../_components/page-header";
 import {
   Button,
@@ -21,6 +21,8 @@ type Holiday = {
   startDate: string;
   endDate: string;
   name: string;
+  swapOffDate: string | null;
+  swapWorkDate: string | null;
 };
 
 export default function HolidaysPage() {
@@ -31,6 +33,8 @@ export default function HolidaysPage() {
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
   const [name, setName] = useState("");
+  const [swapOffDate, setSwapOffDate] = useState("");
+  const [swapWorkDate, setSwapWorkDate] = useState("");
   const [message, setMessage] = useState<{
     type: "success" | "error";
     text: string;
@@ -65,7 +69,13 @@ export default function HolidaysPage() {
       const response = await fetch("/api/holidays", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ startDate, endDate: endDate || startDate, name }),
+        body: JSON.stringify({
+          startDate,
+          endDate: endDate || startDate,
+          name,
+          swapOffDate: swapOffDate || null,
+          swapWorkDate: swapWorkDate || null,
+        }),
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "Không thể thêm");
@@ -79,6 +89,8 @@ export default function HolidaysPage() {
       setStartDate("");
       setEndDate("");
       setName("");
+      setSwapOffDate("");
+      setSwapWorkDate("");
       setMessage({
         type: "success",
         text:
@@ -123,7 +135,7 @@ export default function HolidaysPage() {
     <>
       <PageHeader
         title="Ngày lễ"
-        description="Nghỉ lễ vẫn được tính công (hưởng lương) và không bị tính vắng. Đi làm ngày lễ phải làm phiếu OT, tính hệ số ngày lễ. Ngày nghỉ hằng tuần (T7, CN) đặt ở trang Lịch làm việc."
+        description="Nghỉ lễ vẫn được tính công (hưởng lương) và không bị tính vắng. Đi làm ngày lễ phải làm phiếu OT, tính hệ số ngày lễ. Có thể kèm hoán đổi: nghỉ thêm một ngày thường và đi làm bù vào một ngày nghỉ tuần. Ngày nghỉ hằng tuần (T7, CN) đặt ở trang Lịch làm việc."
         actions={
           <Button onClick={() => setCreating(true)}>
             <Plus size={16} aria-hidden="true" />
@@ -174,7 +186,16 @@ export default function HolidaysPage() {
                     {holiday.startDate !== holiday.endDate &&
                       ` → ${weekdayLabel(holiday.endDate)}`}
                   </td>
-                  <td className="px-4 py-3 text-slate-700">{holiday.name}</td>
+                  <td className="px-4 py-3 text-slate-700">
+                    {holiday.name}
+                    {holiday.swapOffDate && holiday.swapWorkDate && (
+                      <div className="mt-1 flex items-center gap-1.5 text-xs text-slate-500">
+                        <ArrowLeftRight size={12} aria-hidden="true" />
+                        Nghỉ {weekdayLabel(holiday.swapOffDate)} {holiday.swapOffDate}, làm bù{" "}
+                        {weekdayLabel(holiday.swapWorkDate)} {holiday.swapWorkDate}
+                      </div>
+                    )}
+                  </td>
                   <td className="px-4 py-3 text-right">
                     <Button
                       variant="danger"
@@ -230,6 +251,38 @@ export default function HolidaysPage() {
               required
             />
           </Field>
+          <fieldset className="space-y-3 rounded-lg border border-slate-200 p-3">
+            <legend className="px-1 text-sm font-medium text-slate-900">
+              Hoán đổi ngày làm việc (tuỳ chọn)
+            </legend>
+            <p className="text-xs text-slate-500">
+              Vd lễ rơi vào T3: cho nghỉ luôn T2 và đi làm bù một T7 để nghỉ liền mạch.
+            </p>
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="Nghỉ thêm ngày" required={Boolean(swapWorkDate)}>
+                <Input
+                  type="date"
+                  value={swapOffDate}
+                  onChange={(event) => setSwapOffDate(event.target.value)}
+                  required={Boolean(swapWorkDate)}
+                />
+              </Field>
+              <Field label="Đi làm bù ngày" required={Boolean(swapOffDate)}>
+                <Input
+                  type="date"
+                  value={swapWorkDate}
+                  onChange={(event) => setSwapWorkDate(event.target.value)}
+                  required={Boolean(swapOffDate)}
+                />
+              </Field>
+            </div>
+            {swapOffDate && swapWorkDate && (
+              <p className="text-xs text-slate-600">
+                {weekdayLabel(swapOffDate)} {swapOffDate} được nghỉ, đi làm{" "}
+                {weekdayLabel(swapWorkDate)} {swapWorkDate} thay vào.
+              </p>
+            )}
+          </fieldset>
           <div className="flex justify-end gap-3">
             <Button
               type="button"

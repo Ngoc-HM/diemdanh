@@ -23,6 +23,7 @@ import {
   getActiveSessionRules,
   getDayMarks,
   getDayReviews,
+  getDaySwaps,
   getHolidayMap,
   getLunchBreak,
   getPendingShiftRequestDates,
@@ -91,7 +92,7 @@ export async function GET(
     if (!user) notFound("Không tìm thấy nhân viên");
 
     const { startDate, endDate } = getMonthRange(month);
-    const [rules, rows, holidays, lunchBreak, reportRows, weeklyOffDays] = await Promise.all([
+    const [rules, rows, holidays, lunchBreak, reportRows, weeklyOffDays, swaps] = await Promise.all([
       getActiveSessionRules(),
       query<PunchRow>(
         `SELECT a."date", a."note", a."editedAt",
@@ -115,6 +116,7 @@ export async function GET(
         [userId, startDate, endDate]
       ),
       getWeeklyOffDays(),
+      getDaySwaps(startDate, endDate),
     ]);
 
     const reportsByDate = new Map<string, WorkReportEntryRow[]>();
@@ -162,7 +164,7 @@ export async function GET(
         leaveCode: mark?.leaveCode ?? null,
         lunchBreak,
         isRestDay:
-          isRestDayFor(user!.employmentType, date, weeklyOffDays, holidays.has(date)) ||
+          isRestDayFor(user!.employmentType, date, weeklyOffDays, holidays.has(date), swaps) ||
           (Boolean(ot) && scheduled.length === 0),
         fullDayMinutes,
         reviewDecision: reviews.get(`${userId}|${date}`) ?? null,
@@ -219,7 +221,7 @@ export async function GET(
       EMPLOYMENT_TYPE_LABELS[user!.employmentType as EmploymentType] ??
       user!.employmentType;
     const workdays = days.reduce((sum, day) => sum + day.workdayValue, 0);
-    const monthStandardWorkdays = standardWorkdays(month, weeklyOffDays);
+    const monthStandardWorkdays = standardWorkdays(month, weeklyOffDays, swaps);
 
     if (searchParams.get("export") === "xlsx") {
       const companyName = await queryOne<{ value: string }>(
@@ -248,6 +250,7 @@ export async function GET(
         workdays,
         standardWorkdays: monthStandardWorkdays,
         weeklyOffDays,
+        daySwaps: { off: [...swaps.off], work: [...swaps.work] },
         exportedOn: today,
       });
       return new NextResponse(new Uint8Array(file), {

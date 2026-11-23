@@ -30,6 +30,7 @@ export async function GET(req: Request) {
       dates: result.dates,
       holidays: Object.fromEntries(result.holidays),
       weeklyOffDays: result.weeklyOffDays,
+      daySwaps: result.daySwaps,
       standardWorkdays: result.standardWorkdays,
       sessions: result.rules.map((rule) => ({
         id: rule.id,

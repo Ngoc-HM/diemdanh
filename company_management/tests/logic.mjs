@@ -307,6 +307,19 @@ check("full-time: ngày lễ là ngày nghỉ", isRestDayFor("full_time", "2026-
 check("full-time: thứ 3 thường là ngày làm", isRestDayFor("full_time", "2026-09-01", [0, 6], false) === false);
 check("part-time tự đăng ký nên thứ 7 không phải ngày nghỉ", isRestDayFor("part_time", "2026-09-05", [0, 6], false) === false);
 
+console.log("\n== hoán đổi ngày làm kèm ngày lễ ==");
+// Lễ T3 24/11/2026: nghỉ luôn T2 23/11, đi làm bù T7 28/11.
+const swaps = { off: new Set(["2026-11-23"]), work: new Set(["2026-11-28"]) };
+check("T2 nghỉ bù là ngày nghỉ", isRestDayFor("full_time", "2026-11-23", [0, 6], false, swaps) === true);
+check("T7 làm bù là ngày làm", isRestDayFor("full_time", "2026-11-28", [0, 6], false, swaps) === false);
+const novSwapped = fullTimeWorkingDates("2026-11", [0, 6], swaps);
+check("lịch full-time: bỏ T2 23/11, thêm T7 28/11", !novSwapped.includes("2026-11-23") && novSwapped.includes("2026-11-28"));
+check("hoán đổi cùng tháng: công chuẩn không đổi", standardWorkdays("2026-11", [0, 6], swaps) === standardWorkdays("2026-11", [0, 6]));
+check("hoán đổi khác tháng: tháng có ngày nghỉ bù bớt 1 công",
+  standardWorkdays("2026-11", [0, 6], { off: new Set(["2026-11-30"]), work: new Set(["2026-12-05"]) }) === standardWorkdays("2026-11", [0, 6]) - 1);
+check("OT ngày làm bù T7 = T (ngày thường)", overtimeDayType(6, [0, 6], false, "work") === "weekday");
+check("OT ngày nghỉ bù T2 = T1", overtimeDayType(1, [0, 6], false, "off") === "weekly_off");
+
 console.log("\n== làm thêm giờ (OT) ==");
 check("thứ 3 thường = T (weekday)", overtimeDayType(2, [0, 6], false) === "weekday");
 check("thứ 7 = T1 (ngày nghỉ tuần)", overtimeDayType(6, [0, 6], false) === "weekly_off");

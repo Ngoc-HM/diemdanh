@@ -6,13 +6,14 @@ import {
   SessionRule,
 } from "@/lib/attendance-rules";
 import {
+  DaySwaps,
   DEFAULT_WEEKLY_OFF_DAYS,
   fullTimeWorkingDates,
   isSelfScheduled,
   parseRegistrationWindow,
   RegistrationWindowConfig,
 } from "@/lib/schedule";
-import { listDateRange } from "@/lib/datetime";
+import { getMonthRange, listDateRange } from "@/lib/datetime";
 import { HolidayRow, WorkSessionRow } from "@/lib/types";
 
 
@@ -137,6 +138,23 @@ export async function getHolidayMap(
   return map;
 }
 
+/// Các ngày hoán đổi (nghỉ bù / làm bù) khai kèm ngày lễ, rơi vào khoảng ngày.
+export async function getDaySwaps(
+  startDate: string,
+  endDate: string
+): Promise<DaySwaps> {
+  const rows = await query<{ swapOffDate: string; swapWorkDate: string }>(
+    `SELECT "swapOffDate", "swapWorkDate" FROM "Holiday"
+      WHERE "swapOffDate" IS NOT NULL
+        AND (("swapOffDate" BETWEEN $1 AND $2) OR ("swapWorkDate" BETWEEN $1 AND $2))`,
+    [startDate, endDate]
+  );
+  return {
+    off: new Set(rows.map((row) => row.swapOffDate)),
+    work: new Set(rows.map((row) => row.swapWorkDate)),
+  };
+}
+
 /// Ngày nghỉ cố định hằng tuần (0 = CN ... 6 = T7), admin chỉnh trong
 /// trang Ngày lễ. Chưa cấu hình thì mặc định nghỉ Thứ 7 + Chủ nhật.
 export async function getWeeklyOffDays(): Promise<number[]> {
@@ -212,7 +230,12 @@ export async function resolveMonthSchedules(
 
   const ruleById = new Map(rules.map((rule) => [rule.id, rule]));
   const defaultSessions = pickFullTimeSessions(rules);
-  const fullTimeDates = fullTimeWorkingDates(month, await getWeeklyOffDays());
+  const { startDate, endDate } = getMonthRange(month);
+  const [weeklyOffDays, swaps] = await Promise.all([
+    getWeeklyOffDays(),
+    getDaySwaps(startDate, endDate),
+  ]);
+  const fullTimeDates = fullTimeWorkingDates(month, weeklyOffDays, swaps);
   const userIds = users.map((user) => user.id);
 
   const [registrations, registeredDays] = await Promise.all([

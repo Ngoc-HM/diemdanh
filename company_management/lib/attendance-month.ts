@@ -12,6 +12,7 @@ import {
   getActiveSessionRules,
   getDayMarks,
   getDayReviews,
+  getDaySwaps,
   getHolidayMap,
   getLunchBreak,
   getPendingShiftRequestDates,
@@ -119,7 +120,7 @@ export async function computeMonthAttendance(
   const { startDate, endDate, daysInMonth } = getMonthRange(month);
   const dates = listMonthDates(month);
 
-  const [allUsers, rules, punchRows, holidays, lunchBreak, weeklyOffDays] =
+  const [allUsers, rules, punchRows, holidays, lunchBreak, weeklyOffDays, swaps] =
     await Promise.all([
       query<MonthEmployee>(
         `SELECT "id", "name", "email", "employeeCode", "employmentType",
@@ -140,6 +141,7 @@ export async function computeMonthAttendance(
       getHolidayMap(startDate, endDate),
       getLunchBreak(),
       getWeeklyOffDays(),
+      getDaySwaps(startDate, endDate),
     ]);
 
   const users = options.userIds
@@ -208,7 +210,7 @@ export async function computeMonthAttendance(
         // Ngày không có ca mà có phiếu OT đã duyệt là ngày làm thêm: trả
         // theo giờ OT, không cộng thêm công "ngoài lịch".
         isRestDay:
-          isRestDayFor(user.employmentType, date, weeklyOffDays, isHoliday) ||
+          isRestDayFor(user.employmentType, date, weeklyOffDays, isHoliday, swaps) ||
           (Boolean(ot) && scheduled.length === 0),
         fullDayMinutes,
         reviewDecision: reviews.get(`${user.id}|${date}`) ?? null,
@@ -341,7 +343,8 @@ export async function computeMonthAttendance(
     rules,
     holidays,
     weeklyOffDays,
-    standardWorkdays: standardWorkdays(month, weeklyOffDays),
+    daySwaps: { off: [...swaps.off], work: [...swaps.work] },
+    standardWorkdays: standardWorkdays(month, weeklyOffDays, swaps),
     summary,
   };
 }

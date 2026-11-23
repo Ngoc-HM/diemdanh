@@ -72,12 +72,17 @@ export function overtimeRate(config: OvertimeConfig, dayType: OvertimeDayType): 
 }
 
 /// Ngày lễ ưu tiên hơn ngày nghỉ tuần (lễ rơi vào CN vẫn là T2).
+/// `swap`: ngày đã hoán đổi — "off" (nghỉ bù) tính như ngày nghỉ tuần,
+/// "work" (làm bù) tính như ngày thường.
 export function overtimeDayType(
   weekday: number,
   weeklyOffDays: readonly number[],
-  isHoliday: boolean
+  isHoliday: boolean,
+  swap: "off" | "work" | null = null
 ): OvertimeDayType {
   if (isHoliday) return "holiday";
+  if (swap === "work") return "weekday";
+  if (swap === "off") return "weekly_off";
   if (weeklyOffDays.includes(weekday)) return "weekly_off";
   return "weekday";
 }
