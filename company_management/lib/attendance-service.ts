@@ -13,7 +13,8 @@ import {
   parseRegistrationWindow,
   RegistrationWindowConfig,
 } from "@/lib/schedule";
-import { getMonthRange, listDateRange } from "@/lib/datetime";
+import { formatTimeVN, getMonthRange, listDateRange } from "@/lib/datetime";
+import type { DayPunchTimes } from "@/lib/attendance-export";
 import { HolidayRow, WorkSessionRow } from "@/lib/types";
 
 
@@ -337,4 +338,38 @@ export async function getPunchesByAttendance(
     map.set(row.attendanceId, list);
   }
   return map;
+}
+
+/// Giờ vào sớm nhất / ra muộn nhất từng ngày của nhiều người, khoá userId ->
+/// ngày. Giờ do admin điền tay thì đánh dấu để file Excel ghi rõ.
+export async function getDayPunchTimes(
+  userIds: string[],
+  startDate: string,
+  endDate: string
+): Promise<Map<string, Record<string, DayPunchTimes>>> {
+  const times = new Map<string, Record<string, DayPunchTimes>>();
+  if (userIds.length === 0) return times;
+  const rows = await query<{ userId: string; date: string; type: string; at: Date; isManual: boolean }>(
+    `SELECT a."userId", a."date", p."type", p."at", p."isManual"
+       FROM "Attendance" a
+       JOIN "AttendancePunch" p ON p."attendanceId" = a."id"
+      WHERE a."userId" = ANY($1::text[]) AND a."date" BETWEEN $2 AND $3
+      ORDER BY p."at" ASC`,
+    [userIds, startDate, endDate]
+  );
+  for (const row of rows) {
+    const byDate = times.get(row.userId) ?? {};
+    const day = (byDate[row.date] ??= { firstIn: null, lastOut: null, adminEdited: false });
+    if (row.type === "in" && !day.firstIn) {
+      day.firstIn = formatTimeVN(row.at);
+      day.inByAdmin = row.isManual;
+    }
+    if (row.type === "out") {
+      day.lastOut = formatTimeVN(row.at);
+      day.outByAdmin = row.isManual;
+    }
+    if (row.isManual) day.adminEdited = true;
+    times.set(row.userId, byDate);
+  }
+  return times;
 }

@@ -626,7 +626,7 @@ const OVERTIME_FILL: Record<string, string> = { T: "#FEF3C7", T1: "#FFEDD5", T2:
 
 /// Bảng OT ngang (một hoặc nhiều nhân viên): mỗi ngày một cột ghi số giờ OT đã duyệt,
 /// cuối dòng là tổng giờ T / T1 / T2 — giống bảng OT trên trang bảng công chốt.
-function employeeOvertimeSheet(input: AttendanceSheetInput) {
+export function employeeOvertimeSheet(input: AttendanceSheetInput) {
   const { month, dates, rows, companyName, holidays, weeklyOffDays } = input;
   const isOffDay = offDayChecker(weeklyOffDays, input.daySwaps);
   const identity = [

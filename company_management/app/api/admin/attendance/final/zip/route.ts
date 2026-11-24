@@ -1,10 +1,11 @@
 import { NextResponse } from "next/server";
 import { zipSync } from "fflate";
-import { query, queryOne } from "@/lib/db";
+import { queryOne } from "@/lib/db";
 import { badRequest, handle, requireAdmin } from "@/lib/auth-guard";
-import { formatTimeVN, getMonthRange, isValidMonth, monthKeyVN } from "@/lib/datetime";
+import { getMonthRange, isValidMonth, monthKeyVN } from "@/lib/datetime";
+import { getDayPunchTimes } from "@/lib/attendance-service";
 import { computeMonthAttendance } from "@/lib/attendance-month";
-import { buildEmployeeBundleWorkbook, type DayPunchTimes } from "@/lib/attendance-export";
+import { buildEmployeeBundleWorkbook } from "@/lib/attendance-export";
 
 /// Tên file trong zip: "Mã NV - Họ tên.xlsx", bỏ ký tự không hợp lệ trên Windows.
 function entryName(name: string, code: string | null, used: Set<string>) {
@@ -29,34 +30,11 @@ export async function GET(req: Request) {
       projectRemaining: month >= monthKeyVN(),
     });
     const { startDate, endDate } = getMonthRange(month);
-    const [companyName, punchRows] = await Promise.all([
-      queryOne<{ value: string }>(`SELECT "value" FROM "Settings" WHERE "key" = 'company_name'`),
-      query<{ userId: string; date: string; type: string; at: Date; isManual: boolean }>(
-        `SELECT a."userId", a."date", p."type", p."at", p."isManual"
-           FROM "Attendance" a
-           JOIN "AttendancePunch" p ON p."attendanceId" = a."id"
-          WHERE a."userId" = ANY($1::text[]) AND a."date" BETWEEN $2 AND $3
-          ORDER BY p."at" ASC`,
-        [result.summary.map((row) => row.user.id), startDate, endDate]
-      ),
-    ]);
-
     // Giờ vào sớm nhất / ra muộn nhất từng ngày; admin sửa giờ thì ghi chú.
-    const times = new Map<string, Record<string, DayPunchTimes>>();
-    for (const row of punchRows) {
-      const byDate = times.get(row.userId) ?? {};
-      const day = (byDate[row.date] ??= { firstIn: null, lastOut: null, adminEdited: false });
-      if (row.type === "in" && !day.firstIn) {
-        day.firstIn = formatTimeVN(row.at);
-        day.inByAdmin = row.isManual;
-      }
-      if (row.type === "out") {
-        day.lastOut = formatTimeVN(row.at);
-        day.outByAdmin = row.isManual;
-      }
-      if (row.isManual) day.adminEdited = true;
-      times.set(row.userId, byDate);
-    }
+    const [companyName, times] = await Promise.all([
+      queryOne<{ value: string }>(`SELECT "value" FROM "Settings" WHERE "key" = 'company_name'`),
+      getDayPunchTimes(result.summary.map((row) => row.user.id), startDate, endDate),
+    ]);
 
     const files: Record<string, Uint8Array> = {};
     const used = new Set<string>();

@@ -1589,11 +1589,15 @@ async function main() {
     const payXlsx = await fetch(BASE + `/api/admin/payroll/export?month=${PAY_MONTH}`, { headers: { Cookie: admin.header() } });
     const payBuf = Buffer.from(await payXlsx.arrayBuffer());
     check("tải bảng lương toàn công ty", payXlsx.status === 200 && payBuf.subarray(0, 2).toString() === "PK" &&
-      (payXlsx.headers.get("content-disposition") ?? "").includes("bang-luong-2026-09.xlsx"), `(${payXlsx.status})`);
+      decodeURIComponent(payXlsx.headers.get("content-disposition") ?? "").includes("Bảng lương công ty - Tháng 9 năm 2026.xlsx"), `(${payXlsx.status})`);
     const slip = await fetch(BASE + `/api/admin/payroll/export?month=${PAY_MONTH}&userId=${employeeId}`, { headers: { Cookie: admin.header() } });
     const slipBuf = Buffer.from(await slip.arrayBuffer());
     check("tải phiếu lương từng người", slip.status === 200 && slipBuf.subarray(0, 2).toString() === "PK" &&
-      (slip.headers.get("content-disposition") ?? "").includes("phieu-luong-2026-09-"), `(${slip.status})`);
+      decodeURIComponent(slip.headers.get("content-disposition") ?? "").includes("- Tháng 9 năm 2026.xlsx"), `(${slip.status})`);
+    const slipZip = await fetch(BASE + `/api/admin/payroll/export?month=${PAY_MONTH}&scope=employees`, { headers: { Cookie: admin.header() } });
+    const slipZipBuf = Buffer.from(await slipZip.arrayBuffer());
+    check("tải zip bảng lương từng người", slipZip.status === 200 && slipZipBuf.subarray(0, 2).toString() === "PK" &&
+      (slipZip.headers.get("content-type") ?? "").includes("zip"), `(${slipZip.status})`);
     r = await call(admin, "GET", `/api/admin/payroll/export?month=${PAY_MONTH}&userId=khong-co`);
     check("phiếu lương người lạ = 404", r.status === 404, `(${r.status})`);
 

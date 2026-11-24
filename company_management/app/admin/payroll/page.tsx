@@ -6,6 +6,8 @@ import {
   ChevronLeft,
   ChevronRight,
   Download,
+  FileSpreadsheet,
+  FolderArchive,
   Lock,
   LockOpen,
   Pencil,
@@ -123,6 +125,7 @@ export default function PayrollPage() {
   const [month, setMonth] = useState(() => monthKeyVN());
   const [data, setData] = useState<Payload | null>(null);
   const [loading, setLoading] = useState(true);
+  const [exportOpen, setExportOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(
     null
@@ -251,9 +254,11 @@ export default function PayrollPage() {
     }
   }
 
-  const download = (userId?: string) =>
+  const download = (options: { userId?: string; employees?: boolean } = {}) =>
     window.open(
-      `/api/admin/payroll/export?month=${month}${userId ? `&userId=${userId}` : ""}`,
+      `/api/admin/payroll/export?month=${month}` +
+        (options.userId ? `&userId=${options.userId}` : "") +
+        (options.employees ? "&scope=employees" : ""),
       "_blank"
     );
 
@@ -283,9 +288,9 @@ export default function PayrollPage() {
                 Cài đặt lương
               </Button>
             </Link>
-            <Button onClick={() => download()} disabled={!data || data.rows.length === 0}>
+            <Button onClick={() => setExportOpen(true)} disabled={!data || data.rows.length === 0}>
               <Download size={16} aria-hidden="true" />
-              Tải bảng lương công ty
+              Tải bảng lương
             </Button>
           </>
         }
@@ -470,7 +475,7 @@ export default function PayrollPage() {
                       <Button
                         variant="secondary"
                         size="sm"
-                        onClick={() => download(row.user.id)}
+                        onClick={() => download({ userId: row.user.id })}
                         aria-label={`Tải phiếu lương của ${row.user.name}`}
                         title="Tải phiếu lương"
                       >
@@ -819,6 +824,49 @@ export default function PayrollPage() {
             </section>
           </form>
         )}
+      </Modal>
+      <Modal
+        open={exportOpen}
+        title={`Tải bảng lương ${formatMonthLabel(month).toLowerCase()}`}
+        onClose={() => setExportOpen(false)}
+      >
+        <div className="space-y-3">
+          {[
+            {
+              key: "company",
+              icon: FileSpreadsheet,
+              title: "Tổng hợp bảng lương công ty",
+              detail: "Một file Excel: bảng lương toàn công ty (có cột phút đi muộn), bảng chấm công và bảng làm thêm giờ của mọi người.",
+              onClick: () => download(),
+            },
+            {
+              key: "employees",
+              icon: FolderArchive,
+              title: "Tải về từng người",
+              detail: `File .zip, mỗi người một file Excel "Mã NV - Họ tên - Tháng X năm Y": phiếu lương, chấm công chi tiết từng ngày (giờ vào / ra, phút muộn, quyết định cuối cùng) và làm thêm giờ.`,
+              onClick: () => download({ employees: true }),
+            },
+          ].map((option) => (
+            <button
+              key={option.key}
+              type="button"
+              onClick={() => {
+                option.onClick();
+                setExportOpen(false);
+              }}
+              className="flex w-full items-start gap-3 rounded-lg border border-slate-200 p-4 text-left transition hover:border-sky-300 hover:bg-sky-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-sky-500"
+            >
+              <option.icon size={20} className="mt-0.5 shrink-0 text-sky-700" aria-hidden="true" />
+              <span>
+                <span className="block font-medium text-slate-900">{option.title}</span>
+                <span className="mt-1 block text-sm text-slate-600">{option.detail}</span>
+              </span>
+            </button>
+          ))}
+          {data && !data.closed && (
+            <p className="text-xs text-slate-500">Tháng chưa chốt lương — số liệu trong file là tạm tính.</p>
+          )}
+        </div>
       </Modal>
     </>
   );

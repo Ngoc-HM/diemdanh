@@ -89,6 +89,11 @@ export type PayrollRow = {
     place: string | null;
     content: string;
     minutes: number;
+    /// Số phút theo giờ ghi trên phiếu; `approvedMinutes` khác null = admin
+    /// chốt tay số phút trả lương. Bảng lương chốt trước đây không có hai trường này.
+    computedMinutes?: number;
+    approvedMinutes?: number | null;
+    adminNote?: string | null;
   }[];
   payroll: PayrollResult;
 };
@@ -103,7 +108,8 @@ export type PayrollSheet = {
   dates: string[];
   holidays: Record<string, string>;
   weeklyOffDays: number[];
-  daySwaps: { off: string[]; work: string[] };
+  /// Bảng lương chốt trước khi có hoán đổi ngày lễ không có trường này.
+  daySwaps?: { off: string[]; work: string[] };
   sessionCodes: string[];
   config: PayrollConfig;
   overtimeConfig: OvertimeConfig;
@@ -243,6 +249,9 @@ export async function computeMonthPayroll(month: string): Promise<PayrollSheet> 
           place: view.place,
           content: view.content,
           minutes: view.minutes,
+          computedMinutes: view.computedMinutes,
+          approvedMinutes: view.approvedMinutes,
+          adminNote: view.adminNote,
         })),
       payroll,
     };
