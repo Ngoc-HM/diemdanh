@@ -25,6 +25,26 @@ export const TAX_MODE_LABELS: Record<TaxMode, string> = {
   progressive: "Luỹ tiến (có giảm trừ)",
   none: "Không khấu trừ",
 };
+/// Nhãn hợp đồng của một tháng. Hồ sơ "Thử việc" giữ nguyên sau khi hết thử
+/// việc (để các tháng cũ vẫn tách đúng phần lương thử việc), nên nhãn tự đổi
+/// theo ngày kết thúc: tháng sau đó là "Chính thức", tháng hết giữa chừng ghi
+/// rõ ngày bắt đầu chính thức.
+export function contractLabelForMonth(
+  profile: Pick<PayProfile, "contractType" | "probationEndDate">,
+  month: string
+): string {
+  const end = profile.probationEndDate;
+  if (profile.contractType !== "probation" || !end) return CONTRACT_LABELS[profile.contractType];
+  const endMonth = end.slice(0, 7);
+  if (endMonth < month) return CONTRACT_LABELS.official;
+  if (endMonth > month) return CONTRACT_LABELS.probation;
+  const next = new Date(`${end}T00:00:00Z`);
+  next.setUTCDate(next.getUTCDate() + 1);
+  if (next.toISOString().slice(0, 7) !== month) return CONTRACT_LABELS.probation;
+  const dd = next.toISOString().slice(8, 10);
+  return `Thử việc → Chính thức từ ${dd}/${month.slice(5, 7)}`;
+}
+
 export const ALLOWANCE_MODE_LABELS: Record<AllowanceMode, string> = {
   monthly: "Cố định mỗi tháng",
   prorated: "Theo tỉ lệ ngày công",

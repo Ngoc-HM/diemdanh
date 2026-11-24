@@ -27,7 +27,7 @@ import {
   Select,
   TableSkeleton,
 } from "@/app/_components/ui";
-import { addMonths, formatMonthLabel, monthKeyVN } from "@/lib/datetime";
+import { addMonths, dateKeyVN, formatMonthLabel, monthKeyVN } from "@/lib/datetime";
 import { formatWorkdays } from "@/lib/attendance-rules";
 import {
   ALLOWANCE_MODE_LABELS,
@@ -42,7 +42,14 @@ import {
 } from "@/lib/payroll";
 
 type PayrollRow = {
-  user: { id: string; name: string; employeeCode: string | null; position: string | null };
+  user: {
+    id: string;
+    name: string;
+    employeeCode: string | null;
+    position: string | null;
+    /// Bảng lương chốt trước đây có thể thiếu trường này.
+    employmentLabel?: string;
+  };
   hasProfile: boolean;
   contractLabel: string;
   attendance: { workdays: number; leaveDays: number; reviewDays: number; projectedDays: number };
@@ -416,9 +423,13 @@ export default function PayrollPage() {
                   <td className="px-4 py-3">
                     <div className="font-medium text-slate-900">{row.user.name}</div>
                     <div className="text-xs text-slate-500">
-                      {row.hasProfile
-                        ? `${row.contractLabel} · ${PAY_BASIS_LABELS[row.payroll.payBasis]}`
-                        : "Chưa có hồ sơ lương"}
+                      {[
+                        row.user.employmentLabel,
+                        row.hasProfile ? row.contractLabel : "Chưa có hồ sơ lương",
+                        row.hasProfile ? PAY_BASIS_LABELS[row.payroll.payBasis] : null,
+                      ]
+                        .filter(Boolean)
+                        .join(" · ")}
                       {row.user.employeeCode ? ` · ${row.user.employeeCode}` : ""}
                     </div>
                   </td>
@@ -625,7 +636,11 @@ export default function PayrollPage() {
                 {form.contractType === "probation" && (
                   <Field
                     label="Ngày kết thúc thử việc"
-                    hint="Đến hết ngày này tính lương thử việc và trừ thuế 10%; từ hôm sau 100% lương, không trừ thuế"
+                    hint={
+                      form.probationEndDate && form.probationEndDate < dateKeyVN()
+                        ? "Đã hết thử việc — bảng lương các tháng sau ngày này tự ghi \"Chính thức\", tính 100% lương. Giữ nguyên \"Thử việc\" và ngày này để các tháng trước vẫn tính đúng phần thử việc."
+                        : "Đến hết ngày này tính lương thử việc và trừ thuế 10%; từ hôm sau 100% lương, không trừ thuế"
+                    }
                   >
                     <Input
                       type="date"

@@ -6,7 +6,7 @@ import { OvertimeConfig } from "@/lib/overtime";
 import {
   annualLeaveForMonth,
   AssignedAllowance,
-  CONTRACT_LABELS,
+  contractLabelForMonth,
   DEFAULT_PAY_PROFILE,
   computePayroll,
   probationPortionForMonth,
@@ -230,7 +230,7 @@ export async function computeMonthPayroll(month: string): Promise<PayrollSheet> 
       },
       hasProfile: Boolean(stored),
       profile,
-      contractLabel: CONTRACT_LABELS[profile.contractType],
+      contractLabel: contractLabelForMonth(profile, month),
       attendance: summary,
       leave: {
         eligible,

@@ -26,6 +26,7 @@ import { finalDayLabel, validateFinalDay } from "../lib/final-rules.ts";
 import {
   annualLeaveForMonth,
   computePayroll,
+  contractLabelForMonth,
   DEFAULT_PAY_PROFILE,
   insuranceAppliesInMonth,
   parsePayrollConfig,
@@ -306,6 +307,15 @@ check("full-time: thứ 7 là ngày nghỉ", isRestDayFor("full_time", "2026-09-
 check("full-time: ngày lễ là ngày nghỉ", isRestDayFor("full_time", "2026-09-02", [0, 6], true) === true);
 check("full-time: thứ 3 thường là ngày làm", isRestDayFor("full_time", "2026-09-01", [0, 6], false) === false);
 check("part-time tự đăng ký nên thứ 7 không phải ngày nghỉ", isRestDayFor("part_time", "2026-09-05", [0, 6], false) === false);
+
+console.log("\n== nhãn hợp đồng theo tháng ==");
+const probProfile = { contractType: "probation", probationEndDate: "2026-10-16" };
+check("tháng trước khi hết thử việc = Thử việc", contractLabelForMonth(probProfile, "2026-09") === "Thử việc");
+check("tháng hết thử việc giữa chừng ghi ngày chính thức", contractLabelForMonth(probProfile, "2026-10") === "Thử việc → Chính thức từ 17/10");
+check("tháng sau khi hết thử việc = Chính thức", contractLabelForMonth(probProfile, "2026-11") === "Chính thức");
+check("hết thử việc đúng ngày cuối tháng: tháng đó vẫn Thử việc",
+  contractLabelForMonth({ contractType: "probation", probationEndDate: "2026-10-31" }, "2026-10") === "Thử việc");
+check("CTV giữ nguyên nhãn", contractLabelForMonth({ contractType: "collaborator", probationEndDate: null }, "2026-11") === "CTV");
 
 console.log("\n== phút đi muộn ==");
 check("chỉ cộng phút muộn ngày làm thông thường (bỏ vắng, lễ, ngoài lịch)",
