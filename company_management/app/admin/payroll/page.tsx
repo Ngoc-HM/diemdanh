@@ -850,15 +850,15 @@ export default function PayrollPage() {
             {
               key: "company",
               icon: FileSpreadsheet,
-              title: "Tổng hợp bảng lương công ty",
-              detail: "Một file Excel: bảng lương toàn công ty (có cột phút đi muộn), bảng chấm công và bảng làm thêm giờ của mọi người.",
+              title: "Toàn công ty",
+              detail: "Bảng lương, chấm công và làm thêm giờ của cả công ty.",
               onClick: () => download(),
             },
             {
               key: "employees",
               icon: FolderArchive,
-              title: "Tải về từng người",
-              detail: `File .zip, mỗi người một file Excel "Mã NV - Họ tên - Tháng X năm Y": phiếu lương, chấm công chi tiết từng ngày (giờ vào / ra, phút muộn, quyết định cuối cùng) và làm thêm giờ.`,
+              title: "Từng nhân viên",
+              detail: "Mỗi người một file: phiếu lương, chấm công chi tiết, làm thêm giờ.",
               onClick: () => download({ employees: true }),
             },
           ].map((option) => (
