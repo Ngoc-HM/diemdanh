@@ -99,6 +99,14 @@ export const LATE_COUNTED_STATUSES: readonly DayStatus[] = [
   "open",
 ];
 
+/// Ngày có đi muộn: ngày làm việc thông thường có phút muộn (kể cả ngày vừa
+/// muộn vừa thiếu giờ). Dùng chung để số lần và số phút muộn luôn khớp nhau.
+export function isLateDay(cell: { status: string; lateMinutes: number } | undefined): boolean {
+  return Boolean(
+    cell && cell.lateMinutes > 0 && LATE_COUNTED_STATUSES.includes(cell.status as DayStatus)
+  );
+}
+
 /// Tổng phút đi muộn của tháng, chỉ trên ngày làm việc thông thường. Dùng chung
 /// cho bảng chấm công và file Excel bảng lương để hai bên luôn khớp.
 export function sumLateMinutes(

@@ -10,7 +10,7 @@ import {
   parseRegistrationWindow,
   validateRegistrationWindow,
 } from "../lib/schedule.ts";
-import { dayCellLabel, evaluateDay, pairPunches, parseLunchBreak, sumLateMinutes } from "../lib/attendance-rules.ts";
+import { dayCellLabel, evaluateDay, pairPunches, parseLunchBreak, sumLateMinutes, isLateDay } from "../lib/attendance-rules.ts";
 import { accountingCellLabel } from "../lib/attendance-export.ts";
 import {
   computeOvertimeMinutes,
@@ -327,6 +327,10 @@ check("chỉ cộng phút muộn ngày làm thông thường (bỏ vắng, lễ,
     { status: "unscheduled", lateMinutes: 99 },
     undefined,
   ]) === 25);
+
+check("ngày vừa muộn vừa thiếu giờ vẫn tính 1 lần đi muộn", isLateDay({ status: "insufficient", lateMinutes: 10 }) === true);
+check("ngày vắng không tính lần đi muộn", isLateDay({ status: "absent", lateMinutes: 10 }) === false);
+check("đúng giờ không tính lần đi muộn", isLateDay({ status: "passed", lateMinutes: 0 }) === false);
 
 console.log("\n== hoán đổi ngày làm kèm ngày lễ ==");
 // Lễ T3 24/11/2026: nghỉ luôn T2 23/11, đi làm bù T7 28/11.

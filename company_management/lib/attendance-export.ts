@@ -2,7 +2,7 @@
 /// Ký hiệu thống nhất cho mọi loại nhân viên: mã ca đã làm (S / C / CN).
 /// Không có giờ vào/ra chi tiết.
 import writeXlsxFile from "write-excel-file/node";
-import type { DayStatus } from "@/lib/attendance-rules";
+import { isLateDay, type DayStatus } from "@/lib/attendance-rules";
 import { formatMonthLabel, weekdayLabel } from "@/lib/datetime";
 import { isOffDate } from "@/lib/schedule";
 
@@ -84,6 +84,8 @@ export type AccountingDay = {
   status: string;
   codes: string[];
   workdayValue: number;
+  /// Phút đi muộn so với giờ bắt đầu ca (file cũ có thể thiếu).
+  lateMinutes?: number;
   /// Phiếu OT đã duyệt của ngày (ký hiệu T / T1 / T2).
   overtime?: { code: string; minutes: number } | null;
 };
@@ -110,6 +112,36 @@ const OVERTIME_DAY_NAMES: Record<string, string> = { T: "ngày thường", T1: "
 /// Ngày công lẻ nửa ngày thì hiện 1 chữ số thập phân, chẵn thì số nguyên.
 const WORKDAY_FORMAT = "0.##";
 
+/// Excel hiển thị định dạng "0.##" với số chẵn thành "2," (thừa dấu thập
+/// phân). Trước khi ghi file, đổi từng ô theo giá trị: số nguyên "0", số lẻ "0.0#".
+export function fixDecimalFormats<T>(sheets: T[]): T[] {
+  for (const sheet of sheets as { data: unknown[][] }[]) {
+    for (const row of sheet.data) {
+      for (const cell of row as ({ value?: unknown; format?: string } | null)[]) {
+        if (cell && cell.format === WORKDAY_FORMAT && typeof cell.value === "number") {
+          cell.format = Number.isInteger(cell.value) ? "0" : "0.0#";
+        }
+      }
+    }
+  }
+  return sheets;
+}
+
+/// Phút đi muộn của một người (chỉ ngày làm việc thông thường) và số ngày có
+/// đi muộn, để tính trung bình phút muộn mỗi lần.
+function lateStats(row: AttendanceExportRow) {
+  let minutes = 0;
+  let count = 0;
+  for (const day of Object.values(row.days)) {
+    const cell = { status: day.status, lateMinutes: day.lateMinutes ?? 0 };
+    if (isLateDay(cell)) {
+      minutes += cell.lateMinutes;
+      count++;
+    }
+  }
+  return { minutes, count, average: count > 0 ? Math.round(minutes / count) : 0 };
+}
+
 /// Nhãn của các cột tổng, kèm cờ in đậm cho các cột kế toán nhìn nhiều nhất.
 const SUMMARY_COLUMNS: {
   label: string;
@@ -119,7 +151,9 @@ const SUMMARY_COLUMNS: {
 }[] = [
   { label: "Ngày công", width: 10, strong: true, format: WORKDAY_FORMAT },
   { label: "Ngày công tháng", width: 10, strong: true, format: "0" },
-  { label: "Đi muộn", width: 9, format: "0" },
+  { label: "Đi muộn (lần)", width: 9, format: "0" },
+  { label: "Phút muộn", width: 9, format: "0" },
+  { label: "TB phút muộn / lần", width: 10, format: "0" },
   { label: "Vắng", width: 8, format: "0" },
   { label: "Nghỉ (N)", width: 9, format: "0" },
   { label: "Ốm (O)", width: 8, format: "0" },
@@ -157,10 +191,10 @@ function offDayChecker(
 
 /// File toàn công ty: sheet bảng chấm công + sheet OT chi tiết theo ngày.
 export async function buildAttendanceWorkbook(input: AttendanceSheetInput): Promise<Buffer> {
-  return await writeXlsxFile([
+  return await writeXlsxFile(fixDecimalFormats([
     attendanceSheet(input),
     employeeOvertimeSheet(input),
-  ] as Parameters<typeof writeXlsxFile>[0]).toBuffer();
+  ]) as Parameters<typeof writeXlsxFile>[0]).toBuffer();
 }
 
 /// Sheet bảng chấm công cả công ty — dùng riêng hoặc gắn vào file bảng lương.
@@ -331,6 +365,8 @@ export function attendanceSheet(input: AttendanceSheetInput) {
           row.workdays,
           standardWorkdays,
           row.lateDays,
+          lateStats(row).minutes,
+          lateStats(row).average,
           row.absentDays,
           row.leaveDays,
           row.sickDays,
@@ -347,7 +383,7 @@ export function attendanceSheet(input: AttendanceSheetInput) {
       ...OVERTIME_COLUMN_CODES.map((code) => ({
         value: Math.round(((row.overtimeMinutes[code] ?? 0) / 60) * 100) / 100,
         type: Number,
-        format: "0.##",
+        format: WORKDAY_FORMAT,
         ...CELL_BORDER,
         align: "center" as const,
         alignVertical: "center" as const,
@@ -389,6 +425,12 @@ export function attendanceSheet(input: AttendanceSheetInput) {
       sum((row) => row.workdays),
       null,
       sum((row) => row.lateDays),
+      sum((row) => lateStats(row).minutes),
+      (() => {
+        const minutes = sum((row) => lateStats(row).minutes);
+        const count = sum((row) => lateStats(row).count);
+        return count > 0 ? Math.round(minutes / count) : 0;
+      })(),
       sum((row) => row.absentDays),
       sum((row) => row.leaveDays),
       sum((row) => row.sickDays),
@@ -407,7 +449,7 @@ export function attendanceSheet(input: AttendanceSheetInput) {
     ...OVERTIME_COLUMN_CODES.map((code) => ({
       value: Math.round((sum((row) => row.overtimeMinutes[code] ?? 0) / 60) * 100) / 100,
       type: Number,
-      format: "0.##",
+      format: WORKDAY_FORMAT,
       ...footerStyle,
       backgroundColor: "#E2E8F0",
     })),
@@ -483,7 +525,7 @@ type EmployeeSheetInput = {
 export async function buildEmployeeAttendanceWorkbook(
   input: EmployeeSheetInput
 ): Promise<Buffer> {
-  return await writeXlsxFile([employeeAttendanceSheet(input)]).toBuffer();
+  return await writeXlsxFile(fixDecimalFormats([employeeAttendanceSheet(input)])).toBuffer();
 }
 
 /// Sheet chấm công chi tiết một nhân viên — dùng riêng hoặc gắn vào phiếu lương.
@@ -697,7 +739,7 @@ export function employeeOvertimeSheet(input: AttendanceSheetInput) {
         ? {
             value: hours(ot.minutes),
             type: Number,
-            format: "0.##",
+            format: WORKDAY_FORMAT,
             ...base,
             align: "center" as const,
             fontWeight: "bold" as const,
@@ -708,7 +750,7 @@ export function employeeOvertimeSheet(input: AttendanceSheetInput) {
     ...OVERTIME_COLUMN_CODES.map((code) => ({
       value: hours(row.overtimeMinutes[code] ?? 0),
       type: Number,
-      format: "0.##",
+      format: WORKDAY_FORMAT,
       ...base,
       align: "center" as const,
       fontWeight: "bold" as const,
@@ -842,9 +884,9 @@ export async function buildEmployeeBundleWorkbook(
   input: AttendanceSheetInput,
   times: Record<string, DayPunchTimes>
 ): Promise<Buffer> {
-  return await writeXlsxFile([
+  return await writeXlsxFile(fixDecimalFormats([
     attendanceSheet(input),
     employeeOvertimeSheet(input),
     employeePunchSheet(input, times),
-  ] as Parameters<typeof writeXlsxFile>[0]).toBuffer();
+  ]) as Parameters<typeof writeXlsxFile>[0]).toBuffer();
 }

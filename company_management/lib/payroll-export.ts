@@ -5,6 +5,7 @@ import {
   attendanceSheet,
   accountingCellLabel,
   employeeOvertimeSheet,
+  fixDecimalFormats,
   type DayPunchTimes,
 } from "@/lib/attendance-export";
 import { DAY_STATUS_LABELS, LATE_COUNTED_STATUSES, sumLateMinutes, type DayStatus } from "@/lib/attendance-rules";
@@ -18,7 +19,7 @@ const BRAND_DARK = "#0369A1";
 const GRID = "#CBD5E1";
 const BORDER = { borderColor: GRID, borderStyle: "thin" as const };
 const MONEY = "#,##0";
-const DAYS = "0.##";
+const DAYS = "0.##"; // fixDecimalFormats đổi theo từng giá trị
 const HEAD = {
   ...BORDER,
   backgroundColor: BRAND,
@@ -257,11 +258,11 @@ export async function buildCompanyPayrollWorkbook(
     standardWorkdays: sheet.standardWorkdays,
     exportedOn: sheet.computedOn,
   };
-  return await writeXlsxFile([
+  return await writeXlsxFile(fixDecimalFormats([
     salarySheet(sheet, companyName),
     attendanceSheet(attendanceInput),
     employeeOvertimeSheet(attendanceInput),
-  ] as Parameters<typeof writeXlsxFile>[0]).toBuffer();
+  ]) as Parameters<typeof writeXlsxFile>[0]).toBuffer();
 }
 
 // ------------------------------------------------------------ phiếu lương
@@ -727,9 +728,9 @@ export async function buildPayslipWorkbook(
   companyName: string,
   times: Record<string, DayPunchTimes> = {}
 ): Promise<Buffer> {
-  return await writeXlsxFile([
+  return await writeXlsxFile(fixDecimalFormats([
     payslipSheet(sheet, row, companyName),
     detailedAttendanceSheet(sheet, row, companyName, times),
     overtimeSheet(sheet, row, companyName),
-  ] as Parameters<typeof writeXlsxFile>[0]).toBuffer();
+  ]) as Parameters<typeof writeXlsxFile>[0]).toBuffer();
 }

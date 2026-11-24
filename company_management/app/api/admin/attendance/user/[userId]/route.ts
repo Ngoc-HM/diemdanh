@@ -15,6 +15,7 @@ import {
 import {
   DAY_STATUS_LABELS,
   evaluateDay,
+  isLateDay,
   minutesToHours,
 } from "@/lib/attendance-rules";
 import {
@@ -275,7 +276,7 @@ export async function GET(
         standardWorkdays: monthStandardWorkdays,
         overtimeMinutes: days.reduce((sum, day) => sum + (day.overtime?.minutes ?? 0), 0),
         reviewDays: days.filter((day) => day.needsReview).length,
-        lateDays: days.filter((day) => day.status === "late").length,
+        lateDays: days.filter((day) => isLateDay(day)).length,
         absentDays: days.filter((day) => day.status === "absent").length,
         totalHours:
           Math.round(days.reduce((sum, day) => sum + day.workedHours, 0) * 10) / 10,

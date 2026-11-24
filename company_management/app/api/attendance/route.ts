@@ -7,7 +7,7 @@ import {
   listMonthDates,
   monthKeyVN,
 } from "@/lib/datetime";
-import { evaluateDay, minutesToHours } from "@/lib/attendance-rules";
+import { evaluateDay, isLateDay, minutesToHours } from "@/lib/attendance-rules";
 import {
   applyDayMark,
   fullDayMinutesOf,
@@ -184,7 +184,7 @@ export async function GET(req: Request) {
         workedHours:
           Math.round(days.reduce((sum, day) => sum + day.workedHours, 0) * 10) / 10,
         absentDays: days.filter((day) => day.status === "absent").length,
-        lateDays: days.filter((day) => day.status === "late").length,
+        lateDays: days.filter((day) => isLateDay(day)).length,
       },
     };
   }, "Attendance list error");

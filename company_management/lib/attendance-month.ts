@@ -5,6 +5,7 @@ import {
   evaluateDay,
   minutesToHours,
   PunchInput,
+  isLateDay,
   sumLateMinutes,
 } from "@/lib/attendance-rules";
 import {
@@ -307,7 +308,7 @@ export async function computeMonthAttendance(
           sessionCounts[code] = (sessionCounts[code] || 0) + 1;
         }
       }
-      if (cell.status === "late") lateDays++;
+      if (isLateDay(cell)) lateDays++;
       if (cell.status === "absent" && !cell.projected) absentDays++;
       if (cell.status === "leave") leaveDays++;
       if (cell.status === "sick") sickDays++;
