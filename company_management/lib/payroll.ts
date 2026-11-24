@@ -222,6 +222,29 @@ const monthIndex = (month: string) =>
 ///  - Phép tồn không quá `maxCarryYears` năm (chặn trần số dư).
 ///  - Ngày nghỉ N trừ dần vào số dư theo thứ tự thời gian; hết phép thì là
 ///    nghỉ không lương.
+/// Hợp đồng chính thức trọn tháng: "Chính thức", hoặc "Thử việc" đã kết thúc
+/// trước tháng này (tháng hết thử việc giữa chừng chưa tính).
+export function isOfficialForMonth(
+  profile: Pick<PayProfile, "contractType" | "probationEndDate">,
+  month: string
+): boolean {
+  if (profile.contractType === "official") return true;
+  return (
+    profile.contractType === "probation" &&
+    Boolean(profile.probationEndDate) &&
+    profile.probationEndDate!.slice(0, 7) < month
+  );
+}
+
+/// Ngày nghỉ hưởng lương tự bù mỗi tháng cho full-time chính thức: bù phần
+/// công thiếu so với công chuẩn (nghỉ, vắng, thiếu giờ không tính...), tối đa
+/// `cap` ngày, theo bước nửa ngày. Không dùng hết thì mất, không cộng dồn.
+/// Vd công chuẩn 21: làm 20 → bù 1; làm 20,5 → bù 0,5; làm 18 → bù 1.
+export function monthlyPaidLeave(standardWorkdays: number, workdays: number, cap: number): number {
+  const shortfall = Math.max(0, standardWorkdays - workdays);
+  return Math.floor(Math.min(cap, shortfall) * 2) / 2;
+}
+
 /// Một ngày nghỉ N: chuỗi ngày = nghỉ cả ngày.
 export type LeaveEntry = string | { date: string; days: number };
 

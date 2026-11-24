@@ -304,7 +304,14 @@ function payslipSheet(sheet: PayrollSheet, row: PayrollRow, companyName: string)
     section("Ngày công"),
     item("Ngày công tháng (chuẩn)", { value: p.standardWorkdays, type: Number, ...BORDER }),
     item("Ngày công đi làm", { value: p.workdays, type: Number, format: DAYS, ...BORDER }),
-    ...(row.leave.eligible
+    ...(row.leave.mode === "monthly"
+      ? [
+          item("Nghỉ có lương (bù trong tháng)", { value: p.paidLeaveDays, type: Number, format: DAYS, ...BORDER }),
+          ...(row.leave.unpaidDays > 0
+            ? [item("Công thiếu không lương", { value: row.leave.unpaidDays, type: Number, format: DAYS, ...BORDER })]
+            : []),
+        ]
+      : row.leave.eligible
       ? [
           item("Nghỉ phép năm có lương", { value: p.paidLeaveDays, type: Number, format: DAYS, ...BORDER }),
           item("Nghỉ không lương", { value: row.leave.unpaidDays, type: Number, format: DAYS, ...BORDER }),

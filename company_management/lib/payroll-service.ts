@@ -9,6 +9,8 @@ import {
   annualLeaveForMonth,
   AssignedAllowance,
   contractLabelForMonth,
+  isOfficialForMonth,
+  monthlyPaidLeave,
   DEFAULT_PAY_PROFILE,
   computePayroll,
   probationPortionForMonth,
@@ -81,7 +83,15 @@ export type PayrollRow = {
   contractLabel: string;
   /// Nguyên dòng bảng công tháng của người này (để dựng sheet chấm công).
   attendance: MonthSummaryRow;
-  leave: { eligible: boolean; paidDays: number; unpaidDays: number; balance: number };
+  leave: {
+    eligible: boolean;
+    paidDays: number;
+    unpaidDays: number;
+    balance: number;
+    /// "monthly": full-time chính thức, tự bù công thiếu tối đa 1 ngày/tháng;
+    /// "annual": phép năm cộng dồn theo ngày nghỉ N. Bảng chốt cũ không có trường này.
+    mode?: "monthly" | "annual";
+  };
   overtimeDetails: {
     date: string;
     code: string;
@@ -205,8 +215,26 @@ export async function computeMonthPayroll(month: string): Promise<PayrollSheet> 
     const stored = profiles.get(userId);
     const profile = stored ?? DEFAULT_PAY_PROFILE;
     const leaveStart = profile.leaveStartDate ?? startByUser.get(userId) ?? null;
-    const eligible = Boolean(stored && profile.annualLeave && leaveStart);
-    const leave = eligible
+    // Full-time chính thức: mỗi tháng tự bù phần công thiếu, tối đa số ngày
+    // phép một năm ÷ 12 (mặc định 1), không cộng dồn.
+    const monthly =
+      Boolean(stored) &&
+      summary.user.employmentType === "full_time" &&
+      isOfficialForMonth(profile, month);
+    const eligible = monthly || Boolean(stored && profile.annualLeave && leaveStart);
+    const shortfall = Math.max(0, attendance.standardWorkdays - summary.workdays);
+    const monthlyPaid = monthlyPaidLeave(
+      attendance.standardWorkdays,
+      summary.workdays,
+      config.annualLeave.daysPerYear / 12
+    );
+    const leave = monthly
+      ? {
+          paidDays: monthlyPaid,
+          unpaidDays: Math.round((shortfall - monthlyPaid) * 100) / 100,
+          balance: 0,
+        }
+      : eligible
       ? annualLeaveForMonth({
           startDate: leaveStart!,
           month,
@@ -230,10 +258,12 @@ export async function computeMonthPayroll(month: string): Promise<PayrollSheet> 
         dates: attendance.dates,
         days: summary.days,
         // Phép có lương trừ theo thứ tự ngày: các ngày N đầu tháng được trả trước.
-        paidLeaveDates: allocatePaidLeave(
-          (leaveByUser.get(userId) ?? []).filter((entry) => entry.date >= startDate),
-          leave.paidDays
-        ),
+        paidLeaveDates: monthly
+          ? []
+          : allocatePaidLeave(
+              (leaveByUser.get(userId) ?? []).filter((entry) => entry.date >= startDate),
+              leave.paidDays
+            ),
       }),
     });
 
@@ -256,6 +286,7 @@ export async function computeMonthPayroll(month: string): Promise<PayrollSheet> 
         paidDays: leave.paidDays,
         unpaidDays: leave.unpaidDays,
         balance: leave.balance,
+        mode: monthly ? "monthly" : eligible ? "annual" : undefined,
       },
       overtimeDetails: overtimeViews
         .filter((view) => view.user.id === userId)

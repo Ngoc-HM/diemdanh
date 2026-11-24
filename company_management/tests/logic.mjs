@@ -25,6 +25,8 @@ import { planWifiPunch, MAC_PATTERN } from "../lib/wifi-rules.ts";
 import { finalDayLabel, validateFinalDay } from "../lib/final-rules.ts";
 import {
   allocatePaidLeave,
+  isOfficialForMonth,
+  monthlyPaidLeave,
   annualLeaveForMonth,
   computePayroll,
   contractLabelForMonth,
@@ -328,6 +330,17 @@ const halfThenFull = annualLeaveForMonth({
 check("nửa ngày tháng trước, còn 1,5 phép: tháng sau nghỉ 1 ngày được trả đủ", halfThenFull.paidDays === 1 && halfThenFull.balance === 0.5, JSON.stringify(halfThenFull));
 const alloc = allocatePaidLeave([{ date: "2026-11-12", days: 1 }, { date: "2026-11-05", days: 0.5 }], 1);
 check("phân phép theo thứ tự ngày, cắt nửa ngày cuối", JSON.stringify(alloc) === JSON.stringify([{ date: "2026-11-05", days: 0.5 }, { date: "2026-11-12", days: 0.5 }]), JSON.stringify(alloc));
+
+console.log("\n== bù ngày nghỉ hưởng lương mỗi tháng ==");
+check("làm 20/21 → bù 1", monthlyPaidLeave(21, 20, 1) === 1);
+check("làm 20,5/21 → bù 0,5", monthlyPaidLeave(21, 20.5, 1) === 0.5);
+check("làm 18/21 → chỉ bù tối đa 1", monthlyPaidLeave(21, 18, 1) === 1);
+check("làm đủ 21 → không bù", monthlyPaidLeave(21, 21, 1) === 0);
+check("làm dư (OT ngoài lịch) → không bù", monthlyPaidLeave(21, 22, 1) === 0);
+check("thử việc hết 16/10: tháng 11 chính thức, tháng 10 chưa",
+  isOfficialForMonth({ contractType: "probation", probationEndDate: "2026-10-16" }, "2026-11") &&
+  !isOfficialForMonth({ contractType: "probation", probationEndDate: "2026-10-16" }, "2026-10"));
+check("CTV không phải chính thức", !isOfficialForMonth({ contractType: "collaborator", probationEndDate: null }, "2026-11"));
 
 console.log("\n== nhãn hợp đồng theo tháng ==");
 const probProfile = { contractType: "probation", probationEndDate: "2026-10-16" };
