@@ -22,7 +22,7 @@ import {
   monthKeyVN,
   weekdayLabel,
 } from "@/lib/datetime";
-import { formatWorkdays, type DayStatus } from "@/lib/attendance-rules";
+import { formatWorkdays, sumLateMinutes, type DayStatus } from "@/lib/attendance-rules";
 import { DAY_STATUS_CELL, LEGEND } from "@/app/_components/status-styles";
 import DayMarkMenu, { type MarkChoice } from "../../_components/day-mark-menu";
 import DayCellTooltip, { type DayCellTooltipInfo } from "../../_components/day-cell-tooltip";
@@ -30,17 +30,9 @@ import CheckoutDialog, {
   type CheckoutTarget,
 } from "../../_components/checkout-dialog";
 
-/// Ngày làm việc thông thường (có ca, có đi làm) — chỉ những ngày này mới cộng
-/// phút muộn; vắng, nghỉ, ốm, lễ, làm ngoài lịch không tính.
-const WORKING_STATUSES: DayStatus[] = ["passed", "late", "insufficient", "missed_out", "open"];
-
 /// Tổng phút đi muộn của tháng, chỉ trên ngày làm việc thông thường.
 function lateMinutesOf(row: { days: Record<string, DayCell | undefined> }): number {
-  return Object.values(row.days).reduce(
-    (sum, cell) =>
-      cell && WORKING_STATUSES.includes(cell.status) ? sum + cell.lateMinutes : sum,
-    0,
-  );
+  return sumLateMinutes(Object.values(row.days));
 }
 
 /// Ký hiệu trong ô ngày, hiện ngay dưới chú giải màu.

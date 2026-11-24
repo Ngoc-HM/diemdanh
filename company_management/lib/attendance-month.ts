@@ -5,6 +5,7 @@ import {
   evaluateDay,
   minutesToHours,
   PunchInput,
+  sumLateMinutes,
 } from "@/lib/attendance-rules";
 import {
   applyDayMark,
@@ -89,6 +90,8 @@ export type MonthSummaryRow = {
   /// Số phút OT đã duyệt theo ký hiệu T / T1 / T2.
   overtimeMinutes: Record<string, number>;
   lateDays: number;
+  /// Tổng phút đi muộn, chỉ trên ngày làm việc thông thường.
+  lateMinutes: number;
   absentDays: number;
   /// Ngày nghỉ N (phép năm tính ở bảng lương).
   leaveDays: number;
@@ -323,6 +326,7 @@ export async function computeMonthAttendance(
       reviewDays,
       overtimeMinutes,
       lateDays,
+      lateMinutes: sumLateMinutes(Object.values(days)),
       absentDays,
       leaveDays,
       sickDays,

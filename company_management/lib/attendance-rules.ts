@@ -89,6 +89,30 @@ export type DayStatus =
   | "holiday"
   | "off";
 
+/// Ngày làm việc thông thường (có ca, có đi làm) — chỉ những ngày này mới cộng
+/// phút muộn; vắng, nghỉ, ốm, lễ, làm ngoài lịch không tính.
+export const LATE_COUNTED_STATUSES: readonly DayStatus[] = [
+  "passed",
+  "late",
+  "insufficient",
+  "missed_out",
+  "open",
+];
+
+/// Tổng phút đi muộn của tháng, chỉ trên ngày làm việc thông thường. Dùng chung
+/// cho bảng chấm công và file Excel bảng lương để hai bên luôn khớp.
+export function sumLateMinutes(
+  cells: Iterable<{ status: string; lateMinutes: number } | undefined>
+): number {
+  let total = 0;
+  for (const cell of cells) {
+    if (cell && LATE_COUNTED_STATUSES.includes(cell.status as DayStatus)) {
+      total += cell.lateMinutes;
+    }
+  }
+  return total;
+}
+
 export const DAY_STATUS_LABELS: Record<DayStatus, string> = {
   passed: "Đủ công",
   late: "Đi muộn",

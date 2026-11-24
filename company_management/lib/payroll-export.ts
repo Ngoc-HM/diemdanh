@@ -90,6 +90,7 @@ function salarySheet(sheet: PayrollSheet, companyName: string) {
     { label: "Ngày công", width: 8, value: (row) => row.payroll.workdays, format: DAYS },
     { label: "Phép năm", width: 7, value: (row) => row.payroll.paidLeaveDays, format: DAYS },
     { label: "Ngày công tháng", width: 8, value: (row) => row.payroll.standardWorkdays, format: "0" },
+    { label: "Phút đi muộn", width: 8, value: (row) => row.attendance.lateMinutes, format: "0" },
     { label: "Thành tiền", width: 13, value: (row) => row.payroll.earned, format: MONEY },
     ...allowanceNames.map((name) => ({
       label: name,

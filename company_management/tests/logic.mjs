@@ -10,7 +10,7 @@ import {
   parseRegistrationWindow,
   validateRegistrationWindow,
 } from "../lib/schedule.ts";
-import { dayCellLabel, evaluateDay, pairPunches, parseLunchBreak } from "../lib/attendance-rules.ts";
+import { dayCellLabel, evaluateDay, pairPunches, parseLunchBreak, sumLateMinutes } from "../lib/attendance-rules.ts";
 import { accountingCellLabel } from "../lib/attendance-export.ts";
 import {
   computeOvertimeMinutes,
@@ -306,6 +306,17 @@ check("full-time: thứ 7 là ngày nghỉ", isRestDayFor("full_time", "2026-09-
 check("full-time: ngày lễ là ngày nghỉ", isRestDayFor("full_time", "2026-09-02", [0, 6], true) === true);
 check("full-time: thứ 3 thường là ngày làm", isRestDayFor("full_time", "2026-09-01", [0, 6], false) === false);
 check("part-time tự đăng ký nên thứ 7 không phải ngày nghỉ", isRestDayFor("part_time", "2026-09-05", [0, 6], false) === false);
+
+console.log("\n== phút đi muộn ==");
+check("chỉ cộng phút muộn ngày làm thông thường (bỏ vắng, lễ, ngoài lịch)",
+  sumLateMinutes([
+    { status: "late", lateMinutes: 15 },
+    { status: "insufficient", lateMinutes: 10 },
+    { status: "absent", lateMinutes: 99 },
+    { status: "holiday", lateMinutes: 99 },
+    { status: "unscheduled", lateMinutes: 99 },
+    undefined,
+  ]) === 25);
 
 console.log("\n== hoán đổi ngày làm kèm ngày lễ ==");
 // Lễ T3 24/11/2026: nghỉ luôn T2 23/11, đi làm bù T7 28/11.
