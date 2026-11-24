@@ -115,17 +115,17 @@ const vnd = (value: number) => value.toLocaleString("vi-VN");
 
 /// Dòng đối chiếu dưới ô lương thử việc: nhập % thì hiện ra số tiền, nhập mức
 /// cố định thì hiện ra % so với lương cơ bản.
-function probationHint(form: ProfileForm): string {
+function probationHint(form: ProfileForm): string | undefined {
   const base = Number(form.baseSalary) || 0;
   if (form.probationMode === "percent") {
     const percent = Number(form.probationPercent);
-    if (!base || !Number.isFinite(percent) || percent <= 0) return "Luật: tối thiểu 85%";
-    return `= ${vnd(Math.round((base * percent) / 100))} đ · luật: tối thiểu 85%`;
+    if (!base || !Number.isFinite(percent) || percent <= 0) return undefined;
+    return `= ${vnd(Math.round((base * percent) / 100))} đ${percent < 85 ? " · dưới mức luật 85%" : ""}`;
   }
   const amount = Number(form.probationSalary);
-  if (!base || !amount) return "Luật: tối thiểu 85% lương cơ bản";
+  if (!base || !amount) return undefined;
   const percent = Math.round((amount / base) * 10000) / 100;
-  return `= ${percent.toLocaleString("vi-VN")}% lương cơ bản${percent < 85 ? " · thấp hơn mức luật 85%" : ""}`;
+  return `= ${percent.toLocaleString("vi-VN")}%${percent < 85 ? " · dưới mức luật 85%" : ""}`;
 }
 
 export default function PayrollPage() {
@@ -141,7 +141,6 @@ export default function PayrollPage() {
   const [editing, setEditing] = useState<PayrollRow | null>(null);
   const [form, setForm] = useState<ProfileForm | null>(null);
   const [allowances, setAllowances] = useState<ProfileAllowance[]>([]);
-  const [startDate, setStartDate] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
   const load = useCallback(async (target: string) => {
@@ -169,10 +168,10 @@ export default function PayrollPage() {
     if (!data) return;
     const closing = !data.closed;
     const confirmText = closing
-      ? `Chốt lương ${formatMonthLabel(month)}? Sau khi chốt, số liệu được giữ nguyên dù chấm công hay hồ sơ lương có đổi.${
-          data.projected ? " Các ngày còn lại trong tháng được tính là đi làm đủ theo lịch." : ""
+      ? `Chốt lương ${formatMonthLabel(month)}? Số liệu sẽ không đổi theo chấm công nữa.${
+          data.projected ? " Các ngày còn lại tính đủ theo lịch." : ""
         }`
-      : `Mở chốt lương ${formatMonthLabel(month)}? Bảng lương sẽ tính lại theo dữ liệu hiện tại.`;
+      : `Mở chốt lương ${formatMonthLabel(month)}?`;
     if (!confirm(confirmText)) return;
     setBusy(true);
     setMessage(null);
@@ -189,7 +188,7 @@ export default function PayrollPage() {
       if (!response.ok) throw new Error(payload.error || "Không thực hiện được");
       setMessage({
         type: "success",
-        text: closing ? `Đã chốt lương ${formatMonthLabel(month)}` : "Đã mở chốt, bảng lương tính lại theo dữ liệu hiện tại",
+        text: closing ? `Đã chốt lương ${formatMonthLabel(month)}` : `Đã mở chốt ${formatMonthLabel(month)}`,
       });
       load(month);
     } catch (error) {
@@ -220,7 +219,6 @@ export default function PayrollPage() {
         dependents: String(profile.dependents),
       });
       setAllowances(payload.allowances);
-      setStartDate(payload.user.startDate);
     } catch (error) {
       setEditing(null);
       setMessage({
@@ -286,7 +284,6 @@ export default function PayrollPage() {
     <>
       <PageHeader
         title="Bảng lương"
-        description="Tính từ bảng chấm công, phiếu OT đã duyệt, hồ sơ lương và khoản hỗ trợ của từng người. Admin tự tải file — hệ thống không gửi email."
         actions={
           <>
             <Link href="/admin/payroll/settings">
@@ -339,20 +336,12 @@ export default function PayrollPage() {
             {data.closed ? (
               <>
                 <Badge tone="success">Đã chốt</Badge>
-                <span className="text-slate-700">
-                  lúc {new Date(data.closed.closedAt).toLocaleString("vi-VN")} — số liệu được
-                  giữ nguyên, sửa chấm công hay hồ sơ lương không làm đổi bảng này.
+                <span className="text-slate-600">
+                  {new Date(data.closed.closedAt).toLocaleString("vi-VN")}
                 </span>
               </>
             ) : (
-              <>
-                <Badge tone="warning">Tạm tính</Badge>
-                <span className="text-slate-700">
-                  {data.projected
-                    ? `Từ hôm nay đến hết tháng tính là đi làm đủ theo lịch (${warnings?.projectedDays ?? 0} ngày-người).`
-                    : "Chưa chốt — số liệu thay đổi theo chấm công."}
-                </span>
-              </>
+              <Badge tone="warning">Tạm tính</Badge>
             )}
           </div>
           <Button
@@ -374,21 +363,22 @@ export default function PayrollPage() {
         <div className="mb-4 space-y-2">
           {warnings.missingProfiles.length > 0 && (
             <Message type="info">
-              {warnings.missingProfiles.length} người chưa có hồ sơ lương nên đang 0 đồng:{" "}
-              {warnings.missingProfiles.join(", ")}. Bấm “Hồ sơ lương” ở dòng đó để nhập.
+              Chưa có hồ sơ lương: {warnings.missingProfiles.join(", ")}
             </Message>
           )}
           {warnings.reviewDays > 0 && (
             <Message type="info">
-              {warnings.reviewDays} ngày thiếu giờ chưa xem lại — đang tính đủ công. Xem ở
-              trang chi tiết nhân viên trước khi chốt.
+              {warnings.reviewDays} ngày thiếu giờ chưa xem lại, đang tính đủ công.{" "}
+              <Link href="/admin/attendance/monthly" className="font-medium underline">
+                Xem
+              </Link>
             </Message>
           )}
           {warnings.pendingOvertime > 0 && (
             <Message type="info">
-              {warnings.pendingOvertime} phiếu OT trong tháng đang chờ duyệt, chưa vào lương.{" "}
+              {warnings.pendingOvertime} phiếu OT chờ duyệt, chưa vào lương.{" "}
               <Link href="/admin/overtime" className="font-medium underline">
-                Duyệt ngay
+                Duyệt
               </Link>
             </Message>
           )}
@@ -549,11 +539,6 @@ export default function PayrollPage() {
                 <Field
                   label="Hình thức lương"
                   required
-                  hint={
-                    form.payBasis === "net"
-                      ? "Số thoả thuận là số cầm về; công ty chịu thuế và BH, hệ thống quy ngược ra gross."
-                      : "Số thoả thuận là trước thuế và BH; người lao động tự chịu khoản trừ."
-                  }
                 >
                   <Select
                     value={form.payBasis}
@@ -581,7 +566,6 @@ export default function PayrollPage() {
                   <MoneyInput
                     value={form.baseSalary}
                     onValueChange={(digits) => set("baseSalary", digits)}
-                    placeholder="Vd: 15.000.000"
                     required
                   />
                 </Field>
@@ -624,7 +608,6 @@ export default function PayrollPage() {
                       ) : (
                         <MoneyInput
                           aria-label="Lương thử việc (đ)"
-                          placeholder="Vd: 7.000.000"
                           value={form.probationSalary}
                           onValueChange={(digits) => set("probationSalary", digits)}
                           required
@@ -667,15 +650,17 @@ export default function PayrollPage() {
                     ))}
                   </Select>
                 </Field>
-                <Field label="Số người phụ thuộc" hint="Chỉ dùng khi tính thuế luỹ tiến">
-                  <Input
-                    type="number"
-                    min="0"
-                    max="20"
-                    value={form.dependents}
-                    onChange={(event) => set("dependents", event.target.value)}
-                  />
-                </Field>
+                {form.taxMode === "progressive" && (
+                  <Field label="Số người phụ thuộc">
+                    <Input
+                      type="number"
+                      min="0"
+                      max="20"
+                      value={form.dependents}
+                      onChange={(event) => set("dependents", event.target.value)}
+                    />
+                  </Field>
+                )}
                 <div className="space-y-3">
                   <label className="flex items-center gap-2 pt-7 text-sm text-slate-700">
                     <input
@@ -690,24 +675,16 @@ export default function PayrollPage() {
                   <Field
                     label="Lương đóng bảo hiểm (đ)"
                     required={form.payBasis === "net"}
-                    hint={
-                      form.payBasis === "net"
-                        ? "Bắt buộc với lương NET"
-                        : "Bỏ trống = theo lương cơ bản"
-                    }
                   >
                     <MoneyInput
                       value={form.insuranceSalary}
+                      placeholder={form.payBasis === "net" ? undefined : "Theo lương cơ bản"}
                       onValueChange={(digits) => set("insuranceSalary", digits)}
-                      placeholder="Vd: 7.100.000"
                     />
                   </Field>
                 )}
                 {form.hasInsurance && (
-                  <Field
-                    label="Ngày bắt đầu đóng bảo hiểm"
-                    hint="Từ tháng có ngày này trừ đủ BH; bỏ trống = trừ luôn"
-                  >
+                  <Field label="Ngày bắt đầu đóng bảo hiểm">
                     <Input
                       type="date"
                       value={form.insuranceStartDate ?? ""}
@@ -723,23 +700,18 @@ export default function PayrollPage() {
                 Phép năm và thanh toán
               </h4>
               <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-                {form.contractType !== "collaborator" ? (
+                {form.contractType !== "collaborator" && (
                   <label className="flex items-center gap-2 pt-7 text-sm text-slate-700">
                     <input
                       type="checkbox"
                       checked={form.annualLeave}
                       onChange={(event) => set("annualLeave", event.target.checked)}
                     />
-                    Hưởng phép năm (mỗi tháng cộng 1 ngày, nghỉ N trừ vào phép)
+                    Hưởng phép năm
                   </label>
-                ) : (
-                  <p className="pt-7 text-sm text-slate-500">CTV không có phép năm.</p>
                 )}
                 {form.annualLeave && form.contractType !== "collaborator" && (
-                  <Field
-                    label="Tính phép từ ngày"
-                    hint={`Bỏ trống = ngày vào làm${startDate ? ` (${startDate})` : " (chưa nhập ngày vào làm)"}`}
-                  >
+                  <Field label="Tính phép từ ngày">
                     <Input
                       type="date"
                       value={form.leaveStartDate ?? ""}
@@ -769,7 +741,6 @@ export default function PayrollPage() {
                   <Input
                     value={form.bankName ?? ""}
                     onChange={(event) => set("bankName", event.target.value)}
-                    placeholder="Vd: Vietcombank"
                   />
                 </Field>
               </div>
@@ -777,16 +748,12 @@ export default function PayrollPage() {
 
             <section className="border-t border-slate-200 pt-5">
               <h4 className="mb-3 text-base font-semibold text-slate-900">
-                Khoản hỗ trợ được hưởng
+                Khoản hỗ trợ
               </h4>
               {allowances.length === 0 ? (
-                <p className="text-sm text-slate-500">
-                  Chưa có khoản hỗ trợ nào. Tạo ở{" "}
-                  <Link href="/admin/payroll/settings" className="font-medium text-sky-700 underline">
-                    Cài đặt lương
-                  </Link>
-                  .
-                </p>
+                <Link href="/admin/payroll/settings" className="text-sm font-medium text-sky-700 underline">
+                  Tạo khoản hỗ trợ
+                </Link>
               ) : (
                 <ul className="divide-y divide-slate-100 rounded-lg border border-slate-200">
                   {allowances.map((item) => (
@@ -815,7 +782,7 @@ export default function PayrollPage() {
                       {item.assigned && (
                         <MoneyInput
                           className="w-44"
-                          placeholder="Mức riêng (bỏ trống = mặc định)"
+                          placeholder={vnd(item.amount)}
                           aria-label={`Mức riêng cho ${item.name}`}
                           value={item.customAmount ?? ""}
                           onValueChange={(digits) =>

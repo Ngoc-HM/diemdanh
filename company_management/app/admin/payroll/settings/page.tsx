@@ -198,7 +198,6 @@ export default function PayrollSettingsPage() {
     <>
       <PageHeader
         title="Cài đặt lương"
-        description="Khoản hỗ trợ, mức bảo hiểm, thuế TNCN và phép năm. Thay đổi áp cho các tháng chưa chốt lương."
         actions={
           <Link href="/admin/payroll">
             <Button variant="secondary">
@@ -219,12 +218,7 @@ export default function PayrollSettingsPage() {
 
       <Card className="mb-6">
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 px-5 py-3">
-          <div>
-            <h2 className="text-base font-semibold text-slate-900">Khoản hỗ trợ</h2>
-            <p className="text-sm text-slate-600">
-              Tạo khoản (Hỗ trợ AI, gửi xe...) rồi gắn cho từng người ở “Hồ sơ lương”.
-            </p>
-          </div>
+          <h2 className="text-base font-semibold text-slate-900">Khoản hỗ trợ</h2>
           <Button onClick={() => openAllowance("new")}>
             <Plus size={16} aria-hidden="true" />
             Thêm khoản
@@ -295,7 +289,7 @@ export default function PayrollSettingsPage() {
       {config && (
         <form onSubmit={saveConfig}>
           <Card className="mb-6 p-5">
-            <h2 className="text-base font-semibold text-slate-900">Bảo hiểm (người lao động đóng)</h2>
+            <h2 className="text-base font-semibold text-slate-900">Bảo hiểm người lao động đóng</h2>
             <div className="mt-3 grid gap-4 sm:grid-cols-3">
               {numberField("BHXH", config.insurance.bhxh, (value) =>
                 update((c) => ({ ...c, insurance: { ...c.insurance, bhxh: value } })), { step: "0.1", suffix: "%" })}
@@ -308,9 +302,6 @@ export default function PayrollSettingsPage() {
 
           <Card className="mb-6 p-5">
             <h2 className="text-base font-semibold text-slate-900">Thuế TNCN</h2>
-            <p className="mt-1 text-sm text-slate-600">
-              Mức giảm trừ và biểu thuế mặc định cần kế toán đối chiếu với quy định đang áp dụng.
-            </p>
             <div className="mt-3 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
               {numberField("Khấu trừ thẳng", config.flatTaxRate, (value) =>
                 update((c) => ({ ...c, flatTaxRate: value })), { step: "0.5", suffix: "%" })}
@@ -318,7 +309,6 @@ export default function PayrollSettingsPage() {
                 update((c) => ({ ...c, flatTaxThreshold: value })), {
                   step: "100000",
                   suffix: "đ",
-                  hint: "0 = trừ mọi khoản; luật: từ 2.000.000đ",
                 })}
               {numberField("Giảm trừ bản thân", config.personalDeduction, (value) =>
                 update((c) => ({ ...c, personalDeduction: value })), { step: "100000", suffix: "đ" })}
@@ -381,10 +371,6 @@ export default function PayrollSettingsPage() {
 
           <Card className="mb-6 p-5">
             <h2 className="text-base font-semibold text-slate-900">Phép năm</h2>
-            <p className="mt-1 text-sm text-slate-600">
-              Cộng dần mỗi tháng (số ngày/năm ÷ 12). Nghỉ N trừ vào phép, hết phép là nghỉ không
-              lương. Chỉ áp cho người bật “Hưởng phép năm” trong hồ sơ lương.
-            </p>
             <div className="mt-3 grid gap-4 sm:grid-cols-3">
               {numberField("Số ngày phép một năm", config.annualLeave.daysPerYear, (value) =>
                 update((c) => ({ ...c, annualLeave: { ...c.annualLeave, daysPerYear: value } })), { suffix: "ngày" })}
@@ -413,12 +399,11 @@ export default function PayrollSettingsPage() {
             <Input
               value={allowanceForm.name}
               onChange={(event) => setAllowanceForm({ ...allowanceForm, name: event.target.value })}
-              placeholder="Vd: Hỗ trợ AI, Gửi xe"
               maxLength={60}
               required
             />
           </Field>
-          <Field label="Mức mặc định (đ)" required hint="Từng người có thể có mức riêng">
+          <Field label="Mức mặc định (đ)" required>
             <MoneyInput
               value={allowanceForm.amount}
               onValueChange={(digits) => setAllowanceForm({ ...allowanceForm, amount: digits })}
@@ -433,8 +418,8 @@ export default function PayrollSettingsPage() {
               }
             >
               <option value="monthly">Cố định mỗi tháng</option>
-              <option value="prorated">Theo tỉ lệ ngày công (mức × công / ngày công tháng)</option>
-              <option value="per_day">Theo số ngày công (mức × số công)</option>
+              <option value="prorated">Theo tỉ lệ ngày công</option>
+              <option value="per_day">Theo số ngày công</option>
             </Select>
           </Field>
           <label className="flex items-center gap-2 text-sm text-slate-700">
