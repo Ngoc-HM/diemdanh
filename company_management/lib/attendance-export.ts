@@ -86,6 +86,8 @@ export type AccountingDay = {
   workdayValue: number;
   /// Phút đi muộn so với giờ bắt đầu ca (file cũ có thể thiếu).
   lateMinutes?: number;
+  /// Số ngày nghỉ N của ô (nghỉ nửa ngày = 0,5).
+  leaveDays?: number;
   /// Phiếu OT đã duyệt của ngày (ký hiệu T / T1 / T2).
   overtime?: { code: string; minutes: number } | null;
 };
@@ -102,7 +104,8 @@ export function accountingCellLabel(day: AccountingDay): string {
   if (day.status === "holiday") return "L";
   if (day.workdayValue <= 0) return label;
   // Mọi loại nhân viên đều ghi mã ca (S / C / CN), không dùng x, x/2.
-  return day.codes.join("+") || (day.workdayValue >= 1 ? "CN" : "S");
+  const codes = day.codes.join("+") || (day.workdayValue >= 1 ? "CN" : "S");
+  return day.leaveDays && day.leaveDays < 1 ? `${codes}·N` : codes;
 }
 
 /// Ba cột giờ OT ở cuối bảng, theo thứ tự hệ số tăng dần.
@@ -155,7 +158,7 @@ const SUMMARY_COLUMNS: {
   { label: "Phút muộn", width: 9, format: "0" },
   { label: "TB phút muộn / lần", width: 10, format: "0" },
   { label: "Vắng", width: 8, format: "0" },
-  { label: "Nghỉ (N)", width: 9, format: "0" },
+  { label: "Nghỉ (N)", width: 9, format: WORKDAY_FORMAT },
   { label: "Ốm (O)", width: 8, format: "0" },
   { label: "Tổng giờ", width: 10, strong: true, format: "0.0" },
 ];

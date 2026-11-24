@@ -1,7 +1,7 @@
 import { query, queryOne } from "@/lib/db";
 import { badRequest, handle, notFound, requireAdmin } from "@/lib/auth-guard";
 import { isValidDateKey } from "@/lib/datetime";
-import { getActiveSessionRules } from "@/lib/attendance-service";
+import { getActiveSessionRules, leaveDaysOf } from "@/lib/attendance-service";
 import { dayMarkNotice } from "@/lib/employee-notice";
 import { notifyEmployee } from "@/lib/notify";
 
@@ -25,8 +25,9 @@ export async function PUT(req: Request) {
     if (rawSessionIds !== null && !Array.isArray(rawSessionIds)) {
       badRequest("Danh sách ca không hợp lệ");
     }
-    if (leaveCode && rawSessionIds && rawSessionIds.length > 0) {
-      badRequest("Ngày nghỉ thì không gán ca làm việc");
+    // Nghỉ nửa ngày: N kèm ca vẫn đi làm. Ốm thì chỉ chấm cả ngày.
+    if (leaveCode === "O" && rawSessionIds && rawSessionIds.length > 0) {
+      badRequest("Ốm chỉ chấm cả ngày");
     }
 
     const user = await queryOne<{ id: string }>(
@@ -45,6 +46,11 @@ export async function PUT(req: Request) {
       for (const id of sessionIds) {
         if (!activeIds.has(id)) badRequest("Ca làm việc không tồn tại");
       }
+    }
+
+    if (leaveCode === "N" && sessionIds && sessionIds.length > 0) {
+      const days = leaveDaysOf({ leaveCode, sessionIds }, new Map(rules.map((rule) => [rule.id, rule])));
+      if (days <= 0 || days >= 1) badRequest("Nghỉ nửa ngày phải còn đúng một buổi đi làm");
     }
 
     // Đánh dấu cũ: chấm lại y hệt thì không gửi email báo nhân viên.

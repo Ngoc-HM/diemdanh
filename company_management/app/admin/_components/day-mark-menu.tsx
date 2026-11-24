@@ -13,6 +13,8 @@ import { AlarmClockOff, Check } from "lucide-react";
 export type MarkChoice =
   | { kind: "session"; sessionId: string }
   | { kind: "leave"; code: "N" | "O" }
+  /// Nghỉ nửa ngày: N kèm buổi vẫn đi làm.
+  | { kind: "halfLeave"; workSessionId: string }
   | { kind: "clear" };
 
 const MENU_WIDTH = 208;
@@ -102,6 +104,15 @@ export default function DayMarkMenu({
 
   const item =
     "flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-50 disabled:opacity-50";
+  const morning = sessions.find((session) => session.code === "S");
+  const afternoon = sessions.find((session) => session.code === "C");
+  const halfLeaves =
+    morning && afternoon
+      ? [
+          { label: "Nghỉ sáng", code: "C·N", workSessionId: afternoon.id },
+          { label: "Nghỉ chiều", code: "S·N", workSessionId: morning.id },
+        ]
+      : [];
 
   return createPortal(
     <div
@@ -190,6 +201,19 @@ export default function DayMarkMenu({
           <span className="w-7 shrink-0 font-semibold text-slate-900">N</span>
           Nghỉ
         </button>
+        {halfLeaves.map((half) => (
+          <button
+            key={half.code}
+            type="button"
+            role="menuitem"
+            disabled={saving}
+            onClick={() => onPick({ kind: "halfLeave", workSessionId: half.workSessionId })}
+            className={item}
+          >
+            <span className="w-7 shrink-0 whitespace-nowrap font-semibold text-slate-900">{half.code}</span>
+            {half.label}
+          </button>
+        ))}
         <button
           type="button"
           role="menuitem"

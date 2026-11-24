@@ -101,7 +101,12 @@ const LEAVE_CODES: readonly string[] = ["N", "O"];
 function CodeBadge({ codes }: { codes: string[] }) {
   if (codes.length === 0) return <span className="text-slate-400">—</span>;
   const isLeave = codes.length === 1 && LEAVE_CODES.includes(codes[0]);
-  return <Badge tone={isLeave ? "neutral" : "brand"}>{codes.join("+")}</Badge>;
+  // Nghỉ nửa ngày: ["C", "N"] hiện "C·N".
+  const leaveTail = codes.length > 1 && LEAVE_CODES.includes(codes[codes.length - 1]);
+  const text = leaveTail
+    ? `${codes.slice(0, -1).join("+")}·${codes[codes.length - 1]}`
+    : codes.join("+");
+  return <Badge tone={isLeave ? "neutral" : "brand"}>{text}</Badge>;
 }
 
 export default function ShiftRequestsPage() {
@@ -111,7 +116,8 @@ export default function ShiftRequestsPage() {
   const [date, setDate] = useState(() => dateKeyVN());
   const [schedule, setSchedule] = useState<SchedulePayload | null>(null);
   const [selected, setSelected] = useState<string[]>([]);
-  const [leave, setLeave] = useState(false);
+  /// Xin nghỉ: "full" = cả ngày, hoặc id ca vẫn đi làm khi nghỉ nửa ngày.
+  const [leave, setLeave] = useState<string | null>(null);
   const [reason, setReason] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [feedback, setFeedback] = useState<Feedback | null>(null);
@@ -189,17 +195,29 @@ export default function ShiftRequestsPage() {
   /// Chọn ca theo quy tắc chung của lưới đăng ký (CN loại trừ S/C); chọn ca
   /// thì bỏ N vì hai thứ loại trừ nhau.
   function toggleSession(rule: SessionRule) {
-    setLeave(false);
+    setLeave(null);
     setSelected((items) => toggleSessionSelection(items, rule.id, codeById));
   }
 
-  function toggleLeave() {
-    setLeave((value) => !value);
+  function toggleLeave(kind: string) {
+    setLeave((value) => (value === kind ? null : kind));
     setSelected([]);
   }
 
+  const morning = sessions.find((rule) => rule.code === "S");
+  const afternoon = sessions.find((rule) => rule.code === "C");
+  const leaveOptions = [
+    { kind: "full", code: "N", label: "Nghỉ" },
+    ...(morning && afternoon
+      ? [
+          { kind: afternoon.id, code: "C·N", label: "Nghỉ sáng" },
+          { kind: morning.id, code: "S·N", label: "Nghỉ chiều" },
+        ]
+      : []),
+  ];
+
   const trimmedReason = reason.trim();
-  const hasTarget = leave || selected.length > 0;
+  const hasTarget = leave !== null || selected.length > 0;
   const canSubmit =
     scheduleMonth !== null &&
     hasTarget &&
@@ -214,10 +232,13 @@ export default function ShiftRequestsPage() {
     setSubmitting(true);
     setFeedback(null);
     try {
-      // Đúng một trong hai: xin nghỉ N hoặc danh sách ca muốn đổi sang.
-      const body = leave
-        ? { date, leaveCode: "N", reason: trimmedReason }
-        : { date, sessionIds: selected, reason: trimmedReason };
+      // Xin nghỉ cả ngày, nghỉ nửa ngày (N kèm buổi vẫn làm), hoặc đổi ca.
+      const body =
+        leave === "full"
+          ? { date, leaveCode: "N", reason: trimmedReason }
+          : leave
+            ? { date, leaveCode: "N", sessionIds: [leave], reason: trimmedReason }
+            : { date, sessionIds: selected, reason: trimmedReason };
       const response = await fetch("/api/shift-requests", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -229,7 +250,7 @@ export default function ShiftRequestsPage() {
       setFeedback({ type: "success", text: "Đã gửi, chờ admin duyệt" });
       setReason("");
       setSelected([]);
-      setLeave(false);
+      setLeave(null);
 
       // Chuyển danh sách sang tháng của ngày vừa gửi để yêu cầu mới hiện ngay.
       const target = date.slice(0, 7);
@@ -330,15 +351,18 @@ export default function ShiftRequestsPage() {
                     </button>
                   );
                 })}
-                <button
-                  type="button"
-                  onClick={toggleLeave}
-                  aria-pressed={leave}
-                  className={optionClass(leave, "slate")}
-                >
-                  <span className="font-semibold">N</span>
-                  <span>· Nghỉ</span>
-                </button>
+                {leaveOptions.map((option) => (
+                  <button
+                    key={option.kind}
+                    type="button"
+                    onClick={() => toggleLeave(option.kind)}
+                    aria-pressed={leave === option.kind}
+                    className={optionClass(leave === option.kind, "slate")}
+                  >
+                    <span className="font-semibold">{option.code}</span>
+                    <span>· {option.label}</span>
+                  </button>
+                ))}
               </div>
             )}
           </div>

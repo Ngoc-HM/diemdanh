@@ -311,7 +311,7 @@ function payslipSheet(sheet: PayrollSheet, row: PayrollRow, companyName: string)
           item("Phép năm còn lại", { value: row.leave.balance, type: Number, format: DAYS, ...BORDER }),
         ]
       : row.attendance.leaveDays > 0
-        ? [item("Nghỉ (không hưởng phép năm)", { value: row.attendance.leaveDays, type: Number, ...BORDER })]
+        ? [item("Nghỉ (không hưởng phép năm)", { value: row.attendance.leaveDays, type: Number, format: DAYS, ...BORDER })]
         : []),
     ...(row.attendance.projectedDays > 0
       ? [item("Trong đó tạm tính theo lịch", { value: row.attendance.projectedDays, type: Number, ...BORDER })]
@@ -548,6 +548,7 @@ function decisionOf(day: PayrollDay, times: DayPunchTimes | undefined): string {
   if (day.needsReview) return `Thiếu giờ, admin chưa xem lại — đang tính đủ công${extra}`;
   if (day.status === "holiday") return "Ngày lễ — hưởng lương";
   if (day.status === "leave") return "Nghỉ (đã đánh dấu)";
+  if (day.leaveDays && day.leaveDays < 1) return `Nghỉ nửa ngày, làm ${day.codes.join("+") || "nửa ngày"}${extra}`;
   if (day.status === "sick") return "Nghỉ ốm (đã đánh dấu)";
   if (day.status === "absent") return `Có lịch, không chấm công${extra}`;
   if (day.overtime && day.workdayValue <= 0) return "Làm thêm theo phiếu OT đã duyệt";

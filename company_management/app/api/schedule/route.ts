@@ -78,11 +78,13 @@ export async function GET(req: Request) {
     // Ngày nghỉ/ốm không bao giờ bị tính vắng hay ngoài lịch.
     const leaveDates = new Set<string>();
     for (const mark of marks.values()) {
-      if (mark.leaveCode === "N") offDays.push(mark.date);
+      // Nghỉ nửa ngày (N kèm ca): ngày vẫn có ca đi làm, không phải ngày nghỉ.
+      const halfLeave = Boolean(mark.leaveCode && mark.sessionIds?.length);
+      if (mark.leaveCode === "N" && !halfLeave) offDays.push(mark.date);
       if (mark.isAdminEdit) adminEdited.push(mark.date);
       // Admin đổi ca thì lịch hiển thị phải theo ca admin đặt.
-      if (mark.sessionIds && !mark.leaveCode) days[mark.date] = mark.sessionIds;
-      if (mark.leaveCode) {
+      if (mark.sessionIds && (!mark.leaveCode || halfLeave)) days[mark.date] = mark.sessionIds;
+      if (mark.leaveCode && !halfLeave) {
         leaveDates.add(mark.date);
         delete days[mark.date];
       }

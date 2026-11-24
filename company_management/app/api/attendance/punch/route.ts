@@ -5,6 +5,7 @@ import { dateKeyVN } from "@/lib/datetime";
 import { evaluateDay } from "@/lib/attendance-rules";
 import {
   applyDayMark,
+  fullDayLeaveCode,
   getActiveSessionRules,
   getDayMarks,
   getLunchBreak,
@@ -189,7 +190,7 @@ export async function POST(req: Request) {
       scheduled: applyDayMark(schedule.get(today) ?? [], mark, ruleById),
       punches,
       isHoliday: Boolean(holiday),
-      leaveCode: mark?.leaveCode ?? null,
+      leaveCode: fullDayLeaveCode(mark),
       lunchBreak,
     });
 

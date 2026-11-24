@@ -20,6 +20,8 @@ import {
 } from "@/lib/attendance-rules";
 import {
   applyDayMark,
+  fullDayLeaveCode,
+  leaveDaysOf,
   fullDayMinutesOf,
   getActiveSessionRules,
   getDayMarks,
@@ -162,7 +164,7 @@ export async function GET(
         isHoliday: holidays.has(date),
         isPast: date < today,
         notYetDue: date >= today,
-        leaveCode: mark?.leaveCode ?? null,
+        leaveCode: fullDayLeaveCode(mark),
         lunchBreak,
         isRestDay:
           isRestDayFor(user!.employmentType, date, weeklyOffDays, holidays.has(date), swaps) ||
@@ -171,6 +173,8 @@ export async function GET(
         reviewDecision: reviews.get(`${userId}|${date}`) ?? null,
         approvedOvertime: Boolean(ot),
       });
+
+      const halfLeave = fullDayLeaveCode(mark) ? 0 : leaveDaysOf(mark, ruleById);
 
       return {
         date,
@@ -194,7 +198,10 @@ export async function GET(
         overtime: ot
           ? { id: ot.id, code: ot.code, rate: ot.rate, minutes: ot.minutes, place: ot.place }
           : null,
-        statusLabel: DAY_STATUS_LABELS[evaluation.status],
+        leaveDays: halfLeave > 0 ? halfLeave : evaluation.status === "leave" ? 1 : 0,
+        statusLabel: halfLeave > 0
+          ? `${DAY_STATUS_LABELS[evaluation.status]} · nghỉ nửa ngày`
+          : DAY_STATUS_LABELS[evaluation.status],
         workedHours: minutesToHours(evaluation.workedMinutes),
         requiredHours: minutesToHours(evaluation.requiredMinutes),
         missingHours: minutesToHours(evaluation.missingMinutes),

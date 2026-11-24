@@ -66,7 +66,10 @@ export function dayMarkNotice(input: {
 }): Notice {
   const day = formatDateWithWeekday(input.date);
   let change: string;
-  if (input.leaveCode === "N") change = `Ngày ${day} được ghi là Nghỉ (N).`;
+  if (input.leaveCode === "N" && input.sessions.length > 0) {
+    const list = input.sessions.map((rule) => `${rule.name} (${rule.code})`).join(" + ");
+    change = `Ngày ${day} được ghi là nghỉ nửa ngày, đi làm ${list}.`;
+  } else if (input.leaveCode === "N") change = `Ngày ${day} được ghi là Nghỉ (N).`;
   else if (input.leaveCode === "O") change = `Ngày ${day} được ghi là Ốm (O).`;
   else if (input.sessions.length > 0) {
     const list = input.sessions.map((rule) => `${rule.name} (${rule.code})`).join(" + ");

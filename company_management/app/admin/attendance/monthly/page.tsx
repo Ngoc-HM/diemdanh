@@ -167,7 +167,9 @@ export default function MonthlyAttendancePage() {
           ? { userId, date, leaveCode: null, sessionIds: [choice.sessionId] }
           : choice.kind === "leave"
             ? { userId, date, leaveCode: choice.code, sessionIds: null }
-            : { userId, date, leaveCode: null, sessionIds: null };
+            : choice.kind === "halfLeave"
+              ? { userId, date, leaveCode: "N", sessionIds: [choice.workSessionId] }
+              : { userId, date, leaveCode: null, sessionIds: null };
       const session =
         choice.kind === "session"
           ? data?.sessions.find((item) => item.id === choice.sessionId)

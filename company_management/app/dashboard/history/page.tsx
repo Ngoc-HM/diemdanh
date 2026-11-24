@@ -22,6 +22,8 @@ type Day = {
   /// Ngày này được tính một ngày công (kể cả ngoài lịch có đủ vào/ra).
   countsAsWorkDay: boolean;
   codes: string[];
+  /// Nghỉ nửa ngày = 0,5.
+  leaveDays?: number;
   workedHours: number;
   requiredHours: number;
   lateMinutes: number;
@@ -178,7 +180,10 @@ export default function HistoryPage() {
                   </td>
                   <td className="px-4 py-2">
                     {day.codes.length > 0 ? (
-                      <Badge tone="brand">{day.codes.join("+")}</Badge>
+                      <Badge tone="brand">
+                        {day.codes.join("+")}
+                        {day.leaveDays && day.leaveDays < 1 ? "·N" : ""}
+                      </Badge>
                     ) : day.status === "unscheduled" && day.countsAsWorkDay ? (
                       // Không có mã ca nhưng vẫn là một ngày công: nói rõ thay
                       // vì để dấu gạch khiến nhân viên tưởng bị mất công.

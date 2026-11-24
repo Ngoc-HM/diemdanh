@@ -24,6 +24,7 @@ import {
 import { planWifiPunch, MAC_PATTERN } from "../lib/wifi-rules.ts";
 import { finalDayLabel, validateFinalDay } from "../lib/final-rules.ts";
 import {
+  allocatePaidLeave,
   annualLeaveForMonth,
   computePayroll,
   contractLabelForMonth,
@@ -307,6 +308,26 @@ check("full-time: thứ 7 là ngày nghỉ", isRestDayFor("full_time", "2026-09-
 check("full-time: ngày lễ là ngày nghỉ", isRestDayFor("full_time", "2026-09-02", [0, 6], true) === true);
 check("full-time: thứ 3 thường là ngày làm", isRestDayFor("full_time", "2026-09-01", [0, 6], false) === false);
 check("part-time tự đăng ký nên thứ 7 không phải ngày nghỉ", isRestDayFor("part_time", "2026-09-05", [0, 6], false) === false);
+
+console.log("\n== nghỉ nửa ngày ==");
+const leaveCfg = { daysPerYear: 12, maxCarryYears: 3, bonusEveryYears: 5 };
+const twoHalves = annualLeaveForMonth({
+  startDate: "2026-11-01", month: "2026-11", config: leaveCfg,
+  leaveDates: [{ date: "2026-11-05", days: 0.5 }, { date: "2026-11-12", days: 0.5 }],
+});
+check("hai buổi nghỉ = 1 ngày phép có lương", twoHalves.paidDays === 1 && twoHalves.unpaidDays === 0, JSON.stringify(twoHalves));
+const oneAndHalf = annualLeaveForMonth({
+  startDate: "2026-11-01", month: "2026-11", config: leaveCfg,
+  leaveDates: ["2026-11-05", { date: "2026-11-12", days: 0.5 }],
+});
+check("1 ngày + nửa ngày khi có 1 ngày phép: trả 1, nửa ngày không lương", oneAndHalf.paidDays === 1 && oneAndHalf.unpaidDays === 0.5, JSON.stringify(oneAndHalf));
+const halfThenFull = annualLeaveForMonth({
+  startDate: "2026-10-01", month: "2026-11", config: leaveCfg,
+  leaveDates: [{ date: "2026-10-20", days: 0.5 }, "2026-11-05"],
+});
+check("nửa ngày tháng trước, còn 1,5 phép: tháng sau nghỉ 1 ngày được trả đủ", halfThenFull.paidDays === 1 && halfThenFull.balance === 0.5, JSON.stringify(halfThenFull));
+const alloc = allocatePaidLeave([{ date: "2026-11-12", days: 1 }, { date: "2026-11-05", days: 0.5 }], 1);
+check("phân phép theo thứ tự ngày, cắt nửa ngày cuối", JSON.stringify(alloc) === JSON.stringify([{ date: "2026-11-05", days: 0.5 }, { date: "2026-11-12", days: 0.5 }]), JSON.stringify(alloc));
 
 console.log("\n== nhãn hợp đồng theo tháng ==");
 const probProfile = { contractType: "probation", probationEndDate: "2026-10-16" };

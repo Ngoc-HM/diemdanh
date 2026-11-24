@@ -10,6 +10,7 @@ import {
 import { isSelfScheduled } from "@/lib/schedule";
 import {
   applyDayMark,
+  fullDayLeaveCode,
   getActiveSessionRules,
   getDayMarks,
   getHolidayMap,
@@ -103,14 +104,16 @@ export async function GET(req: Request) {
       for (const date of dates) {
         const key = `${user.id}|${date}`;
         const mark = marks.get(key);
-        if (mark?.leaveCode) leaves[date] = mark.leaveCode;
+        // Nghỉ nửa ngày (N kèm ca) vẫn có ca đi làm: không phải ngày nghỉ.
+        const fullLeave = fullDayLeaveCode(mark);
+        if (fullLeave) leaves[date] = fullLeave;
         if (pendingRequests.has(key)) pendingDates.push(date);
 
         const sessions = applyDayMark(schedule.get(date) ?? [], mark, ruleById);
         const punched = punchedDates.has(key);
         // Cùng quy tắc với evaluateDay: nghỉ/ốm đã đánh dấu thì không phải
         // vắng hay ngoài lịch; ngày lễ có lịch mà không đi cũng không tính vắng.
-        const excused = Boolean(mark?.leaveCode);
+        const excused = Boolean(fullLeave);
 
         if (sessions.length === 0) {
           if (punched && !excused) unscheduledDates.push(date);

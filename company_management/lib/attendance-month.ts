@@ -10,6 +10,8 @@ import {
 } from "@/lib/attendance-rules";
 import {
   applyDayMark,
+  fullDayLeaveCode,
+  leaveDaysOf,
   fullDayMinutesOf,
   getActiveSessionRules,
   getDayMarks,
@@ -62,6 +64,8 @@ export type MonthDayCell = {
   firstIn?: string | null;
   lastOut?: string | null;
   lateMinutes: number;
+  /// Số ngày nghỉ N của ô: cả ngày 1, nghỉ nửa ngày 0,5.
+  leaveDays?: number;
   outsideRadius: boolean;
   adminEdited: boolean;
   /// Đang có yêu cầu đổi ca chờ duyệt cho ngày này.
@@ -209,7 +213,7 @@ export async function computeMonthAttendance(
         isHoliday,
         isPast: date < today,
         notYetDue: date >= today,
-        leaveCode: mark?.leaveCode ?? null,
+        leaveCode: fullDayLeaveCode(mark),
         lunchBreak,
         // Ngày không có ca mà có phiếu OT đã duyệt là ngày làm thêm: trả
         // theo giờ OT, không cộng thêm công "ngoài lịch".
@@ -230,7 +234,7 @@ export async function computeMonthAttendance(
       const projected =
         Boolean(options.projectRemaining) &&
         date >= today &&
-        !mark?.leaveCode &&
+        !fullDayLeaveCode(mark) &&
         scheduledValue > evaluation.workdayValue;
       const workdayValue = projected ? scheduledValue : evaluation.workdayValue;
 
@@ -248,7 +252,11 @@ export async function computeMonthAttendance(
         continue;
       }
 
-      const baseLabel = dayCellLabel(evaluation);
+      // Nghỉ nửa ngày: phần đi làm chấm như thường, ký hiệu thêm "·N".
+      const halfLeave = fullDayLeaveCode(mark) ? 0 : leaveDaysOf(mark, ruleById);
+      const withLeave = (label: string, days: number) =>
+        days > 0 && days < 1 ? `${label}·N` : label;
+      const baseLabel = withLeave(dayCellLabel(evaluation), halfLeave);
       if (ot) overtimeMinutes[ot.code] = (overtimeMinutes[ot.code] ?? 0) + ot.minutes;
       const withOvertime = (label: string, value: number) =>
         ot ? (value > 0 ? `${label}+${ot.code}` : ot.code) : label;
@@ -265,6 +273,7 @@ export async function computeMonthAttendance(
         firstIn: timeOfPunch(punches, "in", Math.min),
         lastOut: timeOfPunch(punches, "out", Math.max),
         lateMinutes: evaluation.lateMinutes,
+        leaveDays: evaluation.status === "leave" ? 1 : halfLeave,
         outsideRadius: evaluation.outsideRadius,
         workdayValue,
         needsReview: evaluation.needsReview,
@@ -275,11 +284,20 @@ export async function computeMonthAttendance(
 
       // Ô admin đã chấm tay ở bảng công chốt: lấy theo admin, bỏ cảnh báo của
       // máy (thiếu giờ, tạm tính); riêng số phút muộn vẫn giữ (xem dưới).
+      // Ô chốt đi làm vẫn giữ nửa ngày nghỉ nếu công chốt cộng phần nghỉ không quá 1.
+      const finalLeave = !final
+        ? 0
+        : final.status === "leave"
+          ? 1
+          : final.status === "work" && final.workday + halfLeave <= 1
+            ? halfLeave
+            : 0;
       const cell: MonthDayCell = final
         ? {
             ...machineCell,
             status: FINAL_TO_DAY_STATUS[final.status],
-            label: withOvertime(finalDayLabel(final), final.workday),
+            label: withOvertime(withLeave(finalDayLabel(final), finalLeave), final.workday),
+            leaveDays: finalLeave,
             codes: final.status === "work" ? final.codes : [],
             // Phút muộn là so giờ vào thực tế với giờ bắt đầu ca: admin chốt
             // ngày đi làm vẫn giữ để đối chiếu; chốt nghỉ / vắng / lễ thì bỏ.
@@ -310,7 +328,7 @@ export async function computeMonthAttendance(
       }
       if (isLateDay(cell)) lateDays++;
       if (cell.status === "absent" && !cell.projected) absentDays++;
-      if (cell.status === "leave") leaveDays++;
+      leaveDays += cell.leaveDays ?? (cell.status === "leave" ? 1 : 0);
       if (cell.status === "sick") sickDays++;
       if (cell.status === "missed_out") missedCheckoutDays++;
     }

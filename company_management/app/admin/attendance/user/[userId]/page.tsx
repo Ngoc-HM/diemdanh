@@ -284,7 +284,9 @@ function UserAttendanceDetail() {
                 leaveCode: choice.code,
                 sessionIds: null,
               }
-            : { userId, date: day.date, leaveCode: null, sessionIds: null };
+            : choice.kind === "halfLeave"
+              ? { userId, date: day.date, leaveCode: "N", sessionIds: [choice.workSessionId] }
+              : { userId, date: day.date, leaveCode: null, sessionIds: null };
       const response = await fetch("/api/admin/attendance/day-mark", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },

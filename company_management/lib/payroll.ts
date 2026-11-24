@@ -222,11 +222,33 @@ const monthIndex = (month: string) =>
 ///  - Phép tồn không quá `maxCarryYears` năm (chặn trần số dư).
 ///  - Ngày nghỉ N trừ dần vào số dư theo thứ tự thời gian; hết phép thì là
 ///    nghỉ không lương.
+/// Một ngày nghỉ N: chuỗi ngày = nghỉ cả ngày.
+export type LeaveEntry = string | { date: string; days: number };
+
+export function leaveEntry(entry: LeaveEntry): { date: string; days: number } {
+  return typeof entry === "string" ? { date: entry, days: 1 } : entry;
+}
+
+/// Phân phép có lương cho các ngày nghỉ theo thứ tự ngày (ngày đầu tháng được
+/// trả trước), cắt ngày cuối nếu chỉ còn nửa ngày phép.
+export function allocatePaidLeave(entries: LeaveEntry[], paidDays: number): { date: string; days: number }[] {
+  const result: { date: string; days: number }[] = [];
+  let remaining = paidDays;
+  for (const entry of entries.map(leaveEntry).sort((a, b) => a.date.localeCompare(b.date))) {
+    if (remaining <= 0) break;
+    const days = Math.min(entry.days, remaining);
+    result.push({ date: entry.date, days });
+    remaining = Math.round((remaining - days) * 2) / 2;
+  }
+  return result;
+}
+
 export function annualLeaveForMonth(input: {
   startDate: string;
   month: string;
-  /// Mọi ngày nghỉ N từ ngày bắt đầu đến hết tháng cần tính.
-  leaveDates: string[];
+  /// Mọi ngày nghỉ N từ ngày bắt đầu đến hết tháng cần tính: chuỗi ngày (nghỉ
+  /// cả ngày) hoặc { date, days } (nghỉ nửa ngày = 0,5).
+  leaveDates: LeaveEntry[];
   config: PayrollConfig["annualLeave"];
 }): { paidDays: number; unpaidDays: number; balance: number; accrued: number } {
   const { startDate, month, config } = input;
@@ -235,10 +257,11 @@ export function annualLeaveForMonth(input: {
     return { paidDays: 0, unpaidDays: 0, balance: 0, accrued: 0 };
   }
   const byMonth = new Map<string, number>();
-  for (const date of input.leaveDates) {
+  for (const entry of input.leaveDates) {
+    const { date, days } = leaveEntry(entry);
     if (date < startDate) continue;
     const key = date.slice(0, 7);
-    byMonth.set(key, (byMonth.get(key) ?? 0) + 1);
+    byMonth.set(key, (byMonth.get(key) ?? 0) + days);
   }
 
   const cap = config.daysPerYear * config.maxCarryYears;
@@ -254,8 +277,9 @@ export function annualLeaveForMonth(input: {
 
     const key = `${Math.floor(index / 12)}-${String((index % 12) + 1).padStart(2, "0")}`;
     const used = byMonth.get(key) ?? 0;
-    // Phép trừ theo ngày nguyên: số dư lẻ (do thưởng thâm niên) để dành.
-    const paid = Math.min(used, Math.floor(balance));
+    // Phép trừ theo bước nửa ngày (hai buổi nghỉ = một ngày): phần dư lẻ hơn
+    // (do cộng dồn / thưởng thâm niên) để dành.
+    const paid = Math.min(used, Math.floor(balance * 2) / 2);
     balance -= paid;
     if (key === month) {
       paidDays = paid;
@@ -325,7 +349,7 @@ export function probationPortionForMonth(input: {
   dates: string[];
   days: Record<string, { workdayValue: number; overtime?: { code: string; minutes: number } | null } | undefined>;
   /// Ngày nghỉ phép năm có lương trong tháng.
-  paidLeaveDates: string[];
+  paidLeaveDates: LeaveEntry[];
 }): ProbationPortion | null {
   const end = input.profile.probationEndDate;
   if (input.profile.contractType !== "probation" || !end || input.dates.length === 0) return null;
@@ -341,7 +365,10 @@ export function probationPortionForMonth(input: {
         (portion.overtimeMinutes[day.overtime.code] ?? 0) + day.overtime.minutes;
     }
   }
-  portion.paidLeaveDays = input.paidLeaveDates.filter((date) => date <= end).length;
+  portion.paidLeaveDays = input.paidLeaveDates
+    .map(leaveEntry)
+    .filter((entry) => entry.date <= end)
+    .reduce((total, entry) => total + entry.days, 0);
   return portion;
 }
 

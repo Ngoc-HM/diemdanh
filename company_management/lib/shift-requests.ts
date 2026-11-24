@@ -22,7 +22,8 @@ export type RequestView = {
   date: string;
   leaveCode: "N" | null;
   sessionIds: string[] | null;
-  /// Mã ca muốn đổi sang, theo sortOrder; ["N"] khi xin nghỉ.
+  /// Mã ca muốn đổi sang, theo sortOrder; ["N"] khi xin nghỉ cả ngày, vd
+  /// ["C", "N"] khi xin nghỉ sáng (vẫn làm chiều).
   requestedCodes: string[];
   /// Mã ca hiện có của ngày đó SAU khi áp DayMark: ngày đã đánh dấu nghỉ/ốm
   /// thì là ["N"] hoặc ["O"]; không có lịch thì rỗng.
@@ -118,12 +119,13 @@ async function resolveCurrentCodes(
       const key = markKey(row);
       if (codesByKey.has(key)) continue;
       const mark = marks.get(key);
-      if (mark?.leaveCode) {
+      if (mark?.leaveCode && !(mark.sessionIds?.length)) {
         codesByKey.set(key, [mark.leaveCode]);
         continue;
       }
       const scheduled = schedules.get(row.userId)?.get(row.date) ?? [];
-      codesByKey.set(key, sortedCodes(applyDayMark(scheduled, mark, ruleById)));
+      const codes = sortedCodes(applyDayMark(scheduled, mark, ruleById));
+      codesByKey.set(key, mark?.leaveCode ? [...codes, mark.leaveCode] : codes);
     }
   }
   return codesByKey;
@@ -150,13 +152,15 @@ async function buildViews(rows: RequestWithUserRow[]): Promise<BuiltView[]> {
       date: row.date,
       leaveCode: row.leaveCode,
       sessionIds: row.sessionIds,
-      requestedCodes: row.leaveCode
-        ? [row.leaveCode]
-        : sortedCodes(
-            (row.sessionIds ?? [])
-              .map((id) => ruleById.get(id))
-              .filter((rule): rule is SessionRule => Boolean(rule))
-          ),
+      // Nghỉ nửa ngày: mã ca vẫn đi làm kèm "N", vd ["C", "N"].
+      requestedCodes: [
+        ...sortedCodes(
+          (row.sessionIds ?? [])
+            .map((id) => ruleById.get(id))
+            .filter((rule): rule is SessionRule => Boolean(rule))
+        ),
+        ...(row.leaveCode ? [row.leaveCode] : []),
+      ],
       currentCodes: currentCodes.get(markKey(row)) ?? [],
       reason: row.reason,
       status: row.status,

@@ -59,7 +59,8 @@ export async function PUT(
       // DayMark tra mã từ toàn bộ danh mục. Lọc xong không còn ca nào thì
       // không có gì để duyệt.
       let sessionIds: string[] | null = null;
-      if (!request!.leaveCode) {
+      // Xin nghỉ cả ngày thì không có ca; nghỉ nửa ngày / đổi ca thì giữ các ca.
+      if (!request!.leaveCode || (request!.sessionIds?.length ?? 0) > 0) {
         const knownIds = new Set(
           (await getAllSessionRules()).map((rule) => rule.id)
         );

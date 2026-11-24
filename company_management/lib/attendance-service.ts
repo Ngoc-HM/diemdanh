@@ -71,18 +71,44 @@ export function fullDayMinutesOf(rules: SessionRule[]): number {
 }
 
 /// Ca thực tế của một ngày sau khi áp đánh dấu: admin đổi ca thì lấy ca mới,
-/// ngày nghỉ/ốm thì không còn ca nào.
+/// ngày nghỉ/ốm cả ngày thì không còn ca nào, nghỉ nửa ngày thì còn đúng các
+/// ca vẫn đi làm (lưu ở `sessionIds` cùng với mã nghỉ).
 export function applyDayMark(
   scheduled: SessionRule[],
   mark: DayMark | undefined,
   ruleById: Map<string, SessionRule>
 ): SessionRule[] {
   if (!mark) return scheduled;
+  if (mark.sessionIds && (mark.sessionIds.length > 0 || !mark.leaveCode)) {
+    return mark.sessionIds
+      .map((id) => ruleById.get(id))
+      .filter((rule): rule is SessionRule => Boolean(rule));
+  }
   if (mark.leaveCode) return [];
-  if (!mark.sessionIds) return scheduled;
-  return mark.sessionIds
-    .map((id) => ruleById.get(id))
-    .filter((rule): rule is SessionRule => Boolean(rule));
+  return scheduled;
+}
+
+/// Mã nghỉ khi cả ngày nghỉ; nghỉ nửa ngày (còn ca đi làm) thì null để phần
+/// đi làm vẫn được chấm như ngày thường.
+export function fullDayLeaveCode(mark: DayMark | undefined): "N" | "O" | null {
+  if (!mark?.leaveCode) return null;
+  return mark.sessionIds && mark.sessionIds.length > 0 ? null : mark.leaveCode;
+}
+
+/// Số ngày nghỉ N của một đánh dấu: cả ngày = 1, nghỉ nửa ngày = 1 trừ công
+/// của các ca vẫn đi làm (ca S / C 0,5 công thì nghỉ 0,5). Hai buổi nghỉ cộng
+/// lại thành một ngày phép.
+export function leaveDaysOf(
+  mark: Pick<DayMark, "leaveCode" | "sessionIds"> | undefined,
+  ruleById: Map<string, { workdayValue?: number | null }>
+): number {
+  if (mark?.leaveCode !== "N") return 0;
+  if (!mark.sessionIds || mark.sessionIds.length === 0) return 1;
+  const worked = mark.sessionIds.reduce(
+    (total, id) => total + (ruleById.get(id)?.workdayValue ?? 1),
+    0
+  );
+  return Math.max(0, Math.round((1 - worked) * 2) / 2);
 }
 
 const SESSION_COLUMNS = `

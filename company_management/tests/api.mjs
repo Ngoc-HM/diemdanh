@@ -1419,6 +1419,25 @@ async function main() {
     mail = await waitForMail(sink, EMP_EMAIL, `Ngày ${absentShort} làm thiếu giờ đã được xem lại`);
     check("quyết định ngày thiếu giờ thì báo nhân viên", mail?.text.includes("Quản trị viên không tính công."), mail?.text);
 
+    console.log("\n== nghỉ nửa ngày ==");
+    const halfMorning = sessions.find((s) => s.code === "S");
+    if (halfMorning) {
+      r = await call(admin, "PUT", "/api/admin/attendance/day-mark", { userId: employeeId, date: "2026-09-30", leaveCode: "N", sessionIds: [halfMorning.id] });
+      check("admin chấm nghỉ nửa ngày (làm sáng)", r.status === 200 && r.json.leaveCode === "N" && r.json.sessionIds?.length === 1, `(${r.status})`);
+      mail = await waitForMail(sink, EMP_EMAIL, "Bảng chấm công ngày 30/09 đã được điều chỉnh");
+      check("báo nhân viên là nghỉ nửa ngày", mail?.text.includes("nghỉ nửa ngày"), mail?.text);
+      r = await call(admin, "GET", `/api/admin/attendance/user/${employeeId}?month=2026-09`);
+      const halfDay = r.json.days?.find((d) => d.date === "2026-09-30");
+      check("ngày nghỉ nửa ngày: 0,5 ngày nghỉ, còn ca sáng", halfDay?.leaveDays === 0.5 && halfDay?.scheduled?.length === 1 && halfDay?.scheduled?.[0]?.code === "S", JSON.stringify({ leave: halfDay?.leaveDays, sch: halfDay?.scheduled?.map((x) => x.code), st: halfDay?.statusLabel }));
+      r = await call(admin, "GET", `/api/admin/attendance/monthly?month=2026-09`);
+      const halfCell = r.json.summary?.find((row) => row.user.id === employeeId)?.days?.["2026-09-30"];
+      check("lưới tháng ghi ký hiệu ·N", (halfCell?.label ?? "").endsWith("·N"), `(${halfCell?.label})`);
+      r = await call(admin, "PUT", "/api/admin/attendance/day-mark", { userId: employeeId, date: "2026-09-30", leaveCode: "O", sessionIds: [halfMorning.id] });
+      check("ốm thì không chấm nửa ngày", r.status === 400, `(${r.status})`);
+      r = await call(admin, "PUT", "/api/admin/attendance/day-mark", { userId: employeeId, date: "2026-09-30", leaveCode: null, sessionIds: [] });
+      check("xoá nghỉ nửa ngày", r.status === 200 && r.json.cleared === true, `(${r.status})`);
+    }
+
     console.log("\n== chấm lại ô ngày ==");
     r = await call(admin, "PUT", "/api/admin/attendance/day-mark", { userId: employeeId, date: "2026-09-29", leaveCode: "O" });
     check("admin chấm ô ngày là Ốm", r.status === 200 && r.json.leaveCode === "O", `(${r.status})`);
@@ -1766,6 +1785,15 @@ async function main() {
       JSON.stringify(r.json.days?.[ABSENT_DATE]) === JSON.stringify([morning.id]) && !r.json.offDays?.includes(ABSENT_DATE),
       `(${JSON.stringify(r.json.days?.[ABSENT_DATE])})`
     );
+
+    const halfS = sessions.find((s) => s.code === "S");
+    if (halfS) {
+      r = await call(emp, "POST", "/api/shift-requests", { date: "2026-09-16", leaveCode: "N", sessionIds: [halfS.id], reason: "__smoketest nghỉ chiều" });
+      const halfReq = r.json.request;
+      check("xin nghỉ nửa ngày (làm sáng)", r.status === 200 && JSON.stringify(halfReq?.requestedCodes) === JSON.stringify(["S", "N"]), `(${r.status} ${JSON.stringify(halfReq?.requestedCodes)})`);
+      r = await call(emp, "DELETE", `/api/shift-requests/${halfReq?.id}`);
+      check("huỷ yêu cầu nghỉ nửa ngày", r.status === 200, `(${r.status})`);
+    }
 
     r = await call(emp, "POST", "/api/shift-requests", { date: "2026-09-15", sessionIds: [morning.id], reason: "__smoketest sẽ huỷ" });
     const cancelId = r.json.request?.id;

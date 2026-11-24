@@ -10,6 +10,8 @@ import {
 import { evaluateDay, isLateDay, minutesToHours } from "@/lib/attendance-rules";
 import {
   applyDayMark,
+  fullDayLeaveCode,
+  leaveDaysOf,
   fullDayMinutesOf,
   getActiveSessionRules,
   getDayMarks,
@@ -119,7 +121,7 @@ export async function GET(req: Request) {
         isHoliday: holidays.has(date),
         isPast: date < today,
         notYetDue: date >= today,
-        leaveCode: mark?.leaveCode ?? null,
+        leaveCode: fullDayLeaveCode(mark),
         lunchBreak,
         isRestDay:
           isRestDayFor(user!.employmentType, date, weeklyOffDays, holidays.has(date), swaps) ||
@@ -140,6 +142,8 @@ export async function GET(req: Request) {
         status: evaluation.status,
         countsAsWorkDay: evaluation.countsAsWorkDay,
         workdayValue: evaluation.workdayValue,
+        // Nghỉ cả ngày 1, nghỉ nửa ngày 0,5 (phần còn lại vẫn đi làm).
+        leaveDays: evaluation.status === "leave" ? 1 : fullDayLeaveCode(mark) ? 0 : leaveDaysOf(mark, ruleById),
         needsReview: evaluation.needsReview,
         overtime: ot ? { code: ot.code, minutes: ot.minutes } : null,
         codes: evaluation.codes,

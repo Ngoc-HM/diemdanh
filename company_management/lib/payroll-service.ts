@@ -3,7 +3,9 @@ import { dateKeyVN, getMonthRange, monthKeyVN } from "@/lib/datetime";
 import { computeMonthAttendance, MonthSummaryRow } from "@/lib/attendance-month";
 import { getOvertimeConfig, OVERTIME_SELECT, OvertimeRow, buildOvertimeViews } from "@/lib/overtime-service";
 import { OvertimeConfig } from "@/lib/overtime";
+import { getAllSessionRules, leaveDaysOf } from "@/lib/attendance-service";
 import {
+  allocatePaidLeave,
   annualLeaveForMonth,
   AssignedAllowance,
   contractLabelForMonth,
@@ -142,8 +144,8 @@ export async function computeMonthPayroll(month: string): Promise<PayrollSheet> 
         `SELECT "id", "startDate" FROM "User" WHERE "id" = ANY($1::text[])`,
         [userIds]
       ),
-      query<{ userId: string; date: string }>(
-        `SELECT "userId", "date" FROM "DayMark"
+      query<{ userId: string; date: string; leaveCode: "N"; sessionIds: string[] | null }>(
+        `SELECT "userId", "date", "leaveCode", "sessionIds" FROM "DayMark"
           WHERE "leaveCode" = 'N' AND "userId" = ANY($1::text[]) AND "date" <= $2
           ORDER BY "date" ASC`,
         [userIds, endDate]
@@ -159,26 +161,42 @@ export async function computeMonthPayroll(month: string): Promise<PayrollSheet> 
   const startByUser = new Map(
     users.map((user) => [user.id, user.startDate ? dateKeyVN(user.startDate) : null])
   );
-  // Ngày nghỉ N tính phép năm: theo DayMark, nhưng ô bảng công chốt đè lên
-  // (admin chấm N thì tính, chấm khác N thì bỏ).
-  const finalRows = await query<{ userId: string; date: string; status: string }>(
-    `SELECT "userId", "date", "status" FROM "FinalTimesheetDay"
-      WHERE "userId" = ANY($1::text[]) AND "date" <= $2`,
-    [userIds, endDate]
-  );
-  const finalByKey = new Map(finalRows.map((row) => [`${row.userId}|${row.date}`, row.status]));
-  const leaveSet = new Set(
-    leaveRows
-      .map((row) => `${row.userId}|${row.date}`)
-      .filter((key) => !finalByKey.has(key) || finalByKey.get(key) === "leave")
-  );
-  for (const row of finalRows) {
-    if (row.status === "leave") leaveSet.add(`${row.userId}|${row.date}`);
+  // Ngày nghỉ N tính phép năm: theo DayMark (nghỉ nửa ngày = 0,5), nhưng ô
+  // bảng công chốt đè lên: chấm N thì tính cả ngày, chấm đi làm thì giữ nửa
+  // ngày nghỉ nếu công chốt cộng phần nghỉ không quá 1, chấm khác thì bỏ.
+  const [finalRows, allRules] = await Promise.all([
+    query<{ userId: string; date: string; status: string; workday: string }>(
+      `SELECT "userId", "date", "status", "workday" FROM "FinalTimesheetDay"
+        WHERE "userId" = ANY($1::text[]) AND "date" <= $2`,
+      [userIds, endDate]
+    ),
+    getAllSessionRules(),
+  ]);
+  const ruleById = new Map(allRules.map((rule) => [rule.id, rule]));
+  const finalByKey = new Map(finalRows.map((row) => [`${row.userId}|${row.date}`, row]));
+  const leaveByKey = new Map<string, number>();
+  for (const row of leaveRows) {
+    const key = `${row.userId}|${row.date}`;
+    const days = leaveDaysOf(row, ruleById);
+    const final = finalByKey.get(key);
+    const kept = !final
+      ? days
+      : final.status === "leave"
+        ? 1
+        : final.status === "work" && Number(final.workday) + days <= 1
+          ? days
+          : 0;
+    if (kept > 0) leaveByKey.set(key, kept);
   }
-  const leaveByUser = new Map<string, string[]>();
-  for (const key of [...leaveSet].sort((a, b) => a.split("|")[1].localeCompare(b.split("|")[1]))) {
+  for (const row of finalRows) {
+    if (row.status === "leave") leaveByKey.set(`${row.userId}|${row.date}`, 1);
+  }
+  const leaveByUser = new Map<string, { date: string; days: number }[]>();
+  for (const [key, days] of [...leaveByKey].sort((a, b) =>
+    a[0].split("|")[1].localeCompare(b[0].split("|")[1])
+  )) {
     const [userId, date] = key.split("|");
-    leaveByUser.set(userId, [...(leaveByUser.get(userId) ?? []), date]);
+    leaveByUser.set(userId, [...(leaveByUser.get(userId) ?? []), { date, days }]);
   }
   const overtimeViews = await buildOvertimeViews(overtimeRows);
 
@@ -212,9 +230,10 @@ export async function computeMonthPayroll(month: string): Promise<PayrollSheet> 
         dates: attendance.dates,
         days: summary.days,
         // Phép có lương trừ theo thứ tự ngày: các ngày N đầu tháng được trả trước.
-        paidLeaveDates: (leaveByUser.get(userId) ?? [])
-          .filter((date) => date >= startDate)
-          .slice(0, leave.paidDays),
+        paidLeaveDates: allocatePaidLeave(
+          (leaveByUser.get(userId) ?? []).filter((entry) => entry.date >= startDate),
+          leave.paidDays
+        ),
       }),
     });
 

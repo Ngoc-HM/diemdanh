@@ -6,7 +6,7 @@ import {
   isValidMonth,
   monthKeyVN,
 } from "@/lib/datetime";
-import { getActiveSessionRules } from "@/lib/attendance-service";
+import { getActiveSessionRules, leaveDaysOf } from "@/lib/attendance-service";
 import {
   buildEmployeeRequestViews,
   REASON_MAX_LENGTH,
@@ -39,8 +39,8 @@ export async function GET(req: Request) {
   }, "Shift request list error");
 }
 
-/// Nhân viên gửi yêu cầu cho một ngày: hoặc xin nghỉ N, hoặc đổi sang bộ ca
-/// mới. Mỗi ngày chỉ có một yêu cầu đang chờ; gửi lại thì ghi đè yêu cầu đó.
+/// Nhân viên gửi yêu cầu cho một ngày: xin nghỉ N (cả ngày, hoặc nửa ngày kèm
+/// buổi vẫn đi làm), hoặc đổi sang bộ ca mới. Mỗi ngày chỉ có một yêu cầu đang chờ; gửi lại thì ghi đè yêu cầu đó.
 export async function POST(req: Request) {
   return handle(async () => {
     const session = await requireEmployee();
@@ -64,21 +64,20 @@ export async function POST(req: Request) {
       ? [...new Set(rawSessionIds.map((id: unknown) => String(id)))]
       : [];
 
-    // Một yêu cầu chỉ nói một điều: hoặc nghỉ, hoặc đổi ca. Có cả hai thì admin
-    // không biết duyệt cái nào; không có gì thì không có gì để duyệt.
-    if (leaveCode && sessionIds.length > 0) {
-      badRequest("Xin nghỉ thì không chọn ca làm việc");
-    }
     if (!leaveCode && sessionIds.length === 0) {
       badRequest("Hãy chọn ca muốn đổi sang hoặc xin nghỉ");
     }
 
-    if (!leaveCode) {
-      const activeIds = new Set(
-        (await getActiveSessionRules()).map((rule) => rule.id)
-      );
+    if (sessionIds.length > 0) {
+      const rules = await getActiveSessionRules();
+      const activeIds = new Set(rules.map((rule) => rule.id));
       if (sessionIds.some((id) => !activeIds.has(id))) {
         badRequest("Ca làm việc không tồn tại hoặc đã ngừng dùng");
+      }
+      // Xin nghỉ kèm ca = nghỉ nửa ngày: phải còn đúng một buổi đi làm.
+      if (leaveCode) {
+        const days = leaveDaysOf({ leaveCode, sessionIds }, new Map(rules.map((rule) => [rule.id, rule])));
+        if (days <= 0 || days >= 1) badRequest("Nghỉ nửa ngày phải còn đúng một buổi đi làm");
       }
     }
 
@@ -93,7 +92,7 @@ export async function POST(req: Request) {
        DO UPDATE SET "leaveCode" = $3, "sessionIds" = $4, "reason" = $5,
                      "updatedAt" = now()
        RETURNING "id"`,
-      [session.userId, date, leaveCode, leaveCode ? null : sessionIds, reason]
+      [session.userId, date, leaveCode, sessionIds.length > 0 ? sessionIds : null, reason]
     );
 
     const row = await queryOne<RequestWithUserRow>(
