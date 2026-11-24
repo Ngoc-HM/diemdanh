@@ -424,6 +424,20 @@ async function main() {
       `(registered=${ftRow?.registered}, ${ftRow?.totalShifts} ca)`
     );
 
+    // Lịch admin xếp riêng trước khi khai hoán đổi (có ca T2 19/10, không có
+    // T7 24/10): hoán đổi vẫn phải áp lên.
+    r = await call(admin, "PUT", "/api/admin/schedules", {
+      userId: employeeId,
+      month: "2026-10",
+      days: { "2026-10-19": [ftSession.id], "2026-10-26": [ftSession.id] },
+    });
+    check("admin xếp riêng lịch tháng 10", r.status === 200, `(${r.status})`);
+    const octArranged = await call(admin, "GET", `/api/admin/attendance/user/${employeeId}?month=2026-10`);
+    const arrangedOff = octArranged.json.days?.find((d) => d.date === "2026-10-19");
+    const arrangedWork = octArranged.json.days?.find((d) => d.date === "2026-10-24");
+    check("lịch xếp riêng: T2 nghỉ bù không bị tính vắng", arrangedOff?.status !== "absent", `(${arrangedOff?.status})`);
+    check("lịch xếp riêng: T7 làm bù vẫn có ca (không chấm = vắng)", arrangedWork?.status === "absent", `(${arrangedWork?.status})`);
+
     r = await call(admin, "PUT", `/api/users/${employeeId}`, { ...profile, employmentType: "part_time" });
     check("đổi lại part-time", r.status === 200, `(${r.status})`);
 

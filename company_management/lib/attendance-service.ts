@@ -276,6 +276,20 @@ export async function resolveMonthSchedules(
         if (existing) existing.push(rule);
         else schedule.set(day.date, [rule]);
       }
+      // Hoán đổi kèm ngày lễ áp cho cả full-time đã được admin xếp lịch riêng
+      // (lịch thường xếp trước khi khai hoán đổi): ngày nghỉ bù bỏ ca, ngày
+      // làm bù đang trống thì thêm ca mặc định. Cần đổi riêng một ngày thì
+      // admin sửa ô ngày đó (đánh dấu ngày đè lên lịch này).
+      if (!isSelfScheduled(user.employmentType)) {
+        for (const date of swaps.off) schedule.delete(date);
+        if (defaultSessions.length > 0) {
+          for (const date of swaps.work) {
+            if (date.startsWith(month) && !schedule.has(date)) {
+              schedule.set(date, [...defaultSessions]);
+            }
+          }
+        }
+      }
     } else if (defaultSessions.length > 0) {
       for (const date of fullTimeDates) {
         schedule.set(date, [...defaultSessions]);
