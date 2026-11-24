@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { ChevronLeft, ChevronRight, Settings2 } from "lucide-react";
 import PageHeader from "../_components/page-header";
 import {
   Badge,
@@ -72,6 +72,7 @@ export default function AdminOvertimePage() {
 
   const [config, setConfig] = useState<ConfigForm | null>(null);
   const [savingConfig, setSavingConfig] = useState(false);
+  const [configOpen, setConfigOpen] = useState(false);
 
   /// Phiếu đang mở modal: duyệt / sửa giờ (approve) hoặc từ chối (reject).
   const [editing, setEditing] = useState<{ request: OvertimeView; action: "approve" | "reject" } | null>(
@@ -139,6 +140,7 @@ export default function AdminOvertimePage() {
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error || "Không lưu được");
       setMessage({ type: "success", text: "Đã lưu hệ số OT" });
+      setConfigOpen(false);
       load(filter, month);
     } catch (error) {
       setMessage({
@@ -206,7 +208,6 @@ export default function AdminOvertimePage() {
           step={key === "hoursPerDay" ? "0.5" : "10"}
           min={key === "hoursPerDay" ? 1 : 100}
           max={key === "hoursPerDay" ? 24 : 1000}
-          className="w-24"
           value={config?.[key] ?? ""}
           onChange={(event) =>
             setConfig((current) => (current ? { ...current, [key]: event.target.value } : current))
@@ -222,22 +223,32 @@ export default function AdminOvertimePage() {
     <>
       <PageHeader
         title="Làm thêm giờ (OT)"
+        actions={
+          <Button variant="secondary" onClick={() => setConfigOpen(true)} disabled={!config}>
+            <Settings2 size={16} aria-hidden="true" />
+            Hệ số OT
+          </Button>
+        }
       />
 
-      <Card className="mb-6 p-5">
-        <form onSubmit={saveConfig} className="flex flex-wrap items-end gap-4">
-          <div className="min-w-56 flex-1">
-            <h3 className="text-base font-semibold text-slate-900">Hệ số OT</h3>
+      <Modal open={configOpen} title="Hệ số OT" onClose={() => setConfigOpen(false)}>
+        <form onSubmit={saveConfig} className="space-y-5">
+          <div className="grid grid-cols-2 gap-4">
+            {configField("weekdayRate", "T · ngày thường", "%")}
+            {configField("weeklyOffRate", "T1 · ngày nghỉ tuần", "%")}
+            {configField("holidayRate", "T2 · ngày lễ", "%")}
+            {configField("hoursPerDay", "Giờ chuẩn / ngày", "giờ")}
           </div>
-          {configField("weekdayRate", "T · ngày thường", "%")}
-          {configField("weeklyOffRate", "T1 · ngày nghỉ tuần", "%")}
-          {configField("holidayRate", "T2 · ngày lễ", "%")}
-          {configField("hoursPerDay", "Giờ chuẩn / ngày", "giờ")}
-          <Button type="submit" disabled={!config || savingConfig}>
-            {savingConfig ? "Đang lưu..." : "Lưu hệ số"}
-          </Button>
+          <div className="flex justify-end gap-3">
+            <Button type="button" variant="secondary" onClick={() => setConfigOpen(false)}>
+              Huỷ
+            </Button>
+            <Button type="submit" disabled={!config || savingConfig}>
+              {savingConfig ? "Đang lưu..." : "Lưu"}
+            </Button>
+          </div>
         </form>
-      </Card>
+      </Modal>
 
       <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
         <div
