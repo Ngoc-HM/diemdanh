@@ -188,6 +188,16 @@ const late = day([{ type: "in", at: at("2026-09-01", "08:30"), withinRadius: tru
                   { type: "out", at: at("2026-09-01", "17:30"), withinRadius: true }]);
 check("muộn 30 phút = late", late.status === "late", `(${late.status})`);
 check("tính đúng 25 phút muộn (30 - 5 châm chước)", late.lateMinutes === 25, `(${late.lateMinutes})`);
+check("phút muộn có dấu: muộn 25 = +25", late.arrivalMinutes === 25, `(${late.arrivalMinutes})`);
+const early = day([{ type: "in", at: at("2026-09-01", "07:49"), withinRadius: true },
+                   { type: "out", at: at("2026-09-01", "17:00"), withinRadius: true }]);
+check("đến sớm 11 phút = -11 để bù trừ", early.arrivalMinutes === -11 && early.lateMinutes === 0, `(${early.arrivalMinutes})`);
+const grace = day([{ type: "in", at: at("2026-09-01", "08:03"), withinRadius: true },
+                   { type: "out", at: at("2026-09-01", "17:03"), withinRadius: true }]);
+check("trong 5 phút châm chước = 0", grace.arrivalMinutes === 0, `(${grace.arrivalMinutes})`);
+check("tổng phút muộn bù trừ: +25 và -11 = 14",
+  sumLateMinutes([{ status: late.status, lateMinutes: late.lateMinutes, arrivalMinutes: late.arrivalMinutes },
+                  { status: early.status, lateMinutes: early.lateMinutes, arrivalMinutes: early.arrivalMinutes }]) === 14);
 const short = day([{ type: "in", at: at("2026-09-01", "08:00"), withinRadius: true },
                    { type: "out", at: at("2026-09-01", "15:00"), withinRadius: true }]);
 check("thiếu giờ = insufficient", short.status === "insufficient", `(${short.status})`);

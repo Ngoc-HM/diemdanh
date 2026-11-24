@@ -2,7 +2,7 @@
 /// Ký hiệu thống nhất cho mọi loại nhân viên: mã ca đã làm (S / C / CN).
 /// Không có giờ vào/ra chi tiết.
 import writeXlsxFile from "write-excel-file/node";
-import { isLateDay, type DayStatus } from "@/lib/attendance-rules";
+import { isLateDay, sumLateMinutes, type DayStatus } from "@/lib/attendance-rules";
 import { formatMonthLabel, weekdayLabel } from "@/lib/datetime";
 import { isOffDate } from "@/lib/schedule";
 
@@ -86,6 +86,8 @@ export type AccountingDay = {
   workdayValue: number;
   /// Phút đi muộn so với giờ bắt đầu ca (file cũ có thể thiếu).
   lateMinutes?: number;
+  /// Phút muộn có dấu (âm = đến sớm).
+  arrivalMinutes?: number;
   /// Số ngày nghỉ N của ô (nghỉ nửa ngày = 0,5).
   leaveDays?: number;
   /// Phiếu OT đã duyệt của ngày (ký hiệu T / T1 / T2).
@@ -133,16 +135,19 @@ export function fixDecimalFormats<T>(sheets: T[]): T[] {
 /// Phút đi muộn của một người (chỉ ngày làm việc thông thường) và số ngày có
 /// đi muộn, để tính trung bình phút muộn mỗi lần.
 function lateStats(row: AttendanceExportRow) {
+  // Phút muộn bù trừ (đến sớm là âm); trung bình chỉ tính trên các lần đi muộn.
   let minutes = 0;
+  let lateSum = 0;
   let count = 0;
   for (const day of Object.values(row.days)) {
-    const cell = { status: day.status, lateMinutes: day.lateMinutes ?? 0 };
-    if (isLateDay(cell)) {
-      minutes += cell.lateMinutes;
+    const late = day.lateMinutes ?? 0;
+    minutes += sumLateMinutes([{ status: day.status, lateMinutes: late, arrivalMinutes: day.arrivalMinutes }]);
+    if (isLateDay({ status: day.status, lateMinutes: late })) {
+      lateSum += late;
       count++;
     }
   }
-  return { minutes, count, average: count > 0 ? Math.round(minutes / count) : 0 };
+  return { minutes, lateSum, count, average: count > 0 ? Math.round(lateSum / count) : 0 };
 }
 
 /// Nhãn của các cột tổng, kèm cờ in đậm cho các cột kế toán nhìn nhiều nhất.
@@ -430,9 +435,9 @@ export function attendanceSheet(input: AttendanceSheetInput) {
       sum((row) => row.lateDays),
       sum((row) => lateStats(row).minutes),
       (() => {
-        const minutes = sum((row) => lateStats(row).minutes);
+        const lateSum = sum((row) => lateStats(row).lateSum);
         const count = sum((row) => lateStats(row).count);
-        return count > 0 ? Math.round(minutes / count) : 0;
+        return count > 0 ? Math.round(lateSum / count) : 0;
       })(),
       sum((row) => row.absentDays),
       sum((row) => row.leaveDays),

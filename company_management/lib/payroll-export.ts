@@ -630,9 +630,11 @@ function detailedAttendanceSheet(
 
     const firstIn = t?.firstIn ?? day.firstIn ?? null;
     const lastOut = t?.lastOut ?? day.lastOut ?? null;
-    const late = LATE_COUNTED_STATUSES.includes(day.status as DayStatus) ? day.lateMinutes : 0;
+    // Phút muộn có dấu: âm = đến sớm, cộng bù trừ vào tổng.
+    const counted = LATE_COUNTED_STATUSES.includes(day.status as DayStatus);
+    const late = counted ? (day.arrivalMinutes ?? day.lateMinutes) : 0;
     lateTotal += late;
-    if (late > 0) lateCount++;
+    if (counted && day.lateMinutes > 0) lateCount++;
     hoursTotal += day.workedHours;
     workdayTotal += day.workdayValue;
     if (day.overtime) otMinutes += day.overtime.minutes;
@@ -649,8 +651,14 @@ function detailedAttendanceSheet(
       lastOut
         ? { value: lastOut, type: String, ...center, ...(t?.outByAdmin ? { backgroundColor: adminFill } : {}) }
         : blank(),
-      late > 0
-        ? { value: late, type: Number, ...center, textColor: "#B45309", fontWeight: "bold" as const }
+      late !== 0
+        ? {
+            value: late,
+            type: Number,
+            ...center,
+            textColor: late > 0 ? "#B45309" : "#047857",
+            fontWeight: "bold" as const,
+          }
         : blank(),
       day.workedHours > 0 ? { value: day.workedHours, type: Number, format: "0.0", ...center } : blank(),
       { value: machineLabel, type: String, ...center, textColor: "#475569" },
@@ -709,7 +717,7 @@ function detailedAttendanceSheet(
       summaryItem("Ngày công tháng (chuẩn)", sheet.standardWorkdays),
       summaryItem("Công thực tế", Math.round(workdayTotal * 100) / 100),
       summaryItem("Số ngày đi muộn", lateCount),
-      summaryItem("Tổng phút đi muộn", lateTotal),
+      summaryItem("Tổng phút muộn (đã trừ phút đến sớm)", lateTotal),
       summaryItem("Số ngày vắng (có lịch, không chấm)", a.absentDays),
       summaryItem("Số ngày nghỉ / ốm", a.leaveDays + a.sickDays),
       summaryItem("Số ngày quên checkout", a.missedCheckoutDays),

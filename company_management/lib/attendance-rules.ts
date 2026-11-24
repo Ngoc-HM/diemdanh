@@ -107,15 +107,16 @@ export function isLateDay(cell: { status: string; lateMinutes: number } | undefi
   );
 }
 
-/// Tổng phút đi muộn của tháng, chỉ trên ngày làm việc thông thường. Dùng chung
-/// cho bảng chấm công và file Excel bảng lương để hai bên luôn khớp.
+/// Tổng phút đi muộn của tháng, chỉ trên ngày làm việc thông thường, có bù
+/// trừ: ngày đến sớm là số âm. Dùng chung cho bảng chấm công và file Excel
+/// bảng lương để hai bên luôn khớp.
 export function sumLateMinutes(
-  cells: Iterable<{ status: string; lateMinutes: number } | undefined>
+  cells: Iterable<{ status: string; lateMinutes: number; arrivalMinutes?: number } | undefined>
 ): number {
   let total = 0;
   for (const cell of cells) {
     if (cell && LATE_COUNTED_STATUSES.includes(cell.status as DayStatus)) {
-      total += cell.lateMinutes;
+      total += cell.arrivalMinutes ?? cell.lateMinutes;
     }
   }
   return total;
@@ -209,6 +210,9 @@ export type DayEvaluation = {
   requiredMinutes: number;
   missingMinutes: number;
   lateMinutes: number;
+  /// Phút muộn có dấu: dương = đi muộn (như lateMinutes), âm = đến sớm trước
+  /// giờ bắt đầu ca, để cộng bù trừ với phút muộn. Chỉ có ở ngày chấm đủ vào/ra.
+  arrivalMinutes?: number;
   earlyLeaveMinutes: number;
   firstIn: Date | null;
   lastOut: Date | null;
@@ -433,6 +437,13 @@ function evaluateDayByPunches(input: Parameters<typeof evaluateDay>[0]): DayEval
   const earlyLeaveMinutes = paired.lastOut
     ? Math.max(0, latestEnd - minutesOfDayVN(paired.lastOut))
     : 0;
+  // Đến sớm: số phút trước giờ bắt đầu ca (ghi âm); trong 5 phút ân hạn = 0.
+  const arrivalMinutes =
+    lateMinutes > 0
+      ? lateMinutes
+      : paired.firstIn
+        ? -Math.max(0, earliestStart - minutesOfDayVN(paired.firstIn))
+        : 0;
 
   const workedMinutes = Math.round(paired.workedMinutes);
   const missingMinutes = Math.max(0, requiredMinutes - workedMinutes);
@@ -451,6 +462,7 @@ function evaluateDayByPunches(input: Parameters<typeof evaluateDay>[0]): DayEval
     status,
     missingMinutes,
     lateMinutes,
+    arrivalMinutes,
     earlyLeaveMinutes,
   });
 }

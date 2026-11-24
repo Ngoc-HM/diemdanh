@@ -64,6 +64,8 @@ export type MonthDayCell = {
   firstIn?: string | null;
   lastOut?: string | null;
   lateMinutes: number;
+  /// Phút muộn có dấu (âm = đến sớm), để bù trừ.
+  arrivalMinutes?: number;
   /// Số ngày nghỉ N của ô: cả ngày 1, nghỉ nửa ngày 0,5.
   leaveDays?: number;
   outsideRadius: boolean;
@@ -273,6 +275,7 @@ export async function computeMonthAttendance(
         firstIn: timeOfPunch(punches, "in", Math.min),
         lastOut: timeOfPunch(punches, "out", Math.max),
         lateMinutes: evaluation.lateMinutes,
+        arrivalMinutes: evaluation.arrivalMinutes ?? evaluation.lateMinutes,
         leaveDays: evaluation.status === "leave" ? 1 : halfLeave,
         outsideRadius: evaluation.outsideRadius,
         workdayValue,
@@ -302,6 +305,7 @@ export async function computeMonthAttendance(
             // Phút muộn là so giờ vào thực tế với giờ bắt đầu ca: admin chốt
             // ngày đi làm vẫn giữ để đối chiếu; chốt nghỉ / vắng / lễ thì bỏ.
             lateMinutes: final.status === "work" ? machineCell.lateMinutes : 0,
+            arrivalMinutes: final.status === "work" ? machineCell.arrivalMinutes : 0,
             workdayValue: final.workday,
             needsReview: false,
             reviewDecision: null,
