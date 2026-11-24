@@ -638,8 +638,8 @@ export default function PayrollPage() {
                     label="Ngày kết thúc thử việc"
                     hint={
                       form.probationEndDate && form.probationEndDate < dateKeyVN()
-                        ? "Đã hết thử việc — bảng lương các tháng sau ngày này tự ghi \"Chính thức\", tính 100% lương. Giữ nguyên \"Thử việc\" và ngày này để các tháng trước vẫn tính đúng phần thử việc."
-                        : "Đến hết ngày này tính lương thử việc và trừ thuế 10%; từ hôm sau 100% lương, không trừ thuế"
+                        ? "Đã hết thử việc. Giữ nguyên để các tháng trước tính đúng."
+                        : undefined
                     }
                   >
                     <Input
@@ -845,20 +845,18 @@ export default function PayrollPage() {
         title={`Tải bảng lương ${formatMonthLabel(month).toLowerCase()}`}
         onClose={() => setExportOpen(false)}
       >
-        <div className="space-y-3">
+        <div className="space-y-2">
           {[
             {
               key: "company",
               icon: FileSpreadsheet,
               title: "Toàn công ty",
-              detail: "Bảng lương, chấm công và làm thêm giờ của cả công ty.",
               onClick: () => download(),
             },
             {
               key: "employees",
               icon: FolderArchive,
               title: "Từng nhân viên",
-              detail: "Mỗi người một file: phiếu lương, chấm công chi tiết, làm thêm giờ.",
               onClick: () => download({ employees: true }),
             },
           ].map((option) => (
@@ -869,18 +867,12 @@ export default function PayrollPage() {
                 option.onClick();
                 setExportOpen(false);
               }}
-              className="flex w-full items-start gap-3 rounded-lg border border-slate-200 p-4 text-left transition hover:border-sky-300 hover:bg-sky-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-sky-500"
+              className="flex w-full items-center gap-3 rounded-lg border border-slate-200 px-4 py-3 text-left font-medium text-slate-900 transition hover:border-sky-300 hover:bg-sky-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-sky-500"
             >
-              <option.icon size={20} className="mt-0.5 shrink-0 text-sky-700" aria-hidden="true" />
-              <span>
-                <span className="block font-medium text-slate-900">{option.title}</span>
-                <span className="mt-1 block text-sm text-slate-600">{option.detail}</span>
-              </span>
+              <option.icon size={20} className="shrink-0 text-sky-700" aria-hidden="true" />
+              {option.title}
             </button>
           ))}
-          {data && !data.closed && (
-            <p className="text-xs text-slate-500">Tháng chưa chốt lương — số liệu trong file là tạm tính.</p>
-          )}
         </div>
       </Modal>
     </>

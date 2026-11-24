@@ -135,7 +135,7 @@ export default function HolidaysPage() {
     <>
       <PageHeader
         title="Ngày lễ"
-        description="Nghỉ lễ vẫn được tính công (hưởng lương) và không bị tính vắng. Đi làm ngày lễ phải làm phiếu OT, tính hệ số ngày lễ. Có thể kèm hoán đổi: nghỉ thêm một ngày thường và đi làm bù vào một ngày nghỉ tuần. Ngày nghỉ hằng tuần (T7, CN) đặt ở trang Lịch làm việc."
+        description="Nghỉ lễ vẫn được tính công (hưởng lương) và không bị tính vắng. Đi làm ngày lễ phải làm phiếu OT, tính hệ số ngày lễ. Ngày nghỉ hằng tuần (T7, CN) đặt ở trang Lịch làm việc."
         actions={
           <Button onClick={() => setCreating(true)}>
             <Plus size={16} aria-hidden="true" />
@@ -253,13 +253,10 @@ export default function HolidaysPage() {
           </Field>
           <fieldset className="space-y-3 rounded-lg border border-slate-200 p-3">
             <legend className="px-1 text-sm font-medium text-slate-900">
-              Hoán đổi ngày làm việc (tuỳ chọn)
+              Hoán đổi ngày làm
             </legend>
-            <p className="text-xs text-slate-500">
-              Vd lễ rơi vào T3: cho nghỉ luôn T2 và đi làm bù một T7 để nghỉ liền mạch.
-            </p>
             <div className="grid grid-cols-2 gap-3">
-              <Field label="Nghỉ thêm ngày" required={Boolean(swapWorkDate)}>
+              <Field label="Ngày nghỉ" required={Boolean(swapWorkDate)}>
                 <Input
                   type="date"
                   value={swapOffDate}
@@ -267,7 +264,7 @@ export default function HolidaysPage() {
                   required={Boolean(swapWorkDate)}
                 />
               </Field>
-              <Field label="Đi làm bù ngày" required={Boolean(swapOffDate)}>
+              <Field label="Ngày làm bù" required={Boolean(swapOffDate)}>
                 <Input
                   type="date"
                   value={swapWorkDate}
@@ -276,12 +273,6 @@ export default function HolidaysPage() {
                 />
               </Field>
             </div>
-            {swapOffDate && swapWorkDate && (
-              <p className="text-xs text-slate-600">
-                {weekdayLabel(swapOffDate)} {swapOffDate} được nghỉ, đi làm{" "}
-                {weekdayLabel(swapWorkDate)} {swapWorkDate} thay vào.
-              </p>
-            )}
           </fieldset>
           <div className="flex justify-end gap-3">
             <Button
