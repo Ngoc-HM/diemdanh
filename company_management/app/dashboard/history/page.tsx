@@ -70,9 +70,9 @@ function rowHighlight(day: Day): string | undefined {
 /// chờ duyệt đứng trước admin đã sửa vì đó là việc đang treo.
 function rowTitle(day: Day): string | undefined {
   if (day.status === "absent") return "Có lịch nhưng không chấm công";
-  if (day.pendingRequest) return "Đang chờ duyệt yêu cầu đổi ca";
+  if (day.pendingRequest) return "Đang chờ duyệt đổi ca";
   if (day.adminEdited) return "Admin đã sửa ngày này";
-  if (day.status === "unscheduled") return "Đi làm không đăng ký lịch, vẫn tính công";
+  if (day.status === "unscheduled") return "Đi làm ngoài lịch, vẫn tính công";
   return undefined;
 }
 
@@ -231,7 +231,7 @@ export default function HistoryPage() {
           </table>
         </Card>
       ) : (
-        <EmptyState title="Chưa có dữ liệu trong tháng này" />
+        <EmptyState title="Chưa có dữ liệu" />
       )}
     </div>
   );

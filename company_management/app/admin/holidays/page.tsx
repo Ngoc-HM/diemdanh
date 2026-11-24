@@ -135,7 +135,6 @@ export default function HolidaysPage() {
     <>
       <PageHeader
         title="Ngày lễ"
-        description="Nghỉ lễ vẫn được tính công (hưởng lương) và không bị tính vắng. Đi làm ngày lễ phải làm phiếu OT, tính hệ số ngày lễ. Ngày nghỉ hằng tuần (T7, CN) đặt ở trang Lịch làm việc."
         actions={
           <Button onClick={() => setCreating(true)}>
             <Plus size={16} aria-hidden="true" />
@@ -155,10 +154,7 @@ export default function HolidaysPage() {
       {loading ? (
         <TableSkeleton />
       ) : holidays.length === 0 ? (
-        <EmptyState
-          title="Chưa khai báo ngày lễ nào"
-          description="Thêm các ngày nghỉ lễ trong năm để ngày đó vẫn được tính công và không bị đánh dấu vắng."
-        />
+        <EmptyState title="Chưa có ngày lễ" />
       ) : (
         <Card>
           <table className="w-full text-sm">
@@ -247,7 +243,6 @@ export default function HolidaysPage() {
             <Input
               value={name}
               onChange={(event) => setName(event.target.value)}
-              placeholder="Tết Nguyên đán"
               required
             />
           </Field>

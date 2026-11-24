@@ -271,19 +271,18 @@ export default function FinalTimesheetPage() {
       <div className="mb-3 flex flex-wrap items-center gap-x-5 gap-y-1 text-xs text-slate-600">
         <span className="flex items-center gap-1.5">
           <span className="h-3.5 w-3.5 rounded-sm bg-violet-100 ring-1 ring-violet-300" />
-          Admin chấm tay{editedCount ? ` (${editedCount} ô)` : ""}
+          Chấm tay{editedCount ? ` (${editedCount})` : ""}
         </span>
         <span className="flex items-center gap-1.5">
           <span className="h-3.5 w-3.5 rounded-sm bg-sky-50" />
-          Tạm tính đủ công (chưa tới ngày)
+          Tạm tính
         </span>
-        <span>Ô còn lại theo máy chấm</span>
       </div>
 
       {loading ? (
         <TableSkeleton />
       ) : !data || data.rows.length === 0 ? (
-        <EmptyState title="Chưa có nhân viên" description="Chưa có nhân viên đang hoạt động." />
+        <EmptyState title="Chưa có nhân viên" />
       ) : (
         <Card className="overflow-x-auto">
           <table className="w-full text-xs">
@@ -386,7 +385,7 @@ export default function FinalTimesheetPage() {
                 {code === "T" ? "ngày thường" : code === "T1" ? "ngày nghỉ" : "ngày lễ"}
               </span>
             ))}
-            <span className="text-xs text-slate-500">Số giờ đã duyệt, sửa ở mục Duyệt OT</span>
+            <span className="text-xs text-slate-500">Sửa ở mục Duyệt OT</span>
           </div>
           <Card className="overflow-x-auto">
             <table className="w-full text-xs">

@@ -150,8 +150,8 @@ export default function ShiftRequestsPage() {
         type: "success",
         text:
           action === "approve"
-            ? `Đã duyệt yêu cầu ngày ${formatDayMonth(request.date)} của ${request.user.name}; lịch ngày đó đã đổi theo.`
-            : `Đã từ chối yêu cầu ngày ${formatDayMonth(request.date)} của ${request.user.name}.`,
+            ? `Đã duyệt yêu cầu ngày ${formatDayMonth(request.date)} của ${request.user.name}`
+            : `Đã từ chối yêu cầu ngày ${formatDayMonth(request.date)} của ${request.user.name}`,
       });
       await load(filter, month);
     } catch (error) {
@@ -168,7 +168,7 @@ export default function ShiftRequestsPage() {
     const target =
       request.requestedCodes.join("+") || (request.leaveCode ?? "");
     const ok = window.confirm(
-      `Duyệt cho ${request.user.name} đổi ngày ${formatDayMonth(request.date)} sang ${target}?\nLịch ngày đó sẽ đổi ngay và ô được đánh dấu admin đã sửa.`
+      `Duyệt cho ${request.user.name} đổi ngày ${formatDayMonth(request.date)} sang ${target}?\nLịch ngày đó sẽ đổi ngay.`
     );
     if (ok) review(request, "approve");
   }
@@ -190,7 +190,6 @@ export default function ShiftRequestsPage() {
     <>
       <PageHeader
         title="Duyệt đổi ca"
-        description="Nhân viên gửi yêu cầu đổi ca hoặc xin nghỉ cho một ngày cụ thể; duyệt thì lịch ngày đó đổi theo và ô được đánh dấu admin đã sửa."
       />
 
       <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
@@ -362,12 +361,7 @@ export default function ShiftRequestsPage() {
         </Card>
       ) : (
         <EmptyState
-          title="Không có yêu cầu nào"
-          description={
-            filter === "pending"
-              ? "Mọi yêu cầu đổi ca đã được xử lý."
-              : `Không có yêu cầu đổi ca nào trong ${formatMonthLabel(month)}.`
-          }
+          title={filter === "pending" ? "Không có yêu cầu chờ duyệt" : "Không có yêu cầu nào"}
         />
       )}
 
@@ -388,14 +382,11 @@ export default function ShiftRequestsPage() {
               </span>{" "}
               xin đổi{" "}
               <CodeBadges codes={rejecting.currentCodes} /> →{" "}
-              <CodeBadges codes={rejecting.requestedCodes} /> với lý do: “
-              {rejecting.reason}”. Lịch ngày đó sẽ giữ nguyên.
+              <CodeBadges codes={rejecting.requestedCodes} />: “
+              {rejecting.reason}”
             </p>
           )}
-          <Field
-            label="Ghi chú cho nhân viên"
-            hint="Không bắt buộc. Nhân viên sẽ thấy ghi chú này bên cạnh yêu cầu bị từ chối."
-          >
+          <Field label="Ghi chú cho nhân viên">
             <Input
               value={rejectNote}
               onChange={(event) => setRejectNote(event.target.value)}

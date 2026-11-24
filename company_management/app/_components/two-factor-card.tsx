@@ -174,7 +174,6 @@ export default function TwoFactorCard({
         onChange={(event) => setCode(event.target.value)}
         inputMode="numeric"
         autoComplete="one-time-code"
-        placeholder="123456"
         maxLength={9}
         required
       />
@@ -220,12 +219,6 @@ export default function TwoFactorCard({
               <Badge tone="warning">Chưa bật</Badge>
             ))}
         </div>
-
-        <p className="text-sm text-slate-600">
-          Đăng nhập cần thêm mã 6 số trong app Google Authenticator (hoặc
-          Microsoft Authenticator) trên điện thoại. Lộ mật khẩu cũng không ai
-          vào được tài khoản.
-        </p>
 
         {feedback && (
           <Message type={feedback.type} onDismiss={() => setFeedback(null)}>
@@ -280,13 +273,9 @@ export default function TwoFactorCard({
 
         {step.kind === "scan" && (
           <form onSubmit={confirmSetup} className="space-y-4">
-            <ol className="list-decimal space-y-1 pl-5 text-sm text-slate-700">
-              <li>
-                Mở app Google Authenticator, bấm dấu + rồi chọn quét mã QR.
-              </li>
-              <li>Quét mã bên dưới, app sẽ hiện mã 6 số đổi mỗi 30 giây.</li>
-              <li>Nhập mã đang hiện để hoàn tất.</li>
-            </ol>
+            <p className="text-sm text-slate-700">
+              Quét mã QR bằng app Google Authenticator, rồi nhập mã 6 số.
+            </p>
             <div className="flex flex-col items-center gap-3 sm:flex-row sm:items-start">
               <div
                 className="h-44 w-44 shrink-0 rounded-lg border border-slate-200 bg-white p-2 [&>svg]:h-full [&>svg]:w-full"
@@ -297,7 +286,7 @@ export default function TwoFactorCard({
               />
               <div className="min-w-0 space-y-2 text-sm">
                 <p className="text-slate-600">
-                  Không quét được? Nhập khoá này vào app:
+                  Hoặc nhập khoá:
                 </p>
                 <code className="block break-all rounded-lg bg-slate-100 px-3 py-2 font-mono text-slate-900">
                   {groupSecret(step.secret)}
@@ -318,9 +307,8 @@ export default function TwoFactorCard({
         {step.kind === "backup" && (
           <div className="space-y-4">
             <Message type="info">
-              Lưu 10 mã dự phòng này ở nơi an toàn. Mất điện thoại thì dùng một
-              mã để đăng nhập — mỗi mã chỉ dùng được một lần, và sẽ không hiện
-              lại.
+              Lưu các mã này ở nơi an toàn. Mỗi mã dùng một lần và sẽ không
+              hiện lại.
             </Message>
             <ul className="grid grid-cols-2 gap-2 font-mono text-sm sm:grid-cols-5">
               {step.codes.map((item) => (

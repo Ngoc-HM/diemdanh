@@ -67,11 +67,6 @@ export default function WeeklyOffCard({ onSaved }: { onSaved?: () => void }) {
   return (
     <Card className="mb-6 p-5">
       <h3 className="text-base font-semibold text-slate-900">Ngày nghỉ hằng tuần</h3>
-      <p className="mt-1 max-w-2xl text-sm text-slate-600">
-        Nhân viên toàn thời gian không có lịch vào các ngày này, và chúng không
-        nằm trong ngày công tháng (mặc định Thứ 7 và Chủ nhật). Đi làm ngày nghỉ
-        phải làm phiếu OT, tính hệ số ngày nghỉ.
-      </p>
       <div className="mt-3 flex flex-wrap items-center gap-2">
         {WEEKDAY_OPTIONS.map((option) => {
           const active = weeklyOff.includes(option.value);

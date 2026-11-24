@@ -57,22 +57,21 @@ function formatDateVN(dateKey: string) {
 /// Vì sao lưới đang ở chế độ chỉ xem; null nghĩa là được sửa.
 function readOnlyReason(data: Payload): string | null {
   if (!data.selfScheduled) {
-    return "Nhân viên toàn thời gian dùng lịch cố định do hệ thống gán, không cần đăng ký. Cần đổi ca hoặc nghỉ một ngày thì gửi yêu cầu ở tab Chỉnh sửa ca.";
+    return "Lịch cố định, không cần đăng ký. Đổi ca hoặc nghỉ: gửi yêu cầu ở Chỉnh sửa ca.";
   }
   if (data.canEdit) return null;
 
-  const label = formatMonthLabel(data.month);
   // Đang xem tháng khác mà tháng hiện tại đang mở: chỉ đường cho nhân viên.
   const current = monthKeyVN();
   const currentHint =
     data.currentMonthOpen && data.month !== current
-      ? ` Lịch ${formatMonthLabel(current)} đang mở đăng ký — bấm mũi tên để chuyển sang tháng đó.`
+      ? ` Lịch ${formatMonthLabel(current)} đang mở đăng ký.`
       : "";
   const range = `từ ${formatDateVN(data.window.opensOn)} đến hết ${formatDateVN(data.window.closesOn)}`;
   if (dateKeyVN() < data.window.opensOn) {
-    return `Chưa mở đăng ký. Lịch ${label} nhận đăng ký ${range}.${currentHint}`;
+    return `Chưa mở đăng ký (${range}).${currentHint}`;
   }
-  return `Đã hết hạn đăng ký. Lịch ${label} chỉ nhận đăng ký ${range}; muốn đổi một ngày cụ thể thì gửi yêu cầu ở tab Chỉnh sửa ca.${currentHint}`;
+  return `Đã hết hạn đăng ký (${range}). Đổi một ngày: gửi yêu cầu ở Chỉnh sửa ca.${currentHint}`;
 }
 
 /// Nhấn mạnh của một ô, ngoài chuyện đang có ca hay không:
@@ -84,8 +83,8 @@ type CellHighlight = "absent" | "pending" | "edited" | null;
 
 const CELL_TITLES: Record<NonNullable<CellHighlight>, string> = {
   absent: "Có lịch nhưng không chấm công",
-  pending: "Đang chờ duyệt yêu cầu đổi ca",
-  edited: "Admin đã sửa ngày này, liên hệ quản trị viên để đổi",
+  pending: "Đang chờ duyệt đổi ca",
+  edited: "Admin đã sửa, liên hệ admin để đổi",
 };
 
 /// Màu ô đang có ca: sky cho ca làm, slate cho N; nhạt đi khi chỉ xem.
@@ -224,7 +223,7 @@ export default function SchedulePage() {
 
       setMessage({
         type: "success",
-        text: `Đã lưu lịch ${formatMonthLabel(month)} — ${result.savedDays} ca`,
+        text: "Đã lưu lịch",
       });
     } catch (error) {
       setMessage({
@@ -298,9 +297,7 @@ export default function SchedulePage() {
           {reason && <Message type="info">{reason}</Message>}
           {data.editableFrom && (
             <Message type="info">
-              Admin đang mở đăng ký lịch {formatMonthLabel(data.month)}: sửa
-              được từ hôm nay ({formatDateVN(data.editableFrom)}) trở đi, các
-              ngày đã qua giữ nguyên.
+              Sửa được từ {formatDateVN(data.editableFrom)}.
             </Message>
           )}
 
@@ -361,7 +358,7 @@ export default function SchedulePage() {
                         key={date}
                         title={
                           unscheduled
-                            ? "Đi làm không đăng ký lịch, vẫn tính công"
+                            ? "Đi làm ngoài lịch, vẫn tính công"
                             : undefined
                         }
                         className={`min-w-10 px-0.5 py-2 text-center font-medium ${

@@ -63,7 +63,6 @@ export default function MissedCheckoutPage() {
     <>
       <PageHeader
         title="Quên checkout"
-        description="Ngày đã check-in nhưng hết ngày không có lần check-out nào. Giờ công tính 0 cho tới khi bổ sung giờ ra; nhân viên nhận email khi admin bổ sung."
         actions={
           <div className="flex items-center gap-2">
             <Button
@@ -172,7 +171,7 @@ export default function MissedCheckoutPage() {
         </Card>
       ) : (
         <EmptyState
-          title={`Không có ca nào quên checkout trong ${formatMonthLabel(month)}`}
+          title="Không có ca quên checkout"
         />
       )}
 
@@ -182,7 +181,7 @@ export default function MissedCheckoutPage() {
         onSaved={(target, time) => {
           setFixing(null);
           setSaved(
-            `Đã bổ sung giờ ra ${time} ngày ${target.date.slice(8, 10)}/${target.date.slice(5, 7)} cho ${target.userName}`,
+            `Đã lưu giờ ra ${time} · ${target.userName} · ${target.date.slice(8, 10)}/${target.date.slice(5, 7)}`,
           );
           load(month);
         }}

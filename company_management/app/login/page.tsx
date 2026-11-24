@@ -70,7 +70,6 @@ export default function LoginPage() {
             <h1 className="min-h-8 text-2xl font-semibold text-slate-900">
               {companyName}
             </h1>
-            <p className="mt-1 text-sm text-slate-600">Chấm công nội bộ</p>
           </div>
 
           {/* name / id / method để trình quản lý mật khẩu của trình duyệt nhận
@@ -87,12 +86,9 @@ export default function LoginPage() {
             {needCode ? (
               <>
                 <p className="text-sm text-slate-600">
-                  Mở app Google Authenticator trên điện thoại và nhập mã 6 số
-                  của tài khoản{" "}
-                  <span className="font-medium text-slate-900">
-                    {identifier}
-                  </span>
-                  . Mất điện thoại thì nhập một mã dự phòng.
+                  Nhập mã 6 số trong Google Authenticator (tài khoản{" "}
+                  <span className="font-medium text-slate-900">{identifier}</span>)
+                  hoặc mã dự phòng.
                 </p>
                 <Field label="Mã xác thực" required>
                   <Input
@@ -102,7 +98,6 @@ export default function LoginPage() {
                     onChange={(event) => setCode(event.target.value)}
                     inputMode="numeric"
                     autoComplete="one-time-code"
-                    placeholder="123456"
                     maxLength={9}
                     autoFocus
                     required
@@ -117,7 +112,6 @@ export default function LoginPage() {
                     name="username"
                     value={identifier}
                     onChange={(event) => setIdentifier(event.target.value)}
-                    placeholder="nhanvien@congty.vn"
                     autoComplete="username"
                     required
                   />

@@ -293,7 +293,7 @@ export default function ShiftRequestsPage() {
       />
 
       <Message type="info">
-        Quên đăng ký mà vẫn đi làm thì vẫn được tính công, không cần gửi gì.
+        Đi làm ngoài lịch vẫn được tính công, không cần gửi yêu cầu.
       </Message>
 
       {feedback && (
@@ -488,7 +488,7 @@ export default function ShiftRequestsPage() {
           </div>
         ) : (
           <div className="p-5">
-            <EmptyState title="Chưa có yêu cầu nào trong tháng này" />
+            <EmptyState title="Chưa có yêu cầu" />
           </div>
         )}
       </Card>

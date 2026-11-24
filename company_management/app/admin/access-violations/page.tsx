@@ -40,10 +40,7 @@ export default function AccessViolationsPage() {
 
   return (
     <>
-      <PageHeader
-        title="Truy cập lạ"
-        description="Người đã đăng nhập mở đường dẫn lạ hoặc không đủ quyền. 100 lần gần nhất."
-      />
+      <PageHeader title="Truy cập lạ" />
 
       {error && <Message type="error">{error}</Message>}
 

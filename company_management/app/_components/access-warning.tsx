@@ -42,8 +42,7 @@ export default function AccessWarning({
         </h1>
 
         <p className="mx-auto mt-2 max-w-md text-sm text-slate-600">
-          Việc bạn tự ý truy cập các đường dẫn không được phép đã được ghi lại và
-          báo cáo với quản trị viên.
+          Lần truy cập này đã được ghi lại và báo cáo quản trị viên.
         </p>
 
         {path && (

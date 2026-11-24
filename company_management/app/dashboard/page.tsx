@@ -201,7 +201,7 @@ export default function DashboardPage() {
 
         {checkedIn && (
           <p className="mt-3 text-sm text-slate-500">
-            Bấm ra ca được nhiều lần, hệ thống tính theo lần muộn nhất.
+            Ra ca nhiều lần thì tính lần cuối.
           </p>
         )}
       </Card>

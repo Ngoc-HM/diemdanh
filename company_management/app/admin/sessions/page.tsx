@@ -221,7 +221,6 @@ export default function SessionsPage() {
     <>
       <PageHeader
         title="Ca làm việc"
-        description="Ca là đơn vị để nhân viên đăng ký lịch và để hệ thống tính đủ công."
         actions={
           <Button onClick={openCreate}>
             <Plus size={16} aria-hidden="true" />
@@ -241,11 +240,6 @@ export default function SessionsPage() {
       <Card className="mb-6">
         <div className="p-5">
           <h2 className="text-sm font-semibold text-slate-900">Giờ nghỉ trưa</h2>
-          <p className="mt-1 text-sm text-slate-600">
-            Nhân viên chỉ bấm vào một lần buổi sáng và ra một lần buổi chiều,
-            không phải bấm giờ cho bữa trưa. Phần thời gian rơi vào khoảng này
-            được trừ khỏi giờ công trước khi so với số giờ tối thiểu của ca.
-          </p>
           <div className="mt-3 flex flex-wrap items-end gap-3">
             <label className="flex h-11 items-center gap-2 text-sm text-slate-700">
               <input
@@ -299,7 +293,6 @@ export default function SessionsPage() {
       ) : loadFailed ? (
         <EmptyState
           title="Không tải được danh sách ca"
-          description="Máy chủ chưa trả lời, có thể đang khởi động lại. Thử tải lại sau vài giây."
           action={
             <Button onClick={load}>
               <RefreshCw size={16} aria-hidden="true" />
@@ -310,7 +303,6 @@ export default function SessionsPage() {
       ) : sessions.length === 0 ? (
         <EmptyState
           title="Chưa có ca làm việc"
-          description="Tạo bộ ca mặc định (Sáng, Chiều, Cả ngày, Tăng ca) rồi chỉnh lại cho đúng công ty."
           action={
             <Button onClick={seedDefaults}>
               <Wand2 size={16} aria-hidden="true" />
@@ -398,7 +390,7 @@ export default function SessionsPage() {
       >
         <form onSubmit={save} className="space-y-4">
           <div className="grid grid-cols-2 gap-3">
-            <Field label="Mã ca" required hint="Tối đa 8 ký tự, hiện trên bảng công">
+            <Field label="Mã ca" required hint="Hiện trên bảng công">
               <Input
                 value={form.code}
                 onChange={(event) =>
@@ -434,7 +426,7 @@ export default function SessionsPage() {
             <Field
               label="Giờ vào ca"
               required
-              hint="Vào sau giờ này quá 5 phút thì ghi nhận đi muộn"
+              hint="Vào muộn quá 5 phút bị tính đi muộn"
             >
               <Input
                 type="time"
@@ -460,7 +452,7 @@ export default function SessionsPage() {
           <Field
             label="Số giờ tối thiểu để tính đủ công"
             required
-            hint="So với giờ công thực tế (giờ ra trừ giờ vào, đã trừ nghỉ trưa). Ca 08:30–12:00 dài 3,5h thì đặt 3h là vừa."
+            hint="Tính trên giờ thực tế, đã trừ nghỉ trưa"
           >
             <Input
               type="number"
@@ -473,11 +465,7 @@ export default function SessionsPage() {
             />
           </Field>
 
-          <Field
-            label="Số công của ca"
-            required
-            hint="Làm đủ ca này được tính bao nhiêu ngày công: 1 = một ngày (x), 0,5 = nửa ngày (x/2), 0 = không cộng ngày công (vd. tăng ca, trả riêng theo giờ)."
-          >
+          <Field label="Số công của ca" required>
             <Select
               value={form.workdayValue}
               onChange={(event) => setForm({ ...form, workdayValue: event.target.value })}
@@ -512,7 +500,7 @@ export default function SessionsPage() {
               <span>
                 Ca mặc định cho nhân viên toàn thời gian
                 <span className="mt-0.5 block text-xs text-slate-500">
-                  Hệ thống gán ca này cho mọi ngày làm việc trong tuần. Chỉ một ca được đánh dấu.
+                  Tự gán cho mọi ngày làm việc. Chỉ chọn được một ca.
                 </span>
               </span>
             </label>

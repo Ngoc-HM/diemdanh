@@ -222,17 +222,12 @@ export default function AdminOvertimePage() {
     <>
       <PageHeader
         title="Làm thêm giờ (OT)"
-        description="Nhân viên làm phiếu OT, admin duyệt mới được trả. Ký hiệu tự gắn theo ngày; số giờ theo giờ ghi trên phiếu, admin chốt tay được khi duyệt."
       />
 
       <Card className="mb-6 p-5">
         <form onSubmit={saveConfig} className="flex flex-wrap items-end gap-4">
           <div className="min-w-56 flex-1">
             <h3 className="text-base font-semibold text-slate-900">Hệ số OT</h3>
-            <p className="mt-1 max-w-md text-sm text-slate-600">
-              Lương OT = lương ngày ÷ số giờ chuẩn × số giờ OT × hệ số. Mặc định
-              theo Bộ luật Lao động: 150% / 200% / 300%.
-            </p>
           </div>
           {configField("weekdayRate", "T · ngày thường", "%")}
           {configField("weeklyOffRate", "T1 · ngày nghỉ tuần", "%")}
@@ -391,8 +386,8 @@ export default function AdminOvertimePage() {
         <EmptyState
           title={
             filter === "pending"
-              ? `Không có phiếu OT nào chờ duyệt trong ${formatMonthLabel(month)}`
-              : `Chưa có phiếu OT nào trong ${formatMonthLabel(month)}`
+              ? "Không có phiếu chờ duyệt"
+              : "Chưa có phiếu OT"
           }
         />
       )}
@@ -420,7 +415,7 @@ export default function AdminOvertimePage() {
             {editing.action === "approve" && (
               <Field
                 label="Số giờ chốt"
-                hint="Bỏ trống = theo giờ trên phiếu. Nhập số giờ (vd 2,5) nếu muốn chốt tay."
+                hint="Bỏ trống = theo giờ trên phiếu"
               >
                 <Input
                   type="number"
@@ -434,10 +429,7 @@ export default function AdminOvertimePage() {
                 />
               </Field>
             )}
-            <Field
-              label="Ghi chú cho nhân viên"
-              hint="Không bắt buộc. Nhân viên thấy ghi chú này bên cạnh phiếu."
-            >
+            <Field label="Ghi chú cho nhân viên">
               <Input value={note} onChange={(event) => setNote(event.target.value)} />
             </Field>
             <div className="flex justify-end gap-3">

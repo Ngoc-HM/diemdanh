@@ -134,12 +134,10 @@ function rowHighlight(day: Day): {
   }
   const notes: string[] = [];
   if (day.needsReview)
-    notes.push("Thiếu giờ, chờ admin xem lại (đang tính đủ công)");
-  if (day.adminEdited) notes.push("Admin đã sửa ngày này");
-  if (day.pendingRequest) notes.push("Đang chờ duyệt đổi ca");
-  if (day.status === "unscheduled") {
-    notes.push("Đi làm không đăng ký lịch, vẫn tính công");
-  }
+    notes.push("Thiếu giờ, chờ xem lại");
+  if (day.adminEdited) notes.push("Admin đã sửa");
+  if (day.pendingRequest) notes.push("Chờ duyệt đổi ca");
+  if (day.status === "unscheduled") notes.push("Làm ngoài lịch");
   if (notes.length === 0) return { className: "", title: undefined };
   return { className: ROW_HIGHLIGHT.attention, title: notes.join(" · ") };
 }
@@ -344,7 +342,7 @@ function UserAttendanceDetail() {
       setEditingDay(null);
       setMessage({
         type: "success",
-        text: `Đã cập nhật công ngày ${editingDay.date}`,
+        text: `Đã lưu ngày ${editingDay.date}`,
       });
       load(month);
     } catch (error) {
@@ -423,10 +421,8 @@ function UserAttendanceDetail() {
       {data && data.totals.reviewDays > 0 && (
         <div className="mb-4">
           <Message type="info">
-            {data.totals.reviewDays} ngày làm thiếu giờ chờ duyệt. Bấm ô{" "}
-            <b>Ca tính công</b> để chọn đúng ca theo giờ thực làm (vd chỉ làm
-            chiều thì chọn C), hoặc bấm “Tính công” / “Không tính”. Chưa quyết
-            thì hết tháng vẫn tính đủ công.
+            {data.totals.reviewDays} ngày thiếu giờ chưa xem lại, chưa chọn thì
+            vẫn tính đủ công
           </Message>
         </div>
       )}
@@ -442,7 +438,7 @@ function UserAttendanceDetail() {
               </span>
             </div>
             <div className="mt-0.5 text-sm text-slate-600">
-              Ngày công / ngày công tháng
+              Ngày công
             </div>
           </Card>
           <Card className="p-4">
@@ -543,8 +539,8 @@ function UserAttendanceDetail() {
                           aria-label={`Chọn ca tính công ngày ${day.date}`}
                           title={
                             day.adminEdited
-                              ? "Admin đã chọn ca cho ngày này"
-                              : "Theo lịch đăng ký — bấm để đổi"
+                              ? "Admin đã chọn ca"
+                              : "Theo lịch đăng ký"
                           }
                           className={`inline-flex h-8 min-w-28 items-center justify-between gap-2 rounded-lg border px-2.5 text-left hover:border-sky-500 ${
                             open
@@ -688,7 +684,7 @@ function UserAttendanceDetail() {
                                 }
                                 size="sm"
                                 onClick={() => reviewDay(day, "count")}
-                                title="Vẫn tính đủ công (bấm lại để bỏ chọn)"
+                                title="Bấm lại để bỏ chọn"
                                 aria-pressed={day.reviewDecision === "count"}
                               >
                                 Tính công
@@ -702,7 +698,7 @@ function UserAttendanceDetail() {
                                 }
                                 size="sm"
                                 onClick={() => reviewDay(day, "exclude")}
-                                title="Không tính công ngày này (bấm lại để bỏ chọn)"
+                                title="Bấm lại để bỏ chọn"
                                 aria-pressed={day.reviewDecision === "exclude"}
                               >
                                 Không tính
@@ -746,8 +742,7 @@ function UserAttendanceDetail() {
         onClose={() => setReportDay(null)}
       >
         <p className="mb-2 text-sm text-slate-600">
-          Nhân viên tự khai, tổng{" "}
-          {formatDuration(reportDay?.reportMinutes ?? 0)}.
+          Tổng {formatDuration(reportDay?.reportMinutes ?? 0)}
         </p>
         <ul className="divide-y divide-slate-100">
           {reportDay?.reports.map((report) => (
@@ -773,8 +768,7 @@ function UserAttendanceDetail() {
       >
         <form onSubmit={saveDay} className="space-y-4">
           <p className="text-sm text-slate-600">
-            Một giờ vào, giờ ra có thể nhiều lần và phải sau giờ vào; giờ công
-            tính theo lần ra muộn nhất. Xoá hết dòng để đánh dấu không có công.
+            Giờ ra phải sau giờ vào. Xoá hết dòng = không có công.
           </p>
 
           <div className="space-y-2">
@@ -848,7 +842,7 @@ function UserAttendanceDetail() {
             Thêm dòng
           </Button>
 
-          <Field label="Ghi chú" hint="Ví dụ: quên check-out, đi công tác">
+          <Field label="Ghi chú">
             <Input
               value={note}
               onChange={(event) => setNote(event.target.value)}
@@ -878,7 +872,7 @@ function UserAttendanceDetail() {
           setFixing(null);
           setMessage({
             type: "success",
-            text: `Đã bổ sung giờ ra ${time} ngày ${target.date.slice(8, 10)}/${target.date.slice(5, 7)}`,
+            text: `Đã lưu giờ ra ${time} · ${target.date.slice(8, 10)}/${target.date.slice(5, 7)}`,
           });
           load(month);
         }}

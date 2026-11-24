@@ -165,7 +165,7 @@ export default function WorkReportsPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
       },
-      "Đã lưu khoảng công việc"
+      "Đã lưu"
     );
     if (ok) {
       setNewEnd("");
@@ -207,7 +207,7 @@ export default function WorkReportsPage() {
     await mutate(
       `/api/work-reports/${entry.id}`,
       { method: "DELETE" },
-      "Đã xoá khoảng công việc"
+      "Đã xoá"
     );
   }
 
@@ -217,7 +217,7 @@ export default function WorkReportsPage() {
     <div className="space-y-4">
       <DashboardPageHeader title="Nội dung công việc hằng ngày" />
 
-      <Message type="info">Chỉ ghi và sửa được trong ngày hôm nay.</Message>
+      <Message type="info">Chỉ ghi, sửa được trong hôm nay.</Message>
 
       {feedback && (
         <Message type={feedback.type} onDismiss={() => setFeedback(null)}>
@@ -383,7 +383,6 @@ export default function WorkReportsPage() {
                 <Textarea
                   value={newContent}
                   onChange={(event) => setNewContent(event.target.value)}
-                  placeholder="Bạn đã làm gì trong khoảng thời gian này?"
                   minLength={CONTENT_MIN_LENGTH}
                   maxLength={CONTENT_MAX_LENGTH}
                   required

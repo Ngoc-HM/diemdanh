@@ -138,7 +138,7 @@ export default function EmailSettingsPage() {
   }
 
   async function remindNow() {
-    if (!confirm("Gửi email nhắc đăng ký lịch tới toàn bộ nhân viên bán thời gian và thực tập ngay bây giờ?")) {
+    if (!confirm("Gửi email nhắc đăng ký lịch tới nhân viên bán thời gian và thực tập?")) {
       return;
     }
     setReminding(true);
@@ -170,10 +170,7 @@ export default function EmailSettingsPage() {
 
   return (
     <>
-      <PageHeader
-        title="Email (SMTP)"
-        description="Máy chủ gửi email dùng cho quên mật khẩu, nhắc đăng ký lịch và thông báo cho nhân viên. Cấu hình lưu trong hệ thống, mật khẩu được mã hoá."
-      />
+      <PageHeader title="Email (SMTP)" />
 
       {message && (
         <div className="mb-4">
@@ -217,10 +214,10 @@ export default function EmailSettingsPage() {
                   onChange={(event) => setForm({ ...form, secure: event.target.checked })}
                   className="h-4 w-4 rounded-sm border-slate-300 text-sky-600"
                 />
-                Kết nối SSL/TLS ngay từ đầu (cổng 465). Bỏ chọn nếu dùng cổng 587.
+                SSL/TLS (cổng 465; bỏ chọn nếu dùng 587)
               </label>
 
-              <Field label="Tài khoản đăng nhập SMTP" hint="Để trống nếu máy chủ không yêu cầu đăng nhập">
+              <Field label="Tài khoản đăng nhập SMTP">
                 <Input
                   value={form.user}
                   onChange={(event) => setForm({ ...form, user: event.target.value })}
@@ -230,7 +227,7 @@ export default function EmailSettingsPage() {
               </Field>
               <Field
                 label="Mật khẩu SMTP"
-                hint={hasPassword ? "Đã lưu. Để trống nếu không đổi." : undefined}
+                hint={hasPassword ? "Để trống nếu không đổi" : undefined}
               >
                 <Input
                   type="password"
@@ -240,7 +237,7 @@ export default function EmailSettingsPage() {
                   autoComplete="new-password"
                 />
               </Field>
-              <Field label="Địa chỉ người gửi" required hint="Ví dụ: Chấm công <noreply@congty.vn>">
+              <Field label="Địa chỉ người gửi" required>
                 <Input
                   value={form.from}
                   onChange={(event) => setForm({ ...form, from: event.target.value })}
@@ -262,7 +259,7 @@ export default function EmailSettingsPage() {
             <Card className="p-5">
               <h3 className="font-semibold text-slate-900">Gửi email thử</h3>
               <p className="mt-1 text-sm text-slate-600">
-                Lưu cấu hình trước, rồi gửi thử để chắc chắn máy chủ SMTP hoạt động.
+                Lưu cấu hình trước khi gửi thử.
               </p>
               <div className="mt-3 flex gap-2">
                 <Input
@@ -295,9 +292,8 @@ export default function EmailSettingsPage() {
                   className="mt-0.5 h-4 w-4 rounded-sm border-slate-300 text-sky-600"
                 />
                 <span>
-                  Tự động gửi email vào ngày {registrationWindow.openDay} hằng tháng cho nhân
-                  viên bán thời gian và thực tập, nhắc đăng ký lịch tháng sau. Bấm
-                  “Lưu cấu hình” để áp dụng.
+                  Tự động gửi ngày {registrationWindow.openDay} hằng tháng cho nhân viên
+                  bán thời gian và thực tập. Bấm “Lưu cấu hình” để áp dụng.
                 </span>
               </label>
               <p className="mt-3 text-sm text-slate-600">
@@ -328,9 +324,8 @@ export default function EmailSettingsPage() {
                   className="mt-0.5 h-4 w-4 rounded-sm border-slate-300 text-sky-600"
                 />
                 <span>
-                  Gửi email cho nhân viên mỗi khi admin sửa giờ chấm công, chấm lại ô
-                  ngày, quyết định ngày thiếu giờ, duyệt / từ chối đổi ca và OT. Bấm
-                  “Lưu cấu hình” để áp dụng.
+                  Gửi email cho nhân viên khi admin sửa chấm công, duyệt / từ chối đổi
+                  ca và OT. Bấm “Lưu cấu hình” để áp dụng.
                 </span>
               </label>
             </Card>

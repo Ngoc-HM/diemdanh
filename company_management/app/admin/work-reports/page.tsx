@@ -114,7 +114,6 @@ export default function AdminWorkReportsPage() {
     <>
       <PageHeader
         title="Báo cáo công việc"
-        description="Nội dung công việc nhân viên tự khai theo từng khoảng thời gian trong ngày. Chỉ để xem — nhân viên khai và sửa trong ngày, hết ngày là chốt."
         actions={
           <div className="flex items-center gap-2">
             <Button
@@ -251,10 +250,7 @@ export default function AdminWorkReportsPage() {
           </table>
         </Card>
       ) : (
-        <EmptyState
-          title="Chưa có nội dung công việc nào"
-          description="Không có khoảng nào khớp bộ lọc đang chọn."
-        />
+        <EmptyState title="Chưa có báo cáo" />
       )}
     </>
   );

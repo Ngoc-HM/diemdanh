@@ -233,7 +233,7 @@ export default function SettingsPage() {
                 required
               />
             </Field>
-            <Field label="Email đăng nhập" required hint="Đổi email là đổi tên đăng nhập">
+            <Field label="Email đăng nhập" required>
               <Input
                 type="email"
                 value={email}

@@ -183,9 +183,7 @@ export default function UsersPage() {
 
   async function deactivate(user: Employee) {
     if (
-      !confirm(
-        `Ngừng hoạt động tài khoản của ${user.name}? Lịch sử chấm công vẫn được giữ lại.`
-      )
+      !confirm(`Ngừng hoạt động ${user.name}? Lịch sử chấm công vẫn được giữ.`)
     ) {
       return;
     }
@@ -217,9 +215,7 @@ export default function UsersPage() {
   /// nhập lại bằng mật khẩu rồi tự bật lại.
   async function resetTwoFactor(user: Employee) {
     if (
-      !confirm(
-        `Tắt xác thực 2 lớp của ${user.name}? Nhân viên sẽ bị đăng xuất và đăng nhập lại chỉ bằng mật khẩu.`
-      )
+      !confirm(`Tắt xác thực 2 lớp của ${user.name}? Nhân viên sẽ bị đăng xuất.`)
     ) {
       return;
     }
@@ -239,9 +235,7 @@ export default function UsersPage() {
   /// nào (server kiểm tra lại và trả 409 nếu đã có công).
   async function hardDelete(user: Employee) {
     if (
-      !confirm(
-        `Xoá hẳn ${user.name}? Chỉ xoá được khi nhân viên chưa có ngày công nào. Không hoàn tác được.`
-      )
+      !confirm(`Xoá hẳn ${user.name}? Không hoàn tác được.`)
     ) {
       return;
     }
@@ -261,7 +255,6 @@ export default function UsersPage() {
     <>
       <PageHeader
         title="Nhân viên"
-        description="Hồ sơ nhân viên và loại hợp đồng. Loại hợp đồng quyết định cách đăng ký lịch làm việc."
         actions={
           <Button onClick={openCreate}>
             <Plus size={16} aria-hidden="true" />
@@ -285,7 +278,7 @@ export default function UsersPage() {
           onChange={(event) => setIncludeInactive(event.target.checked)}
           className="h-4 w-4 rounded-sm border-slate-300 text-sky-600"
         />
-        Hiện cả nhân viên đã ngừng hoạt động
+        Hiện nhân viên đã ngừng
       </label>
 
       {loading ? (
@@ -293,7 +286,6 @@ export default function UsersPage() {
       ) : users.length === 0 ? (
         <EmptyState
           title="Chưa có nhân viên"
-          description="Thêm nhân viên để họ có thể đăng nhập và chấm công."
           action={
             <Button onClick={openCreate}>
               <Plus size={16} aria-hidden="true" />
@@ -413,7 +405,7 @@ export default function UsersPage() {
                           size="sm"
                           onClick={() => resetTwoFactor(user)}
                           aria-label={`Tắt xác thực 2 lớp của ${user.name}`}
-                          title="Tắt xác thực 2 lớp (nhân viên mất điện thoại)"
+                          title="Tắt xác thực 2 lớp"
                         >
                           <ShieldOff size={14} aria-hidden="true" />
                         </Button>
@@ -520,7 +512,6 @@ export default function UsersPage() {
                 onChange={(event) =>
                   setForm({ ...form, department: event.target.value })
                 }
-                placeholder="Kỹ thuật"
               />
             </Field>
             <Field label="Chức vụ">
@@ -529,7 +520,6 @@ export default function UsersPage() {
                 onChange={(event) =>
                   setForm({ ...form, position: event.target.value })
                 }
-                placeholder="Lập trình viên"
               />
             </Field>
           </div>

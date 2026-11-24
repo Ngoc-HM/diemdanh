@@ -39,7 +39,7 @@ export default function ForgotPasswordPage() {
       if (!response.ok) throw new Error(data.error || "Không gửi được mã");
       setStep("code");
       setNotice(
-        "Nếu email có trong hệ thống, mã 8 số đã được gửi. Kiểm tra cả hộp thư spam."
+        "Nếu email có trong hệ thống, mã 8 số đã được gửi. Kiểm tra cả thư rác."
       );
     } catch (err) {
       setError(err instanceof Error ? err.message : "Không gửi được mã");
@@ -65,7 +65,7 @@ export default function ForgotPasswordPage() {
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "Không đổi được mật khẩu");
-      setNotice("Đã đổi mật khẩu. Đang chuyển sang trang đăng nhập...");
+      setNotice("Đã đổi mật khẩu");
       setTimeout(() => router.push("/login"), 1200);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Không đổi được mật khẩu");
@@ -104,7 +104,6 @@ export default function ForgotPasswordPage() {
                   type="email"
                   value={email}
                   onChange={(event) => setEmail(event.target.value)}
-                  placeholder="nhanvien@congty.vn"
                   required
                 />
               </Field>
@@ -124,7 +123,6 @@ export default function ForgotPasswordPage() {
                   onChange={(event) =>
                     setCode(event.target.value.replace(/\D/g, "").slice(0, 8))
                   }
-                  placeholder="12345678"
                   className="text-center text-lg"
                   required
                 />

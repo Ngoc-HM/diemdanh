@@ -61,7 +61,7 @@ export default function DeviceCard({ className = "" }: { className?: string }) {
       setDevices(payload.devices);
       setFeedback({
         type: "success",
-        text: payload.alreadyRegistered ? "Máy này đã đăng ký rồi." : "Đã đăng ký.",
+        text: payload.alreadyRegistered ? "Máy này đã đăng ký" : "Đã đăng ký",
       });
     } catch (error) {
       setFeedback({ type: "error", text: error instanceof Error ? error.message : "Không đăng ký được" });

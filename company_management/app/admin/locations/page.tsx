@@ -156,7 +156,6 @@ export default function LocationsPage() {
     <>
       <PageHeader
         title="Vị trí làm việc"
-        description="Nhân viên chỉ chấm công được khi đứng trong bán kính của một vị trí đang bật."
         actions={
           <Button onClick={openCreate}>
             <Plus size={16} aria-hidden="true" />
@@ -178,7 +177,7 @@ export default function LocationsPage() {
       ) : locations.length === 0 ? (
         <EmptyState
           title="Chưa có vị trí làm việc"
-          description="Nhân viên chưa thể chấm công cho tới khi có ít nhất một vị trí đang hoạt động."
+          description="Cần ít nhất một vị trí đang bật để nhân viên chấm công."
           action={
             <Button onClick={openCreate}>
               <MapPin size={16} aria-hidden="true" />
@@ -252,7 +251,6 @@ export default function LocationsPage() {
             <Input
               value={form.name}
               onChange={(event) => setForm({ ...form, name: event.target.value })}
-              placeholder="Văn phòng Hà Nội"
               required
             />
           </Field>
@@ -290,7 +288,7 @@ export default function LocationsPage() {
             {locating ? "Đang lấy vị trí..." : "Lấy toạ độ hiện tại"}
           </Button>
 
-          <Field label="Bán kính cho phép (m)" required hint="Từ 10m đến 5000m">
+          <Field label="Bán kính cho phép (m)" required hint="10–5000 m">
             <Input
               type="number"
               min={10}

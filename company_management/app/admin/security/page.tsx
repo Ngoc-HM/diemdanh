@@ -401,16 +401,14 @@ function NetworkCard({
                   Chỉ cho vào web từ mạng văn phòng (trừ admin)
                 </span>
                 <span className="block text-sm text-slate-600">
-                  Máy không nằm trong các dải dưới đây (ở nhà, vào qua
-                  Tailscale, VPN…) chỉ thấy trang đăng nhập: nhân viên không
-                  đăng nhập được, chỉ tài khoản admin vẫn vào và dùng bình
-                  thường.
+                  Ngoài các dải dưới đây (ở nhà, VPN…), nhân viên không đăng
+                  nhập được.
                 </span>
               </span>
             </label>
             <Field
               label="Dải IP văn phòng"
-              hint={`Mỗi dòng một IP hoặc một dải, vd 192.168.1.0/24.${currentIp ? ` IP của bạn lúc này: ${currentIp}` : ""}`}
+              hint={`Mỗi dòng một IP hoặc dải, dạng 192.168.1.0/24.${currentIp ? ` IP của bạn: ${currentIp}` : ""}`}
             >
               <Textarea
                 value={rangesText}
@@ -483,7 +481,7 @@ function BlockedIpCard({
   async function remove(item: BlockedIp) {
     if (
       !confirm(
-        `Bỏ chặn ${item.cidr}? Tài khoản đã bị khoá vì IP này vẫn giữ khoá cho tới khi mở ở trang Nhân viên.`,
+        `Bỏ chặn ${item.cidr}? Tài khoản đã bị khoá vẫn phải mở lại ở trang Nhân viên.`,
       )
     )
       return;
@@ -504,15 +502,11 @@ function BlockedIpCard({
   return (
     <Card>
       <div className="space-y-4 p-5">
-        <h3 className="text-lg font-semibold text-slate-900">
-          IP bị chặn (blacklist)
-        </h3>
+        <h3 className="text-lg font-semibold text-slate-900">IP bị chặn</h3>
         <p className="text-sm text-slate-600">
-          IP trong danh sách không vào được web nữa (mọi trang). Tài khoản nhân
-          viên nào dùng IP đó — đang đăng nhập sẵn hoặc đăng nhập đúng mật khẩu
-          — bị <span className="font-medium text-slate-900">khoá ngay</span>, mở
-          lại ở trang Nhân viên. Chỉ nên chặn IP cố định (máy chủ, máy trung
-          chuyển): IP cấp động có thể trùng máy của người khác.
+          Tài khoản dùng IP bị chặn sẽ bị{" "}
+          <span className="font-medium text-slate-900">khoá ngay</span>. Chỉ
+          chặn IP cố định: IP động có thể trùng máy người khác.
         </p>
 
         {!items ? (
@@ -572,7 +566,6 @@ function BlockedIpCard({
             <Input
               value={note}
               onChange={(event) => setNote(event.target.value)}
-              placeholder="VD: VPS dev"
               maxLength={200}
             />
           </Field>
@@ -587,7 +580,7 @@ function BlockedIpCard({
         </form>
         {currentIp && (
           <p className="text-xs text-slate-500">
-            IP của bạn lúc này: {currentIp}
+            IP của bạn: {currentIp}
           </p>
         )}
       </div>
@@ -599,10 +592,7 @@ export default function SecurityPage() {
   const [feedback, setFeedback] = useState<Feedback | null>(null);
   return (
     <>
-      <PageHeader
-        title="Bảo mật"
-        description="Chặn theo IP và nhật ký mọi lần chấm công (kể cả bị từ chối), đăng nhập kèm IP và trình duyệt."
-      />
+      <PageHeader title="Bảo mật" />
       {feedback && (
         <div className="mb-4">
           <Message type={feedback.type} onDismiss={() => setFeedback(null)}>

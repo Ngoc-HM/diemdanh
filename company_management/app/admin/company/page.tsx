@@ -94,10 +94,7 @@ export default function CompanySettingsPage() {
 
   return (
     <>
-      <PageHeader
-        title="Thiết lập công ty"
-        description="Tên và logo hiển thị trên trang đăng nhập và đầu trang của nhân viên."
-      />
+      <PageHeader title="Thiết lập công ty" />
 
       <Card className="max-w-2xl">
         <div className="space-y-4 p-5">
@@ -109,12 +106,11 @@ export default function CompanySettingsPage() {
                 value={companyName}
                 onChange={(event) => setCompanyName(event.target.value)}
                 maxLength={120}
-                placeholder="Công ty TNHH ABC"
               />
             )}
           </Field>
 
-          <Field label="Logo" hint="PNG, JPG hoặc WebP — tối đa 2MB.">
+          <Field label="Logo" hint="PNG, JPG, WebP, tối đa 2MB">
             <div className="flex items-center gap-4">
               <CompanyLogo logo={logo} size="lg" />
               <div className="flex gap-2">

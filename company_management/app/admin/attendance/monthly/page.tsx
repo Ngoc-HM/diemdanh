@@ -37,17 +37,15 @@ function lateMinutesOf(row: { days: Record<string, DayCell | undefined> }): numb
 
 /// Ký hiệu trong ô ngày, hiện ngay dưới chú giải màu.
 const SYMBOL_HELP: [string, string][] = [
-  ["S C CN", "ca đã xếp"],
-  ["*", "đi muộn"],
-  ["!", "thiếu giờ, bấm ô để chốt"],
-  ["+T", "có OT đã duyệt (T, T1, T2)"],
+  ["S C CN", "ca"],
+  ["*", "muộn"],
+  ["!", "thiếu giờ"],
+  ["+T", "OT"],
   ["?", "quên checkout"],
-  ["…", "đang trong ca"],
+  ["…", "trong ca"],
   ["V", "vắng"],
-  ["NL", "làm ngoài lịch"],
-  ["N", "nghỉ"],
-  ["O", "ốm"],
-  ["L", "nghỉ lễ"],
+  ["NL", "ngoài lịch"],
+  ["L", "lễ"],
 ];
 
 type DayCell = {
@@ -248,10 +246,7 @@ export default function MonthlyAttendancePage() {
 
   return (
     <>
-      <PageHeader
-        title="Bảng chấm công"
-        description="Đối chiếu lịch làm việc đã đăng ký với giờ chấm công thực tế."
-      />
+      <PageHeader title="Bảng chấm công" />
 
       {totals && totals.missedCheckout > 0 && (
         <Link
@@ -262,7 +257,7 @@ export default function MonthlyAttendancePage() {
             <AlarmClockOff size={16} aria-hidden="true" />
             <span>
               <span className="font-semibold">{totals.missedCheckout}</span> ca
-              quên checkout trong {formatMonthLabel(month)}
+              quên checkout
             </span>
           </span>
           <span className="font-medium">Xem danh sách</span>
@@ -273,9 +268,8 @@ export default function MonthlyAttendancePage() {
         <div className="mb-4 flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
           <AlarmClockOff size={16} aria-hidden="true" />
           <span>
-            <span className="font-semibold">{totals.review}</span> ngày làm
-            thiếu giờ chờ xem lại (ô có dấu !). Bấm vào ô để chọn tính đủ công
-            hay không tính; chưa chọn thì vẫn tính đủ công.
+            <span className="font-semibold">{totals.review}</span> ngày thiếu
+            giờ chưa xem lại (dấu !), chưa chọn thì vẫn tính đủ công
           </span>
         </div>
       )}
@@ -289,7 +283,7 @@ export default function MonthlyAttendancePage() {
             <ClipboardCheck size={16} aria-hidden="true" />
             <span>
               <span className="font-semibold">{pendingRequests}</span> yêu cầu
-              đổi ca đang chờ duyệt trong {formatMonthLabel(month)}
+              đổi ca chờ duyệt
             </span>
           </span>
           <span className="font-medium">Duyệt ngay</span>
@@ -355,15 +349,11 @@ export default function MonthlyAttendancePage() {
         ))}
         <span className="flex items-center gap-1.5">
           <span className="h-3.5 w-3.5 rounded-sm bg-amber-100" />
-          <span className="text-slate-600">Admin đã sửa</span>
+          <span className="text-slate-600">Đã sửa / chờ đổi ca</span>
         </span>
         <span className="flex items-center gap-1.5">
           <span className="h-3.5 w-3.5 rounded-sm bg-violet-100 ring-1 ring-violet-300" />
           <span className="text-slate-600">Đã chốt</span>
-        </span>
-        <span className="flex items-center gap-1.5">
-          <span className="h-3.5 w-3.5 rounded-sm bg-amber-100" />
-          <span className="text-slate-600">Chờ duyệt đổi ca</span>
         </span>
       </div>
 
@@ -381,10 +371,7 @@ export default function MonthlyAttendancePage() {
       {loading ? (
         <TableSkeleton />
       ) : !data || data.summary.length === 0 ? (
-        <EmptyState
-          title="Chưa có dữ liệu chấm công"
-          description="Chưa có nhân viên đang hoạt động, hoặc chưa ai chấm công trong tháng này."
-        />
+        <EmptyState title="Chưa có dữ liệu chấm công" />
       ) : (
         <>
           <Card className="overflow-x-auto">

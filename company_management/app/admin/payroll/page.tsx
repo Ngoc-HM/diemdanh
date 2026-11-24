@@ -555,7 +555,7 @@ export default function PayrollPage() {
                       set("salaryType", event.target.value as PayProfile["salaryType"])
                     }
                   >
-                    <option value="monthly">Lương tháng (chia theo ngày công)</option>
+                    <option value="monthly">Lương tháng</option>
                     <option value="daily">Đơn giá theo ngày công</option>
                   </Select>
                 </Field>

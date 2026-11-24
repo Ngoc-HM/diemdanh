@@ -53,7 +53,7 @@ export default function ChangePasswordPage() {
     <>
       <PageHeader
         title="Tài khoản"
-        description="Xác thực 2 lớp và mật khẩu quản trị. Đổi mật khẩu hay bật / tắt 2 lớp sẽ đăng xuất mọi máy khác."
+        description="Đổi mật khẩu hoặc bật / tắt 2 lớp sẽ đăng xuất mọi máy khác."
       />
 
       <div className="grid max-w-6xl items-start gap-4 xl:grid-cols-2">

@@ -22,9 +22,7 @@ import {
   weekdayLabel,
 } from "@/lib/datetime";
 import {
-  DEFAULT_REGISTRATION_WINDOW,
   MAX_REGISTRATION_DAY,
-  RegistrationWindowConfig,
   toggleSessionSelection,
   validateRegistrationWindow,
 } from "@/lib/schedule";
@@ -112,11 +110,11 @@ const SCHEDULE_LEGEND = [
   { className: "bg-sky-50 ring-1 ring-sky-200", label: "Có ca" },
   {
     className: "bg-amber-50 ring-1 ring-amber-200",
-    label: "Nghỉ / ốm đã đánh dấu",
+    label: "Nghỉ / ốm",
   },
   {
     className: "bg-amber-100",
-    label: "Chờ duyệt đổi ca hoặc làm ngoài lịch (NL)",
+    label: "Chờ duyệt đổi ca / ngoài lịch (NL)",
   },
   { className: "bg-rose-100", label: "Có lịch mà không đi" },
 ];
@@ -143,8 +141,6 @@ export default function AdminSchedulesPage() {
   const [saving, setSaving] = useState(false);
 
   // Cửa sổ đăng ký lịch tháng sau (Settings schedule_registration_window).
-  const [registrationWindow, setRegistrationWindow] =
-    useState<RegistrationWindowConfig>(DEFAULT_REGISTRATION_WINDOW);
   const [windowDraft, setWindowDraft] = useState({ openDay: "", closeDay: "" });
   const [savingWindow, setSavingWindow] = useState(false);
   // Công tắc cho nhân viên đăng ký lịch tháng hiện tại (từ hôm nay trở đi).
@@ -199,7 +195,7 @@ export default function AdminSchedulesPage() {
       setMessage({
         type: "success",
         text: payload.enabled
-          ? "Đã mở: nhân viên đăng ký được lịch tháng này (từ hôm nay trở đi)"
+          ? "Đã mở đăng ký lịch tháng này"
           : "Đã tắt đăng ký lịch tháng này",
       });
     } catch (error) {
@@ -218,7 +214,6 @@ export default function AdminSchedulesPage() {
       .then((response) => (response.ok ? response.json() : null))
       .then((payload) => {
         if (!payload) return;
-        setRegistrationWindow(payload);
         setWindowDraft({
           openDay: String(payload.openDay),
           closeDay: String(payload.closeDay),
@@ -251,10 +246,9 @@ export default function AdminSchedulesPage() {
       });
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error || "Không lưu được");
-      setRegistrationWindow(payload);
       setMessage({
         type: "success",
-        text: `Đã lưu: nhân viên đăng ký lịch tháng sau từ ngày ${payload.openDay} đến hết ngày ${payload.closeDay}`,
+        text: `Đã lưu: ngày ${payload.openDay}–${payload.closeDay}`,
       });
     } catch (error) {
       setMessage({
@@ -338,7 +332,6 @@ export default function AdminSchedulesPage() {
     <>
       <PageHeader
         title="Lịch làm việc"
-        description={`Nhân viên bán thời gian và thực tập đăng ký lịch tháng sau từ ngày ${registrationWindow.openDay} đến hết ngày ${registrationWindow.closeDay} của tháng trước đó. Nhân viên toàn thời gian dùng lịch cố định theo ngày làm việc trong tuần. Admin sửa được lịch của mọi nhân viên bất cứ lúc nào.`}
       />
 
       <Card className="mb-6 p-5">
@@ -348,10 +341,7 @@ export default function AdminSchedulesPage() {
               Cửa sổ đăng ký lịch tháng sau
             </h3>
             <p className="mt-1 max-w-xl text-sm text-slate-600">
-              Tính theo ngày của tháng trước đó. Ngày {MAX_REGISTRATION_DAY}{" "}
-              nghĩa là hết tháng; tháng ngắn hơn thì hệ thống tự lùi về ngày
-              cuối tháng. Chỉ áp cho bán thời gian và thực tập — toàn thời gian
-              không đăng ký.
+              Ngày của tháng trước. {MAX_REGISTRATION_DAY} = cuối tháng.
             </p>
           </div>
           <Field label="Mở từ ngày" required>
@@ -397,9 +387,7 @@ export default function AdminSchedulesPage() {
               Cho phép nhân viên đăng ký lịch tháng này
             </span>
             <span className="block text-sm text-slate-600">
-              Dùng khi có người mới vào giữa tháng hoặc chưa kịp đăng ký. Nhân
-              viên chỉ sửa được từ hôm nay trở đi, ngày đã qua giữ nguyên. Tắt
-              đi là quay về như cũ.
+              Chỉ sửa được từ hôm nay trở đi.
             </span>
           </span>
         </label>
@@ -460,7 +448,6 @@ export default function AdminSchedulesPage() {
       ) : !data || data.rows.length === 0 ? (
         <EmptyState
           title="Chưa có nhân viên đang hoạt động"
-          description="Thêm nhân viên ở mục Nhân viên trước khi xếp lịch."
         />
       ) : (
         <Card className="overflow-x-auto">
@@ -577,11 +564,9 @@ export default function AdminSchedulesPage() {
                 className="mt-0.5 shrink-0"
               />
               <span>
-                Bấm ô để gán / bỏ ca. Admin sửa được lịch bất cứ lúc nào, không
-                phụ thuộc cửa sổ đăng ký.
                 {!editingRow.selfScheduled &&
-                  " Với nhân viên toàn thời gian, lịch lưu ở đây thay cho lịch cố định của tháng này."}{" "}
-                Ngày đang nghỉ/ốm mà được gán ca thì đánh dấu nghỉ sẽ được gỡ.
+                  "Lịch lưu ở đây thay cho lịch cố định tháng này. "}
+                Gán ca vào ngày nghỉ/ốm sẽ gỡ đánh dấu nghỉ.
               </span>
             </p>
             {/* Cùng kiểu lưới với trang đăng ký của nhân viên: cột = ngày, hàng = ca. */}

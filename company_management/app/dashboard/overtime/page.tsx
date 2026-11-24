@@ -160,7 +160,7 @@ export default function OvertimePage() {
       if (!response.ok) throw new Error(data.error || "Không gửi được phiếu");
       setFeedback({
         type: "success",
-        text: `Đã gửi phiếu OT ngày ${formatDayVN(date)} (${data.request.code}), chờ admin duyệt.`,
+        text: "Đã gửi, chờ admin duyệt",
       });
       setContent("");
       setPlace("");
@@ -199,7 +199,7 @@ export default function OvertimePage() {
       />
 
       <Message type="info">
-        OT cần admin duyệt mới được trả. T: ngày thường · T1: ngày nghỉ · T2: ngày lễ.
+        T: ngày thường · T1: ngày nghỉ · T2: ngày lễ
       </Message>
 
       {feedback && (
@@ -232,15 +232,11 @@ export default function OvertimePage() {
             <p className="text-sm text-rose-700">{timeError}</p>
           )}
 
-          <Field
-            label="Nơi đi / nơi đến"
-            hint="Bỏ trống nếu làm tại văn phòng"
-          >
+          <Field label="Nơi đi / nơi đến">
             <Input
               value={place}
               onChange={(event) => setPlace(event.target.value)}
               maxLength={OVERTIME_PLACE_MAX}
-              placeholder="Vd: Văn phòng → khách hàng ABC, Hà Đông"
             />
           </Field>
 
@@ -351,7 +347,7 @@ export default function OvertimePage() {
           </div>
         ) : (
           <div className="p-5">
-            <EmptyState title="Chưa có phiếu OT nào trong tháng này" />
+            <EmptyState title="Chưa có phiếu OT" />
           </div>
         )}
       </Card>
