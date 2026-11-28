@@ -542,26 +542,21 @@ function overtimeSheet(sheet: PayrollSheet, row: PayrollRow, companyName: string
 type PayrollDay = PayrollRow["attendance"]["days"][string];
 
 /// Ai / cái gì quyết định kết quả cuối cùng của ngày.
-function decisionOf(day: PayrollDay, times: DayPunchTimes | undefined): string {
-  const notes: string[] = [];
-  if (times?.adminEdited && !day.finalEdited) notes.push("admin sửa giờ chấm");
-  if (day.adminEdited && !day.finalEdited) notes.push("admin đổi ca");
-  const extra = notes.length ? ` (${notes.join(", ")})` : "";
-
+function decisionOf(day: PayrollDay): string {
   if (day.finalEdited) return "Admin chốt tay ở bảng công chốt";
   if (day.projected) return "Tạm tính theo lịch (ngày chưa tới)";
-  if (day.reviewDecision === "count") return `Admin xem lại thiếu giờ: tính đủ công${extra}`;
-  if (day.reviewDecision === "exclude") return `Admin xem lại thiếu giờ: không tính công${extra}`;
-  if (day.needsReview) return `Thiếu giờ, admin chưa xem lại — đang tính đủ công${extra}`;
+  if (day.reviewDecision === "count") return "Admin xem lại thiếu giờ: tính đủ công";
+  if (day.reviewDecision === "exclude") return "Admin xem lại thiếu giờ: không tính công";
+  if (day.needsReview) return "Thiếu giờ, admin chưa xem lại — đang tính đủ công";
   if (day.status === "holiday") return "Ngày lễ — hưởng lương";
   if (day.status === "leave") return "Nghỉ (đã đánh dấu)";
-  if (day.leaveDays && day.leaveDays < 1) return `Nghỉ nửa ngày, làm ${day.codes.join("+") || "nửa ngày"}${extra}`;
+  if (day.leaveDays && day.leaveDays < 1) return `Nghỉ nửa ngày, làm ${day.codes.join("+") || "nửa ngày"}`;
   if (day.status === "sick") return "Nghỉ ốm (đã đánh dấu)";
-  if (day.status === "absent") return `Có lịch, không chấm công${extra}`;
+  if (day.status === "absent") return "Có lịch, không chấm công";
   if (day.overtime && day.workdayValue <= 0) return "Làm thêm theo phiếu OT đã duyệt";
-  if (day.status === "unscheduled") return `Làm ngoài lịch${extra}`;
-  if (times?.firstIn || times?.lastOut || day.firstIn || day.lastOut) return `Máy chấm tự động${extra}`;
-  return extra ? extra.slice(2, -1) : "";
+  if (day.status === "unscheduled") return "Làm ngoài lịch";
+  if (day.firstIn || day.lastOut) return "Máy chấm tự động";
+  return "";
 }
 
 /// Chấm công chi tiết từng ngày: giờ vào / ra, phút muộn, ký hiệu máy chấm và
@@ -585,13 +580,11 @@ function detailedAttendanceSheet(
     { label: "Trạng thái", width: 13 },
     { label: "Hình thức quyết định", width: 36 },
     { label: "OT (giờ)", width: 9 },
-    { label: "Ghi chú", width: 26 },
   ];
   const span = columns.length;
   const swaps = { off: new Set(sheet.daySwaps?.off ?? []), work: new Set(sheet.daySwaps?.work ?? []) };
   const holidayFill = "#FCE7F3";
   const offFill = "#F1F5F9";
-  const adminFill = "#FEF3C7";
 
   let lateTotal = 0;
   let hoursTotal = 0;
@@ -609,12 +602,6 @@ function detailedAttendanceSheet(
     const center = { ...base, align: "center" as const };
     const blank = (style = center) => ({ value: "", type: String, ...style });
 
-    const notes = [
-      sheet.holidays[date] ? `Lễ: ${sheet.holidays[date]}` : null,
-      swaps.off.has(date) ? "Nghỉ hoán đổi kèm ngày lễ" : null,
-      swaps.work.has(date) ? "Đi làm bù (hoán đổi)" : null,
-      !day && isOff && !swaps.off.has(date) ? "Ngày nghỉ hằng tuần" : null,
-    ].filter(Boolean);
 
     if (!day) {
       return [
@@ -624,7 +611,6 @@ function detailedAttendanceSheet(
         { value: "", type: String, ...base },
         { value: "", type: String, ...base },
         blank(),
-        { value: notes.join(" · "), type: String, ...base, wrap: true },
       ];
     }
 
@@ -640,16 +626,15 @@ function detailedAttendanceSheet(
     if (day.overtime) otMinutes += day.overtime.minutes;
     const machineLabel = accountingCellLabel(day.finalEdited && day.machine ? day.machine : day);
     const finalLabel = accountingCellLabel(day);
-    if (day.projected) notes.push("Tạm tính theo lịch");
 
     return [
       { value: dmy(date), type: String, ...base },
       { value: weekdayLabel(date), type: String, ...center },
       firstIn
-        ? { value: firstIn, type: String, ...center, ...(t?.inByAdmin ? { backgroundColor: adminFill } : {}) }
+        ? { value: firstIn, type: String, ...center }
         : blank(),
       lastOut
-        ? { value: lastOut, type: String, ...center, ...(t?.outByAdmin ? { backgroundColor: adminFill } : {}) }
+        ? { value: lastOut, type: String, ...center }
         : blank(),
       late !== 0
         ? {
@@ -671,11 +656,10 @@ function detailedAttendanceSheet(
       },
       day.workdayValue > 0 ? { value: day.workdayValue, type: Number, format: DAYS, ...center } : blank(),
       { value: DAY_STATUS_LABELS[day.status as DayStatus] ?? day.status, type: String, ...base },
-      { value: decisionOf(day, t), type: String, ...base, wrap: true },
+      { value: decisionOf(day), type: String, ...base, wrap: true },
       day.overtime
         ? { value: `${day.overtime.code}: ${hoursOf(day.overtime.minutes)}`, type: String, ...center }
         : blank(),
-      { value: notes.join(" · "), type: String, ...base, wrap: true },
     ];
   });
 
@@ -710,7 +694,6 @@ function detailedAttendanceSheet(
         { value: "", type: String, columnSpan: 2, ...foot },
         null,
         { value: hoursOf(otMinutes), type: Number, format: DAYS, ...foot },
-        { value: "", type: String, ...foot },
       ],
       spanLine(span, ""),
       spanLine(span, "TỔNG HỢP", { fontWeight: "bold", textColor: BRAND_DARK }),
@@ -727,7 +710,7 @@ function detailedAttendanceSheet(
         span,
         "Ký hiệu: S ca sáng · C ca chiều · CN cả ngày · V vắng · N nghỉ · O ốm · L nghỉ lễ. " +
           "\"Máy chấm\" là kết quả hệ thống tự tính từ giờ chấm; \"Chốt cuối cùng\" là kết quả dùng để tính lương. " +
-          "Ô tô vàng: giờ do admin nhập tay; ô tô tím: admin chốt tay; dòng hồng: ngày lễ; dòng xám: ngày nghỉ.",
+          "Ô tô tím: admin chốt tay; dòng hồng: ngày lễ; dòng xám: ngày nghỉ.",
         { fontStyle: "italic", fontSize: 9, textColor: "#64748B", wrap: true, height: 40 }
       ),
     ],
